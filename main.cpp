@@ -50,10 +50,15 @@ int main() {
 
     tree.output();
 
+    for (auto p : tree.terminals()) {
+        std::cout << p.first << " " << p.second << std::endl;
+    }
+
+
     SDCP<std::string, std::string> sDCP;
 
     // Rule 1:
-    std::cout << "rule 1" << std::endl;
+    // std::cout << "rule 1" << std::endl;
     Rule<std::string, std::string> rule1;
     rule1.lhn = "S";
     rule1.rhs.push_back("A");
@@ -77,12 +82,12 @@ int main() {
 
     std::vector<STerm<std::string>> arg3v;
     rule1.outside_attributes.push_back(arg3v);
-    std::cout << rule1.outside_attributes.size() << std::endl;
-    sDCP.add_rule(rule1);
+    // std::cout << rule1.outside_attributes.size() << std::endl;
+    assert (sDCP.add_rule(rule1));
     // Rule 1 end
 
     // Rule 2:
-    std::cout << "rule 2" << std::endl;
+    // std::cout << "rule 2" << std::endl;
     Rule<std::string, std::string> rule2;
     rule2.lhn = "A";
     // build lhs
@@ -94,11 +99,11 @@ int main() {
     r2_arg_0_1.push_back(r2_term);
     r2_arg1v.push_back(r2_arg_0_1);
     rule2.outside_attributes.push_back(r2_arg1v);
-    sDCP.add_rule(rule2);
+    assert (sDCP.add_rule(rule2));
     // Rule 2 end
 
     // Rule 3:
-    std::cout << "rule 3" << std::endl;
+    // std::cout << "rule 3" << std::endl;
     Rule<std::string, std::string> rule3;
     rule3.lhn = "B";
     rule3.rhs.push_back("C");
@@ -112,11 +117,13 @@ int main() {
     r3_arg1v.push_back(r3_arg_0_1);
     r3_arg1v.push_back(r3_arg_0_2);
     rule3.outside_attributes.push_back(r3_arg1v);
-    sDCP.add_rule(rule3);
+    rule3.outside_attributes.emplace_back(std::vector<STerm<std::string>>());
+    rule3.outside_attributes.emplace_back(std::vector<STerm<std::string>>());
+    assert (sDCP.add_rule(rule3));
     // Rule 3 end
 
     // Rule 4:
-    std::cout << "rule 4" << std::endl;
+    // std::cout << "rule 4" << std::endl;
     Rule<std::string, std::string> rule4;
     rule4.lhn = "C";
     // build lhs
@@ -127,11 +134,11 @@ int main() {
     r4_arg_0_1.push_back(r4_term);
     r4_arg1v.push_back(r4_arg_0_1);
     rule4.outside_attributes.push_back(r4_arg1v);
-    sDCP.add_rule(rule4);
+    assert (sDCP.add_rule(rule4));
     // Rule 4 end
 
     // Rule 5:
-    std::cout << "rule 5" << std::endl;
+    // std::cout << "rule 5" << std::endl;
     Rule<std::string, std::string> rule5;
     rule5.lhn = "D";
     // build lhs
@@ -144,13 +151,21 @@ int main() {
     r5_arg_0_1.push_back(r5_term);
     r5_arg1v.push_back(r5_arg_0_1);
     rule5.outside_attributes.push_back(r5_arg1v);
-    sDCP.add_rule(rule5);
+    assert (sDCP.add_rule(rule5));
     // Rule 5 end
 
 
     for (auto & rule : {rule1, rule2, rule3, rule4, rule5}){
         std::cout << rule.lhn << " " << rule.irank(0) << " " << rule.srank(0) << std::endl;
     }
+
+    std::cout << std::endl << std::endl;
+
+    SDCPParser<std::string, std::string, int> parser;
+    parser.input = tree;
+    parser.sDCP = sDCP;
+
+    parser.do_parse();
 
     return 0;
 }

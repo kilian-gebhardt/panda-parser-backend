@@ -7,9 +7,8 @@
 #include <map>
 #include <vector>
 #include <iostream>
-
-// typedef int Terminal;
-// typedef int Position;
+#include <tuple>
+#include "SDCP.h"
 
 template <typename Terminal, typename Position>
 class HybridTree {
@@ -18,26 +17,33 @@ private:
     std::map<Position, Position> previous, next, parent;
     std::map<Position, std::vector<Position>> children;
     Position entry, exit;
+    void terminals_recur(std::vector<std::pair<Position, Terminal>> & terminals, const std::vector<Position> & positions){
+        for (auto position : positions){
+            if (!is_initial(position))
+                terminals.emplace_back(std::pair<Position, Terminal>(position, get_label(position)));
+            terminals_recur(terminals, get_children(position));
+        }
+    };
 public:
-    const Terminal get_label(Position position) {
+    const Terminal get_label(const Position position) {
         return label[position];
     }
-    const Position get_next(Position position){
+    const Position get_next(const Position position)  {
         return next[position];
     }
-    const Position get_previous(Position position){
+    const Position get_previous(const Position position)  {
         return previous[position];
     }
-    const Position get_parent(Position position){
+    const Position get_parent(const Position position)  {
         return parent[position];
     }
-    const Position get_entry(){
+    const Position get_entry() {
         return entry;
     }
-    const Position get_exit(){
+    const Position get_exit() {
         return exit;
     }
-    const std::vector<Position> & get_children(Position position){
+    const std::vector<Position> & get_children(const Position position)  {
         return children[position];
     }
 
@@ -59,6 +65,18 @@ public:
 
     void output();
     void output_recur(Position position, int indent);
+
+    std::vector<std::pair<Position, Terminal>> terminals() {
+        std::vector<std::pair<Position, Terminal>> terminals;
+        Position position = get_entry();
+        while (position != -1) {
+            if (!is_initial(position))
+                terminals.emplace_back(std::pair<Position, Terminal>(position, get_label(position)));
+            terminals_recur(terminals, get_children(position));
+            position = get_next(position);
+        }
+        return terminals;
+    };
 
 };
 
