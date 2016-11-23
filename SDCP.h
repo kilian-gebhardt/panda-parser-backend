@@ -73,6 +73,7 @@ public:
     Nonterminal initial;
     std::map<Nonterminal, std::vector<Rule<Nonterminal, Terminal>>> lhn_to_rule;
     std::map<Nonterminal, std::vector<Rule<Nonterminal, Terminal>>> left_nont_corner;
+    std::map<Nonterminal, std::vector<std::pair<Rule<Nonterminal, Terminal>, int>>> nont_corner;
     std::map<Terminal, std::vector<Rule<Nonterminal, Terminal>>> axioms;
     std::vector<Rule<Nonterminal, Terminal>> epsilon_axioms;
     std::map<Nonterminal, int> irank, srank;
@@ -169,8 +170,12 @@ bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
 
     // finally adding rule
     lhn_to_rule[rule.lhn].push_back(rule);
-    if (rule.rhs.size() > 0)
+    if (rule.rhs.size() > 0) {
         left_nont_corner[rule.rhs[0]].push_back(rule);
+        int j = 0;
+        for (Nonterminal nont : rule.rhs)
+            nont_corner[nont].push_back(std::make_pair(rule, j++));
+    }
     else {
         auto term = rule.first_terminal();
         if (term.first)

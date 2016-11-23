@@ -69,6 +69,7 @@ int main() {
     term1.children.emplace_back(Variable(2, 1));
     STerm<std::string> arg1;
     arg1.push_back(term1);
+    arg1.emplace_back(Term<std::string>("."));
     std::vector<STerm<std::string>> arg1v;
     arg1v.push_back(arg1);
     rule1.outside_attributes.push_back(arg1v);
@@ -138,7 +139,6 @@ int main() {
     // Rule 4 end
 
     // Rule 5:
-    // std::cout << "rule 5" << std::endl;
     Rule<std::string, std::string> rule5;
     rule5.lhn = "D";
     // build lhs
@@ -154,8 +154,45 @@ int main() {
     assert (sDCP.add_rule(rule5));
     // Rule 5 end
 
+    Rule<std::string, std::string> rule6;
+    rule6.lhn = "D";
+    // build lhs
+    rule6.outside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, Variable(1, 1))));
+    // build rhs
+    rule6.rhs.push_back("F");
+    rule6.outside_attributes.push_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, Variable(2, 1))));
+    rule6.rhs.push_back("E");
+    rule6.outside_attributes.push_back(std::vector<STerm<std::string>>());
+    assert (sDCP.add_rule(rule6));
 
-    for (auto & rule : {rule1, rule2, rule3, rule4, rule5}){
+    Rule<std::string, std::string> rule7;
+    rule7.lhn = "E";
+    rule7.outside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, Term<std::string>("the"))));
+    assert (sDCP.add_rule(rule7));
+
+    Rule<std::string, std::string> rule8;
+    rule8.lhn = "F";
+    auto term8 = Term<std::string>("on");
+    term8.children.push_back(Variable(1, 1));
+    rule8.outside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, term8)));
+    rule8.rhs.push_back("F");
+    rule8.outside_attributes.push_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, Variable(0, 1))));
+    assert (sDCP.add_rule(rule8));
+
+    Rule<std::string, std::string> rule9;
+    rule9.lhn = "F";
+    auto term9 = Term<std::string>("issue");
+    term9.children.push_back(Variable(0, 1));
+    rule9.outside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, term9)));
+    assert (sDCP.add_rule(rule9));
+
+
+
+
+
+
+
+    for (auto & rule : {rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9}){
         std::cout << rule.lhn << " " << rule.irank(0) << " " << rule.srank(0) << std::endl;
     }
 
