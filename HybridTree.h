@@ -127,8 +127,8 @@ void HybridTree<Terminal, Position>::output_recur(Position position, int indent)
         position = get_next(position);
     while (position != - 1) {
         for (int i = 0; i < indent; ++i)
-            std::cout << "  ";
-        std::cout << get_label(position) << std::endl;
+            std::cerr << "  ";
+        std::cerr << get_label(position) << std::endl;
         if (get_children(position).size() > 0) {
             output_recur(get_children(position)[0], indent + 1);
         }

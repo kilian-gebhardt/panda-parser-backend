@@ -8,6 +8,8 @@
 #include <vector>
 #include <boost/variant.hpp>
 #include <map>
+#include <iostream>
+#include <term.h>
 
 class Variable {
 public:
@@ -22,6 +24,11 @@ public:
     }
 };
 
+std::ostream &operator<<(std::ostream &os, Variable &var) {
+    os << " X-" << var.member << "-" << var.argument << " ";
+    return os;
+}
+
 template <typename Terminal>
 class Term;
 
@@ -30,6 +37,9 @@ using TermOrVariable = typename boost::variant<Variable, Term<Terminal>>;
 
 template <typename Terminal>
 using STerm = typename std::vector<TermOrVariable<Terminal>>;
+
+template <typename Nonterminal, typename Terminal>
+class Rule;
 
 template <typename Terminal>
 class Term{
@@ -40,6 +50,115 @@ public:
     STerm<Terminal> children;
     Term(Terminal head) : head(head) {};
     Term() {};
+
+    void add_variable(Variable v) {
+        children.push_back(v);
+    }
+
+    void add_term(Term<Terminal> t) {
+        children.push_back(t);
+    }
+};
+
+
+template <typename Terminal>
+std::ostream &operator<<(std::ostream &os, STerm<Terminal> &sterm) {
+    os << " [ ";
+    unsigned i = 0;
+    while (i < sterm.size()) {
+        os << sterm[i];
+        if (i < sterm.size() - 1)
+            os << " , ";
+        i++;
+    }
+    os << " ] ";
+    return os;
+}
+
+template <typename Terminal>
+std::ostream &operator<<(std::ostream &os, Term<Terminal> &term) {
+    os << " " << term.head;
+    if (term.children.size()) {
+        os << term.children;
+    }
+    return os;
+}
+
+template <typename Terminal>
+std::ostream &operator<<(std::ostream &os, TermOrVariable<Terminal> &obj) {
+    try {
+        auto term = boost::get<Term<Terminal>> (obj);
+        os << term;
+    } catch (boost::bad_get &) {
+        auto var = boost::get<Variable> (obj);
+        os << var;
+    }
+    return os;
+}
+
+
+template <typename Nonterminal, typename Terminal>
+class STermBuilder {
+public:
+    STerm<Terminal> sterm;
+    STerm<Terminal> * current_position = &sterm;
+    std::vector<STerm<Terminal>*> history;
+
+    void add_var(int mem, int arg){
+        if (current_position) {
+            std::cerr << "add var " << mem << " " << arg << std::endl;
+            current_position->emplace_back(Variable(mem, arg));
+            std::cerr << "added var " << current_position->back() << std::endl;
+        } else {
+            std::cerr << "pointer invalid" << std::endl;
+        }
+    }
+    void add_terminal(Terminal terminal) {
+        current_position->emplace_back(Term<Terminal>(terminal));
+        std::cerr << "added term " << terminal << " " << current_position->back() << std::endl;
+        std::cerr << "output sterm " << sterm << std::endl;
+    }
+
+    bool add_children() {
+        std::cerr << "added children " << std::endl;
+        if (current_position->size()) {
+            try {
+                Term<Terminal> & term = boost::get<Term<Terminal>>(current_position->back());
+                history.push_back(current_position);
+                current_position = & (term.children);
+                return true;
+            } catch (boost::bad_get &) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    bool move_up() {
+        std::cerr << "moved up " << std::endl;
+        if (history.size()) {
+            current_position = history.back();
+            history.pop_back();
+            return true;
+        }
+        return false;
+    }
+
+    STerm<Terminal> get_sTerm() {
+        std::cerr << "output sterm " << sterm << std::endl;
+        return sterm;
+    }
+
+    void clear() {
+        sterm.clear();
+        history.clear();
+        current_position =  & sterm;
+    }
+
+    void add_to_rule(Rule<Nonterminal, Terminal> * rule) {
+        std::cerr << "adding sterm to rule " << sterm << std::endl;
+        rule->add_outside_attribute(sterm);
+    }
 };
 
 template <typename Nonterminal, typename Terminal>
@@ -65,7 +184,42 @@ public:
         }
         return std::make_pair<bool, Terminal>(false, nullptr);
     }
+
+    Rule() {}
+    Rule(Nonterminal lhn) : lhn(lhn) {}
+
+    void add_nonterminal(Nonterminal nonterminal){
+        rhs.push_back(nonterminal);
+    }
+
+    void add_outside_attribute(STerm<Terminal> sterm){
+        outside_attributes.back().push_back(sterm);
+    }
+
+    void add_sterm_from_builder(STermBuilder<Nonterminal, Terminal> & builder) {
+        STerm<Terminal> sterm = builder.get_sTerm();
+        std::cerr << sterm << std::endl;
+        add_outside_attribute(sterm);
+    }
+
+    void next_outside_attribute(){
+        outside_attributes.push_back(std::vector<STerm<Terminal>> ());
+    }
 };
+
+
+template <typename Nonterminal, typename Terminal>
+std::ostream &operator<<(std::ostream &os, Rule<Nonterminal, Terminal> & rule) {
+    os << rule.lhn;
+    for (auto attributes : rule.outside_attributes) {
+        os << " ⟨ ";
+        for (auto sterm : attributes)
+            os << sterm << " , " ;
+        os << " ⟩ ";
+    }
+    return os;
+}
+
 
 template <typename Nonterminal, typename Terminal>
 class SDCP {
@@ -80,8 +234,21 @@ public:
 
     bool add_rule(Rule<Nonterminal, Terminal> rule);
 
-    bool set_initial(Nonterminal nonterminal);
+     bool set_initial(Nonterminal nonterminal);
+    void output(){
+        std::cerr << *this << std::endl;
+    }
 };
+
+template <typename Nonterminal, typename Terminal>
+std::ostream &operator<<(std::ostream &os, SDCP<Nonterminal, Terminal> & sdcp) {
+    os << "initial " << sdcp.initial << std::endl;
+    for (auto p : sdcp.lhn_to_rule) {
+        for (auto rule : p.second)
+            os << rule << std::endl;
+    }
+    return os;
+}
 
 
 
@@ -183,6 +350,8 @@ bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
         else
             epsilon_axioms.push_back(rule);
     }
+
+    std::cerr << "added rule " << rule << std::endl;
 
     return true;
 }

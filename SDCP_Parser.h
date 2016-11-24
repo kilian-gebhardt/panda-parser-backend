@@ -12,6 +12,7 @@
 #include "HybridTree.h"
 #include "SDCP.h"
 #include <type_traits>
+#include <iostream>
 
 template<size_t N>
 struct print_tuple{
@@ -465,7 +466,10 @@ public:
                         continue;
                     }
                     else {
-                        selection[j] = 0;
+                        if (selection[j] > 0) {
+                            candidates.pop_back();
+                            selection[j] = 0;
+                        }
                         j--;
                         continue;
                     }

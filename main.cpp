@@ -51,11 +51,12 @@ int main() {
     tree.output();
 
     for (auto p : tree.terminals()) {
-        std::cout << p.first << " " << p.second << std::endl;
+        std::cerr << p.first << " " << p.second << std::endl;
     }
 
 
     SDCP<std::string, std::string> sDCP;
+    sDCP.set_initial("S");
 
     // Rule 1:
     // std::cout << "rule 1" << std::endl;
@@ -186,23 +187,25 @@ int main() {
     rule9.outside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, term9)));
     assert (sDCP.add_rule(rule9));
 
-
+    std::cerr << sDCP;
 
 
 
 
 
     for (auto & rule : {rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9}){
-        std::cout << rule.lhn << " " << rule.irank(0) << " " << rule.srank(0) << std::endl;
+        std::cerr << rule.lhn << " " << rule.irank(0) << " " << rule.srank(0) << std::endl;
     }
 
-    std::cout << std::endl << std::endl;
+    std::cerr << std::endl << std::endl;
 
     SDCPParser<std::string, std::string, int> parser;
     parser.input = tree;
     parser.sDCP = sDCP;
 
     parser.do_parse();
+
+    auto builder = STermBuilder<std::string, std::string>();
 
     return 0;
 }
