@@ -10,6 +10,7 @@
 #include <map>
 #include <iostream>
 #include <term.h>
+#include <assert.h>
 
 class Variable {
 public:
@@ -211,11 +212,21 @@ public:
 template <typename Nonterminal, typename Terminal>
 std::ostream &operator<<(std::ostream &os, Rule<Nonterminal, Terminal> & rule) {
     os << rule.lhn;
+    int i = 0;
     for (auto attributes : rule.outside_attributes) {
+        if (i > 0)
+            os << " " << rule.rhs[i - 1] << " ";
         os << " ⟨ ";
-        for (auto sterm : attributes)
-            os << sterm << " , " ;
+        int j = 0;
+        for (auto sterm : attributes) {
+            if (j++)
+                os << " , ";
+            os << sterm;
+        }
         os << " ⟩ ";
+        if (i == 0)
+            os << " -> ";
+        i++;
     }
     return os;
 }
@@ -299,6 +310,7 @@ int Rule<Nonterminal, Terminal>::srank(int nont_idx) const {
 
 template <typename Nonterminal, typename Terminal>
 bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
+    assert (rule.rhs.size() == rule.outside_attributes.size() - 1);
     // Checking that iranks and sranks match
     try {
         if (irank.at(rule.lhn) != rule.irank(0) ||

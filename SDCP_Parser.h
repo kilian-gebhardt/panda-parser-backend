@@ -13,6 +13,7 @@
 #include "SDCP.h"
 #include <type_traits>
 #include <iostream>
+#include <assert.h>
 
 template<size_t N>
 struct print_tuple{
@@ -166,6 +167,7 @@ private:
                         item->spans_inh.emplace_back(p);
                     }
                     item->spans_syn.emplace_back(span_assignment);
+                    std::cerr << "Agenda : added " << *item << std::endl;
                     agenda.push(item);
                     trace[*item].push_back(std::make_pair(rule, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> ()));//std::pair<Rule<Nonterminal, Terminal>, std::vector<ParseItem<Nonterminal, Position>>>(rule, std::vector<ParseItem<Nonterminal, Position>> ()));
                 }
@@ -173,7 +175,7 @@ private:
         }
     }
 
-    bool match_sterm_rec(STerm<Terminal> sterm, Position & pos, std::vector<std::pair<Position,Position>> & inherited, std::vector<std::pair<Position,Position>> & synthesized, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & items){
+    bool match_sterm_rec(STerm<Terminal> sterm, Position pos, const bool search_goal, Position & goal, std::vector<std::pair<Position,Position>> & inherited, std::vector<std::pair<Position,Position>> & synthesized, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & items){
         bool lhn_var = false;
         Variable var(0,0);
         for (TermOrVariable<Terminal> obj : sterm) {
@@ -189,41 +191,49 @@ private:
                     return false;
                 else {
                     if (input.get_children(pos).size() > 0 && term.children.size() > 0) {
-                        Position child = input.get_children(pos)[0];
-                        if (!match_sterm_rec(term.children, child, inherited, synthesized, items))
+                        Position first_child = input.get_children(pos).front();
+                        Position last_child = input.get_children(pos).back();
+                        if (!match_sterm_rec(term.children, first_child, false, last_child, inherited, synthesized, items))
                             return false;
-                        if (child != input.get_children(pos).back())
-                            return false;
+//                        if (child != input.get_children(pos).back())
+//                            return false;
                     } else if (input.get_children(pos).size())
                         return false;
                 }
 
             } catch (boost::bad_get&) {
-                var = boost::get<Variable>(obj);
-                if (var.member > 0) {
+                Variable & var_ = boost::get<Variable>(obj);
+                if (var_.member > 0) {
                     if (lhn_var) {
                         // TODO greedy matching is incomplete / requires normal form
+                        pos = items[var_.member - 1]->spans_syn[var_.argument-1].first;
                         inherited[var.argument - 1].second = pos;
+                        std::cerr << " match var " << var << " <" << inherited[var.argument-1].first << "-" << pos << ">" << std::endl;
                         lhn_var = false;
                     }
-                    if (pos != items[var.member - 1]->spans_syn[var.argument-1].first)
+                    else if (pos != items[var_.member - 1]->spans_syn[var_.argument-1].first)
                         return false;
-                    pos = items[var.member - 1]->spans_syn[var.argument-1].second;
+                    pos = items[var_.member - 1]->spans_syn[var_.argument-1].second;
                 }
                 else {
                     assert (!lhn_var);
                     lhn_var = true;
+                    var = var_;
                     inherited[var.argument - 1] = std::make_pair(pos, pos);
                 }
             }
         }
         if (lhn_var) {
             // TODO greedy matching is incomplete / requires normal form
-            while (! input.is_final(pos))
+            while (!(input.is_final(pos) || (!search_goal && pos == goal)))
                 pos = input.get_next(pos);
             inherited[var.argument - 1].second = pos;
         }
-        return true;
+        if (search_goal)
+            goal = pos;
+        if (pos != goal)
+            std::cerr << "pos/goal mismatch where pos=" << pos << " and goal=" << goal << std::endl;
+        return pos == goal;
     }
 
     bool find_start(STerm<Terminal> & sterm, Position & pos, int level, std::vector<std::pair<Position,Position>> & inherited, std::vector<std::pair<Position,Position>> & synthesized, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & items) {
@@ -265,7 +275,10 @@ private:
 
         std::cerr << "match: ";
         for (auto item : items) std::cerr << *item;
-        std::cerr << std::endl;
+        std::cerr << "with rule " << rule << std::endl;
+
+        if (rule.rhs.size() != items.size())
+            std::cerr << "size mismatch" << std::endl;
 
         std::vector<std::pair<Position,Position>> inherited, synthesized;
         inherited.resize(rule.irank(0));
@@ -274,17 +287,24 @@ private:
         for (auto attributes : rule.outside_attributes){
             // first, check compatibility of rhs inherited attributes
             // and determine lhs inherited attributes
+            arg = 1;
             if (mem > 0) {
                 for (STerm<Terminal> sterm : attributes) {
                     // obtain predicted span start
-                    Position pos = items[mem-1]->spans_inh[arg-1].first;
+                    Position & pos = items[mem-1]->spans_inh[arg-1].first;
+                    Position & goal = items[mem-1]->spans_inh[arg-1].second;
 
-                    if (!match_sterm_rec(sterm, pos, inherited, synthesized, items))
+                    if (!match_sterm_rec(sterm, pos, false, goal, inherited, synthesized, items)) {
+                        std::cerr << "match error for mem " << mem << " and arg " << arg << std::endl;
                         return;
+                    }
 
                     // check whether predicted span end
-                    if (pos != items[mem-1]->spans_inh[arg-1].second)
-                        return;
+//                    if (pos != items[mem-1]->spans_inh[arg-1].second) {
+//                        std::cerr << "pos mismatch for mem " << mem << " and arg " << arg << " where pos=" << pos << " vs. " << items[mem - 1]->spans_inh[arg - 1].second
+//                                  << std::endl;
+//                        return;
+//                    }
                     arg++;
                 }
             }
@@ -296,10 +316,10 @@ private:
             Position start;
             if (!find_start(sterm, start, 0, inherited, synthesized, items))
                 return;
-            Position pos = start;
-            if (!match_sterm_rec(sterm, pos, inherited, synthesized, items))
+            Position goal = start;
+            if (!match_sterm_rec(sterm, start, true, goal, inherited, synthesized, items))
                 return;
-            synthesized.push_back(std::make_pair(start, pos));
+            synthesized.push_back(std::make_pair(start, goal));
             arg++;
         }
 
@@ -418,6 +438,14 @@ public:
     ParseItem<Nonterminal, Position> * goal = nullptr;
     HybridTree<Terminal, Position> input;
 
+    void set_input(HybridTree<Terminal, Position>& tree) {
+        input = tree;
+    }
+
+    void set_sDCP(SDCP<Nonterminal, Terminal> & sDCP) {
+        this->sDCP = sDCP;
+    }
+
     void do_parse() {
         match_lexical_rules();
 
@@ -460,7 +488,10 @@ public:
                         continue;
                     }
                     else if (selection[j] < chart[rule.rhs[j]].size()) {
-                        candidates.push_back(chart[rule.rhs[j]][selection[j]]);
+                        if (selection[j] == 0)
+                            candidates.push_back(chart[rule.rhs[j]][selection[j]]);
+                        else
+                            candidates[j] = chart[rule.rhs[j]][selection[j]];
                         selection[j]++;
                         j++;
                         continue;
@@ -474,7 +505,7 @@ public:
                         continue;
                     }
                 }
-
+                candidates.clear();
             }
 
             candidates.clear();

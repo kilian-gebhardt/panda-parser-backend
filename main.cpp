@@ -200,8 +200,8 @@ int main() {
     std::cerr << std::endl << std::endl;
 
     SDCPParser<std::string, std::string, int> parser;
-    parser.input = tree;
-    parser.sDCP = sDCP;
+    parser.set_input(tree);
+    parser.set_sDCP(sDCP);
 
     parser.do_parse();
 

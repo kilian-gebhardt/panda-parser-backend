@@ -128,12 +128,16 @@ void HybridTree<Terminal, Position>::output_recur(Position position, int indent)
     while (position != - 1) {
         for (int i = 0; i < indent; ++i)
             std::cerr << "  ";
-        std::cerr << get_label(position) << std::endl;
+        std::cerr << get_previous(position) << " " << get_label(position) << " " << position << std::endl;
         if (get_children(position).size() > 0) {
             output_recur(get_children(position)[0], indent + 1);
         }
         position = get_next(position);
     }
+}
+
+void output_helper(std::string s){
+    std::cerr << s << std::endl;
 }
 
 #endif //STERMPARSER_HYBRIDTREE_H
