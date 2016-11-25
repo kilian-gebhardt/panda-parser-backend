@@ -14,6 +14,7 @@
 #include <type_traits>
 #include <iostream>
 #include <assert.h>
+#include <set>
 
 template<size_t N>
 struct print_tuple{
@@ -167,6 +168,31 @@ private:
                         item->spans_inh.emplace_back(p);
                     }
                     item->spans_syn.emplace_back(span_assignment);
+                    if (no_parallel) {
+                        int i = 0;
+                        for (auto s1 : item->spans_syn) {
+                            int j = 0;
+                            for (auto s2 : item->spans_syn) {
+                                if (i != j++ && s1 == s2) {
+                                    std::cerr << "skipped (no parallel) " << *item << std::endl;
+                                    return;
+                                }
+                            }
+                            i++;
+                        }
+                        i = 0;
+                        for (auto s1 : item->spans_inh) {
+                            int j = 0;
+                            for (auto s2 : item->spans_inh) {
+                                if (i != j++ && s1 == s2) {
+                                    std::cerr << "skipped (no parallel) " << *item << std::endl;
+                                    return;
+                                }
+                            }
+                            i++;
+                        }
+                    }
+
                     std::cerr << "Agenda : added " << *item << std::endl;
                     agenda.push(item);
                     trace[*item].push_back(std::make_pair(rule, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> ()));//std::pair<Rule<Nonterminal, Terminal>, std::vector<ParseItem<Nonterminal, Position>>>(rule, std::vector<ParseItem<Nonterminal, Position>> ()));
@@ -327,6 +353,44 @@ private:
         new_item->nonterminal = rule.lhn;
         new_item->spans_inh = inherited;
         new_item->spans_syn = synthesized;
+
+        if (no_parallel) {
+            int i = 0;
+            for (auto s1 : new_item->spans_syn) {
+                int j = 0;
+                for (auto s2 : new_item->spans_syn) {
+                    if (i != j++ && s1 == s2) {
+                        std::cerr << "skipped (no parallel) " << *new_item << std::endl;
+                        return;
+                    }
+                }
+                i++;
+            }
+            i = 0;
+            for (auto s1 : new_item->spans_inh) {
+                int j = 0;
+                for (auto s2 : new_item->spans_inh) {
+                    if (i != j++ && s1 == s2) {
+                        std::cerr << "skipped (no parallel) " << *new_item << std::endl;
+                        return;
+                    }
+                }
+                i++;
+            }
+        }
+
+        if (inh_strict_successor) {
+            for (auto s1 : new_item->spans_inh) {
+                for (auto s2 : new_item->spans_syn) {
+                    if (s1 == s2) {
+                        std::cerr << "skipped (inherent strict successor) " << *new_item << std::endl;
+                        return;
+                    }
+                }
+            }
+        }
+
+
 //        std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> predecessors;
 //        for (auto item : items)
 //            predecessors.push_back(item);
@@ -368,23 +432,7 @@ private:
 //    };
 //
 
-    void print_chart(){
-        for (auto pairs : chart) {
-            std::cerr << pairs.first << " : " << std::endl;
-            for (auto item : pairs.second) {
-                std::cerr << "  " << *item << " [ ";
-                for (auto trace_entry : trace[*item]) {
-                    std::cerr << " [ ";
-                    for (auto item_ : trace_entry.second)
-                        std::cerr << *item_;
-                    std::cerr << " ] ";
-                }
-                std::cerr << "]" << std::endl;
 
-            }
-            std::cerr << std::endl;
-        }
-    };
     bool addToChart(std::shared_ptr<ParseItem<Nonterminal, Position>> item) {
         if (!chart.count(item->nonterminal))
             chart[item->nonterminal];
@@ -437,6 +485,11 @@ public:
     SDCP<Nonterminal, Terminal> sDCP;
     ParseItem<Nonterminal, Position> * goal = nullptr;
     HybridTree<Terminal, Position> input;
+    const bool no_parallel;
+    const bool inh_strict_successor;
+
+    SDCPParser(bool no_parallel=true, bool inh_strict_successor=true) : no_parallel(no_parallel), inh_strict_successor(inh_strict_successor){};
+
 
     void set_input(HybridTree<Terminal, Position>& tree) {
         input = tree;
@@ -529,7 +582,71 @@ public:
         }
     }
 
+    void add_recursively(std::set<ParseItem<Nonterminal, Position>> & reachable, ParseItem<Nonterminal, Position>& start) {
+        for (auto list : trace[start]) {
+            for (std::shared_ptr<ParseItem<Nonterminal, Position>> item : list.second) {
+                if (! reachable.count(*item)) {
+                    reachable.insert(*item);
+                    add_recursively(reachable, *item);
+                }
+            }
+        }
+    }
 
+    void reachability_simplification() {
+        std::set<ParseItem<Nonterminal, Position>> reachable;
+        if (this->goal) {
+            std::map<ParseItem<Nonterminal, Position>, std::vector<std::pair<Rule<Nonterminal, Terminal>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>> >>>> trace_;
+
+            reachable.insert(*(this->goal));
+            add_recursively(reachable, *(this->goal));
+            for (auto p : trace) {
+                if (reachable.count(p.first)) {
+                    trace_.insert(p);
+                }
+            }
+            trace = trace_;
+        }
+    }
+
+    void set_goal() {
+        goal = new ParseItem<Nonterminal, Position>();
+        goal->nonterminal = sDCP.initial;
+        goal->spans_syn.emplace_back(std::make_pair(input.get_entry(), input.get_exit()));
+    }
+
+
+    void print_chart(){
+        for (auto pairs : chart) {
+            std::cerr << pairs.first << " : " << std::endl;
+            for (auto item : pairs.second) {
+                std::cerr << "  " << *item << " [ ";
+                for (auto trace_entry : trace[*item]) {
+                    std::cerr << " [ ";
+                    for (auto item_ : trace_entry.second)
+                        std::cerr << *item_;
+                    std::cerr << " ] ";
+                }
+                std::cerr << "]" << std::endl;
+
+            }
+            std::cerr << std::endl;
+        }
+    };
+
+    void print_trace(){
+            for (auto item : trace) {
+                std::cerr << "  " << item.first << " [ ";
+                for (auto trace_entry : item.second) {
+                    std::cerr << " [ ";
+                    for (auto item_ : trace_entry.second)
+                        std::cerr << *item_;
+                    std::cerr << " ] ";
+                }
+                std::cerr << "]" << std::endl;
+
+            }
+    };
 
 
 

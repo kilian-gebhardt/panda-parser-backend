@@ -204,6 +204,12 @@ int main() {
     parser.set_sDCP(sDCP);
 
     parser.do_parse();
+    parser.goal = new ParseItem<std::string, int>();
+    parser.goal->nonterminal = "S";
+    parser.goal->spans_syn.emplace_back(std::make_pair(tree.get_entry(), tree.get_exit()));
+    parser.reachability_simplification();
+    std::cerr << "############ reachability simplification #####" << std::endl;
+    parser.print_trace();
 
     auto builder = STermBuilder<std::string, std::string>();
 
