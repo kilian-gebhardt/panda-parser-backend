@@ -49,7 +49,8 @@ public:
     // Position in linear order
     int order;
     STerm<Terminal> children;
-    Term(Terminal head) : head(head) {};
+    Term(Terminal head) : head(head) , order(-1) {};
+    Term(Terminal head, int order) : head(head), order(order) {};
     Term() {};
 
     void add_variable(Variable v) {
@@ -59,8 +60,30 @@ public:
     void add_term(Term<Terminal> t) {
         children.push_back(t);
     }
+
+    bool is_ordered() const {
+        return order > -1;
+    }
 };
 
+template <typename Terminal>
+std::ostream &operator<<(std::ostream &os, std::vector<boost::variant<Terminal, Variable>> & word_function) {
+    os << " [ ";
+    int i = 0;
+    for (auto obj : word_function) {
+        if (i++)
+            os << " , ";
+        try {
+            auto term = boost::get<Terminal>(obj);
+            os << term;
+        } catch (boost::bad_get &) {
+            auto var = boost::get<Variable> (obj);
+            os << var;
+        }
+    }
+    os << " ] ";
+    return os;
+}
 
 template <typename Terminal>
 std::ostream &operator<<(std::ostream &os, STerm<Terminal> &sterm) {
@@ -168,9 +191,12 @@ public:
     Nonterminal lhn;
     std::vector<Nonterminal> rhs;
     std::vector<std::vector<STerm<Terminal>>> outside_attributes;
+    std::vector<std::vector<boost::variant<Terminal, Variable>>> word_function;
+
     int id;
     int irank(int nont_idx) const;
     int srank(int nont_idx) const;
+    int fanout(int nont_idx) const;
 
     std::pair<bool, Terminal> first_terminal() {
         for (auto attributes: outside_attributes) {
@@ -208,6 +234,16 @@ public:
         outside_attributes.push_back(std::vector<STerm<Terminal>> ());
     }
 
+    void next_word_function_argument(){
+        word_function.push_back(std::vector<boost::variant<Terminal, Variable>>());
+    }
+    void add_var_to_word_function(int mem, int arg){
+        word_function.back().emplace_back(Variable(mem, arg));
+    }
+    void add_terminal_to_word_function(Terminal terminal){
+        word_function.back().emplace_back(terminal);
+    }
+
     void set_id(int id) {
         this->id = id;
     }
@@ -219,7 +255,7 @@ public:
 
 
 template <typename Nonterminal, typename Terminal>
-std::ostream &operator<<(std::ostream &os, Rule<Nonterminal, Terminal> & rule) {
+std::ostream &operator<<(std::ostream &os, const Rule<Nonterminal, Terminal> & rule) {
     os << rule.lhn;
     int i = 0;
     for (auto attributes : rule.outside_attributes) {
@@ -237,6 +273,16 @@ std::ostream &operator<<(std::ostream &os, Rule<Nonterminal, Terminal> & rule) {
             os << " -> ";
         i++;
     }
+    if (rule.word_function.size() > 0) {
+        os << " | ⟨ ";
+        i = 0;
+        for (auto arg : rule.word_function){
+            if (i++)
+                os << " , ";
+            os << arg;
+        }
+        os << " ⟩ ";
+    }
     return os;
 }
 
@@ -250,11 +296,11 @@ public:
     std::map<Nonterminal, std::vector<std::pair<Rule<Nonterminal, Terminal>, int>>> nont_corner;
     std::map<Terminal, std::vector<Rule<Nonterminal, Terminal>>> axioms;
     std::vector<Rule<Nonterminal, Terminal>> epsilon_axioms;
-    std::map<Nonterminal, int> irank, srank;
+    std::map<Nonterminal, int> irank, srank, fanout;
 
     bool add_rule(Rule<Nonterminal, Terminal> rule);
 
-     bool set_initial(Nonterminal nonterminal);
+    bool set_initial(Nonterminal nonterminal);
     void output(){
         std::cerr << *this << std::endl;
     }
@@ -318,12 +364,31 @@ int Rule<Nonterminal, Terminal>::srank(int nont_idx) const {
 }
 
 template <typename Nonterminal, typename Terminal>
+int Rule<Nonterminal, Terminal>::fanout(int nont_idx) const {
+    if (nont_idx == 0)
+        return word_function.size();
+    int counter = 0;
+    for (auto arg : word_function) {
+        for (auto obj : arg) {
+            try {
+                Variable v = boost::get<Variable>(obj);
+                if (v.member == nont_idx)
+                    counter++;
+            }
+            catch (boost::bad_get &) {}
+        }
+    }
+    return counter;
+};
+
+template <typename Nonterminal, typename Terminal>
 bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
     assert (rule.rhs.size() == rule.outside_attributes.size() - 1);
     // Checking that iranks and sranks match
     try {
         if (irank.at(rule.lhn) != rule.irank(0) ||
-            srank.at(rule.lhn) != rule.srank(0) ) {
+            srank.at(rule.lhn) != rule.srank(0) ||
+            fanout.at(rule.lhn) != rule.fanout(0)) {
 //            std::cerr << rule.lhn << " " << irank.at(rule.lhn) << " " << rule.irank(0) << std::endl;
 //            std::cerr << rule.lhn << " " << srank.at(rule.lhn) << " " << rule.srank(0) << std::endl;
             return false;
@@ -333,6 +398,7 @@ bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
     catch  (const std::out_of_range&){
         irank[rule.lhn] = rule.irank(0);
         srank[rule.lhn] = rule.srank(0);
+        fanout[rule.lhn] = rule.fanout(0);
 //        std::cerr << rule.lhn << " " << irank.at(rule.lhn) << " " << rule.irank(0) << std::endl;
 //        std::cerr << rule.lhn << " " << srank.at(rule.lhn) << " " << rule.srank(0) << std::endl;
         lhn_to_rule[rule.lhn] = std::vector<Rule<Nonterminal, Terminal>> ();
@@ -341,7 +407,8 @@ bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
     for (Nonterminal nonterminal : rule.rhs) {
         try {
             if (irank.at(nonterminal) != rule.irank(i) ||
-                srank.at(nonterminal) != rule.srank(i))
+                srank.at(nonterminal) != rule.srank(i) ||
+                fanout.at(nonterminal) != rule.fanout(i))
                 return false;
 
         }
@@ -349,6 +416,7 @@ bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
         catch  (const std::out_of_range&){
             irank[nonterminal] = rule.irank(i);
             srank[nonterminal] = rule.srank(i);
+            fanout[nonterminal] = rule.fanout(i);
 //            std::cerr << nonterminal << " " << irank.at(nonterminal) << " " << rule.irank(i) << std::endl;
 //            std::cerr << nonterminal << " " << srank.at(nonterminal) << " " << rule.srank(i) << std::endl;
             lhn_to_rule[nonterminal] = std::vector<Rule<Nonterminal, Terminal>> ();
@@ -382,7 +450,7 @@ bool SDCP<Nonterminal, Terminal>::set_initial(Nonterminal nonterminal) {
     // Checking that iranks and sranks match
     try {
         if (irank.at(nonterminal) != 0 ||
-            srank.at(nonterminal) != 1 )
+            srank.at(nonterminal) != 1)
             return false;
     }
         // new nonterminal

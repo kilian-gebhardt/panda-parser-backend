@@ -16,6 +16,7 @@ private:
     std::map<Position, Terminal> label;
     std::map<Position, Position> previous, next, parent;
     std::map<Position, std::vector<Position>> children;
+    std::vector<Position> linearization;
     Position entry, exit;
     void terminals_recur(std::vector<std::pair<Position, Terminal>> & terminals, const std::vector<Position> & positions){
         for (auto position : positions){
@@ -78,6 +79,14 @@ public:
         return terminals;
     };
 
+    void set_linearization(std::vector<Position> linearization) {
+        this->linearization = linearization;
+    }
+
+    const std::vector<Position> & get_linearization() {
+        return linearization;
+    }
+
 };
 
 template <typename Terminal, typename Position>
@@ -119,6 +128,15 @@ void HybridTree<Terminal, Position>::set_exit(Position position) {
 template <typename Terminal, typename Position>
 void HybridTree<Terminal, Position>::output() {
     output_recur(this->entry, 0);
+    if (linearization.size()) {
+        int i = 0;
+        for (auto pos: linearization) {
+            if (i++)
+                std::cerr << " ";
+            std::cerr << label[pos];
+        }
+        std::cerr << std::endl;
+    }
 }
 
 template <typename Terminal, typename Position>

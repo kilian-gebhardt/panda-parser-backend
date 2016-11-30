@@ -44,12 +44,16 @@ class ParseItem {
 public:
     Nonterminal nonterminal;
     std::vector<std::pair<Position, Position>> spans_inh, spans_syn;
+    std::vector<std::pair<int, int>> spans_lcfrs;
 };
 
 template <typename Nonterminal, typename Position>
 bool operator==(const ParseItem<Nonterminal, Position>& lhs, const ParseItem<Nonterminal, Position>& rhs)
 {
-    return lhs.nonterminal == rhs.nonterminal && lhs.spans_inh == rhs.spans_inh && lhs.spans_syn == rhs.spans_syn;
+    return lhs.nonterminal == rhs.nonterminal
+           && lhs.spans_inh == rhs.spans_inh
+           && lhs.spans_syn == rhs.spans_syn
+           && lhs.spans_lcfrs == rhs.spans_lcfrs;
 }
 
 template <typename Nonterminal, typename Position>
@@ -75,9 +79,16 @@ bool operator<(const ParseItem<Nonterminal, Position>& lhs, const ParseItem<Nont
             return false;
         i++;
     }
+    i = 0;
+    while (i < lhs.spans_lcfrs.size()) {
+        if (lhs.spans_lcfrs[i] < rhs.spans_lcfrs[i])
+            return true;
+        if (lhs.spans_lcfrs[i] > rhs.spans_lcfrs[i])
+            return false;
+        i++;
+    }
     return false;
 }
-
 
 
 
@@ -89,8 +100,27 @@ std::ostream &operator<<(std::ostream &os, ParseItem<Nonterminal, Position> cons
     os << " ; ";
     for(auto range : item.spans_syn)
         os << " <" << range.first << "-" << range.second << ">";
+    if (item.spans_lcfrs.size()) {
+        os << " | ";
+        for(auto range : item.spans_lcfrs)
+            os << " <" << range.first << "-" << range.second << ">";
+    }
     os << " ) ";
     return os;
+}
+
+
+template <typename T>
+bool pairwise_different(const std::vector<T> & vec){
+    auto i = 0;
+    for (auto s1 : vec) {
+        for(auto j = ++i; j < vec.size(); ++j) {
+            if (s1 == vec[j]) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 template <typename Nonterminal, typename Terminal, typename Position>
@@ -100,7 +130,8 @@ private:
               Position position
             , const STerm<Terminal> & sterm
             , std::map<Variable, std::pair<Position, Position>> & var_assignment
-            , std::pair<Position, Position> & span_assignment) {
+            , std::pair<Position, Position> & span_assignment
+            , std::vector<Position> & lcfrs_terminals) {
         span_assignment = std::pair<Position, Position> (position, position);
         bool var_flag = false;
         Variable * var = nullptr;
@@ -125,12 +156,16 @@ private:
                     return false;
                 if (term.children.size() > 0) {
                     std::pair<Position, Position> dummy;
-                    if (! match_and_retrieve_vars(input.get_children(position).front()
-                            , term.children
-                            , var_assignment
-                            , dummy))
+                    if (!match_and_retrieve_vars(input.get_children(position).front(), term.children, var_assignment,
+                                                 dummy, lcfrs_terminals))
                         return false;
                 }
+                if (term.is_ordered()) {
+                    if (lcfrs_terminals.size() < term.order + 1)
+                        lcfrs_terminals.resize(term.order + 1);
+                    lcfrs_terminals[term.order] = position;
+                }
+
             } catch (boost::bad_get&) {
                 assert (!var_flag);
                 Variable & var_ = boost::get<Variable>(obj);
@@ -148,7 +183,65 @@ private:
         span_assignment.second = position;
         return true;
     }
+
+    bool match_lcfrs(const Rule<Nonterminal, Terminal> & rule, const std::vector<Position> & lcfrs_terminals, const std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & items, std::vector<std::pair<int, int>> & lcfrs_spans) {
+        unsigned i = 0;
+        int span_start;
+        int pos;
+        for (auto argument : rule.word_function) {
+            span_start = -1;
+            bool begin = true;
+            for (auto obj : argument) {
+                try {
+                    const Variable & var = boost::get<Variable>(obj);
+
+                    assert (0 < var.member && var.member <= items.size());
+                    assert (var.argument <= items[var.member - 1]->spans_lcfrs.size());
+
+                    const std::pair<int,int> & var_pos = items[var.member - 1]->spans_lcfrs[var.argument - 1];
+
+                    if (begin) {
+                        span_start = var_pos.first;
+                        pos = var_pos.second;
+                        begin = false;
+                    } else if (pos == var_pos.first) {
+                        pos = var_pos.second;
+                    }
+                    else
+                        return false;
+                } catch (boost::bad_get&) {
+                    const Terminal & term = boost::get<Terminal>(obj);
+
+                    assert (i < lcfrs_terminals.size());
+
+                    const Position & sterm_pos = lcfrs_terminals[i++];
+
+                    unsigned pos2 = 0;
+                    for ( ; pos2 < input.get_linearization().size(); pos2++) {
+                        if (input.get_linearization()[pos2] == sterm_pos) {
+                            if (begin) {
+                                span_start = pos2;
+                                pos = pos2 + 1;
+                                begin = false;
+                            } else if (pos == pos2) {
+                                pos = pos2 + 1;
+                            } else
+                                return false;
+                            break;
+                        }
+                    }
+                    if (pos2 == input.get_linearization().size())
+                        return false;
+                }
+            }
+            assert (span_start != - 1);
+            lcfrs_spans.push_back(std::make_pair(span_start, pos));
+        }
+        return true;
+    }
+
     void match_lexical_rules(){
+        const std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> no_rhs_items;
         for (auto pair : input.terminals()){
             Position & position = pair.first;
             Terminal & terminal = pair.second;
@@ -160,7 +253,13 @@ private:
                 assert (term.head == terminal);
                 std::map<Variable, std::pair<Position, Position>> var_assignment;
                 std::pair<Position, Position> span_assignment;
-                if (match_and_retrieve_vars(input.get_previous(position), rule.outside_attributes[0][0], var_assignment, span_assignment)){
+                std::vector<Position> lcfrs_terminals;
+                if (match_and_retrieve_vars(input.get_previous(position), rule.outside_attributes[0][0], var_assignment, span_assignment, lcfrs_terminals)){
+                    std::vector<std::pair<int, int>> lcfrs_spans;
+
+                    if (parse_lcfrs && !match_lcfrs(rule, lcfrs_terminals, no_rhs_items, lcfrs_spans))
+                        continue;
+
                     std::shared_ptr<ParseItem<Nonterminal, Position>> item = std::make_shared<ParseItem<Nonterminal, Position>>();
                     item->nonterminal = rule.lhn;
                     for (int j = 1; j <= rule.irank(0); ++j) {
@@ -168,30 +267,15 @@ private:
                         item->spans_inh.emplace_back(p);
                     }
                     item->spans_syn.emplace_back(span_assignment);
+                    item->spans_lcfrs = lcfrs_spans;
+
                     if (no_parallel) {
-                        int i = 0;
-                        for (auto s1 : item->spans_syn) {
-                            int j = 0;
-                            for (auto s2 : item->spans_syn) {
-                                if (i != j++ && s1 == s2) {
-                                    if (debug)
-                                        std::cerr << "skipped (no parallel) " << *item << std::endl;
-                                    return;
-                                }
-                            }
-                            i++;
-                        }
-                        i = 0;
-                        for (auto s1 : item->spans_inh) {
-                            int j = 0;
-                            for (auto s2 : item->spans_inh) {
-                                if (i != j++ && s1 == s2) {
-                                    if (debug)
-                                        std::cerr << "skipped (no parallel) " << *item << std::endl;
-                                    return;
-                                }
-                            }
-                            i++;
+                        if (   !pairwise_different(item->spans_syn)
+                            || !pairwise_different(item->spans_inh)
+                            || !pairwise_different(item->spans_lcfrs)) {
+                            if (debug)
+                                std::cerr << "skipped (no parallel) " << *item << std::endl;
+                            continue;
                         }
                     }
                     if (debug)
@@ -203,7 +287,14 @@ private:
         }
     }
 
-    bool match_sterm_rec(STerm<Terminal> sterm, Position pos, const bool search_goal, Position & goal, std::vector<std::pair<Position,Position>> & inherited, std::vector<std::pair<Position,Position>> & synthesized, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & items){
+    bool match_sterm_rec(STerm<Terminal> sterm, Position pos
+            , const bool search_goal
+            , Position & goal
+            , std::vector<std::pair<Position,Position>> & inherited
+            , std::vector<std::pair<Position,Position>> & synthesized
+            , const std::vector<std::shared_ptr<ParseItem<Nonterminal
+            , Position>>> & items
+            , std::vector<Position> & lcfrs_terminals){
         bool lhn_var = false;
         Variable var(0,0);
         for (TermOrVariable<Terminal> obj : sterm) {
@@ -221,12 +312,17 @@ private:
                     if (input.get_children(pos).size() > 0 && term.children.size() > 0) {
                         Position first_child = input.get_children(pos).front();
                         Position last_child = input.get_children(pos).back();
-                        if (!match_sterm_rec(term.children, first_child, false, last_child, inherited, synthesized, items))
+                        if (!match_sterm_rec(term.children, first_child, false, last_child, inherited, synthesized, items, lcfrs_terminals))
                             return false;
 //                        if (child != input.get_children(pos).back())
 //                            return false;
                     } else if (input.get_children(pos).size())
                         return false;
+                }
+                if (term.is_ordered()) {
+                    if (lcfrs_terminals.size() < term.order + 1)
+                        lcfrs_terminals.resize(term.order + 1);
+                    lcfrs_terminals[term.order] = pos;
                 }
 
             } catch (boost::bad_get&) {
@@ -266,7 +362,7 @@ private:
         return pos == goal;
     }
 
-    bool find_start(STerm<Terminal> & sterm, Position & pos, int level, std::vector<std::pair<Position,Position>> & inherited, std::vector<std::pair<Position,Position>> & synthesized, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & items) {
+    bool find_start(const STerm<Terminal> & sterm, Position & pos, int level, std::vector<std::pair<Position,Position>> & inherited, std::vector<std::pair<Position,Position>> & synthesized, const std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & items) {
         int steps = 0;
         for (TermOrVariable<Terminal> obj : sterm) {
 
@@ -301,7 +397,7 @@ private:
         return false;
     }
 
-    void match_rule(Rule<Nonterminal, Terminal> & rule, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & transport, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> items) {
+    void match_rule(const Rule<Nonterminal, Terminal> & rule, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & transport, const std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> items) {
 
         if (debug) {
             std::cerr << "match: ";
@@ -318,6 +414,7 @@ private:
 
         std::vector<std::pair<Position,Position>> inherited, synthesized;
         inherited.resize(rule.irank(0));
+        std::vector<Position> lcfrs_terminals;
         int mem = 0;
         int arg = 1;
         for (auto attributes : rule.outside_attributes){
@@ -330,7 +427,7 @@ private:
                     Position & pos = items[mem-1]->spans_inh[arg-1].first;
                     Position & goal = items[mem-1]->spans_inh[arg-1].second;
 
-                    if (!match_sterm_rec(sterm, pos, false, goal, inherited, synthesized, items)) {
+                    if (!match_sterm_rec(sterm, pos, false, goal, inherited, synthesized, items, lcfrs_terminals)) {
                         if (debug)
                             std::cerr << "match error for mem " << mem << " and arg " << arg << std::endl;
                         return;
@@ -354,41 +451,30 @@ private:
             if (!find_start(sterm, start, 0, inherited, synthesized, items))
                 return;
             Position goal = start;
-            if (!match_sterm_rec(sterm, start, true, goal, inherited, synthesized, items))
+            if (!match_sterm_rec(sterm, start, true, goal, inherited, synthesized, items, lcfrs_terminals))
                 return;
             synthesized.push_back(std::make_pair(start, goal));
             arg++;
         }
 
+        // finally, check lcfrs component
+        std::vector<std::pair<int, int>> spans_lcfrs;
+        if (parse_lcfrs && !match_lcfrs(rule, lcfrs_terminals, items, spans_lcfrs))
+            return;
+
         auto new_item = std::make_shared<ParseItem<Nonterminal, Position>>();
         new_item->nonterminal = rule.lhn;
         new_item->spans_inh = inherited;
         new_item->spans_syn = synthesized;
+        new_item->spans_lcfrs = spans_lcfrs;
 
         if (no_parallel) {
-            int i = 0;
-            for (auto s1 : new_item->spans_syn) {
-                int j = 0;
-                for (auto s2 : new_item->spans_syn) {
-                    if (i != j++ && s1 == s2) {
-                        if (debug)
-                            std::cerr << "skipped (no parallel) " << *new_item << std::endl;
-                        return;
-                    }
-                }
-                i++;
-            }
-            i = 0;
-            for (auto s1 : new_item->spans_inh) {
-                int j = 0;
-                for (auto s2 : new_item->spans_inh) {
-                    if (i != j++ && s1 == s2) {
-                        if (debug)
-                            std::cerr << "skipped (no parallel) " << *new_item << std::endl;
-                        return;
-                    }
-                }
-                i++;
+            if (   !pairwise_different(new_item->spans_syn)
+                   || !pairwise_different(new_item->spans_inh)
+                   || !pairwise_different(new_item->spans_lcfrs)) {
+                if (debug)
+                    std::cerr << "skipped (no parallel) " << *new_item << std::endl;
+                return;
             }
         }
 
@@ -494,7 +580,6 @@ private:
 public:
     std::queue<std::shared_ptr<ParseItem<Nonterminal, Position>>> agenda;
     std::map<ParseItem<Nonterminal, Position>, std::vector<std::pair<Rule<Nonterminal, Terminal>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>> >>>> trace;
-//    std::map<std::tuple<Nonterminal, bool, int, bool, Position>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>>> chart;
     std::map<Nonterminal, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>>> chart;
 
     SDCP<Nonterminal, Terminal> sDCP;
@@ -503,8 +588,9 @@ public:
     const bool no_parallel;
     const bool inh_strict_successor;
     const bool debug;
+    const bool parse_lcfrs;
 
-    SDCPParser(bool debug=false, bool no_parallel=true, bool inh_strict_successor=true) : no_parallel(no_parallel), inh_strict_successor(inh_strict_successor), debug(debug) {};
+    SDCPParser(bool parse_lcfrs=false, bool debug=false, bool no_parallel=true, bool inh_strict_successor=true) : no_parallel(no_parallel), inh_strict_successor(inh_strict_successor), debug(debug), parse_lcfrs(parse_lcfrs) {};
 
 
     void set_input(HybridTree<Terminal, Position>& tree) {
@@ -634,6 +720,10 @@ public:
         goal = new ParseItem<Nonterminal, Position>();
         goal->nonterminal = sDCP.initial;
         goal->spans_syn.emplace_back(std::make_pair(input.get_entry(), input.get_exit()));
+        if (parse_lcfrs)
+            goal->spans_lcfrs.push_back(std::make_pair(0, input.get_linearization().size()));
+        else
+            goal->spans_lcfrs.push_back(std::make_pair(0, 0));
     }
 
 
