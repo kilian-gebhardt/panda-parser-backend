@@ -59,7 +59,7 @@ std::shared_ptr<HybridTree<std::string, int>> build_hybrid_tree(bool lcfrs) {
 
 
 int main() {
-    bool lcfrs = true;
+    bool lcfrs = false;
     // std::cout << "Hello, World!" << std::endl;
 
     HybridTree<std::string, int> tree = *build_hybrid_tree(lcfrs);
@@ -271,7 +271,7 @@ int main() {
 
     std::cerr << std::endl << std::endl;
 
-    auto parser = SDCPParser<std::string, std::string, int>(true, true);
+    auto parser = SDCPParser<std::string, std::string, int>(lcfrs, true);
     parser.set_sDCP(sDCP);
     parser.set_input(tree);
     parser.set_goal();

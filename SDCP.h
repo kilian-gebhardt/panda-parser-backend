@@ -47,7 +47,7 @@ class Term{
 public:
     Terminal head;
     // Position in linear order
-    int order;
+    int order = -1;
     STerm<Terminal> children;
     Term(Terminal head) : head(head) , order(-1) {};
     Term(Terminal head, int order) : head(head), order(order) {};
@@ -139,6 +139,12 @@ public:
     }
     void add_terminal(Terminal terminal) {
         current_position->emplace_back(Term<Terminal>(terminal));
+//        std::cerr << "added term " << terminal << " " << current_position->back() << std::endl;
+//        std::cerr << "output sterm " << sterm << std::endl;
+    }
+
+    void add_terminal(Terminal terminal, int position) {
+        current_position->emplace_back(Term<Terminal>(terminal, position));
 //        std::cerr << "added term " << terminal << " " << current_position->back() << std::endl;
 //        std::cerr << "output sterm " << sterm << std::endl;
     }
@@ -391,6 +397,7 @@ bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
             fanout.at(rule.lhn) != rule.fanout(0)) {
 //            std::cerr << rule.lhn << " " << irank.at(rule.lhn) << " " << rule.irank(0) << std::endl;
 //            std::cerr << rule.lhn << " " << srank.at(rule.lhn) << " " << rule.srank(0) << std::endl;
+//            std::cerr << rule.lhn << " " << fanout.at(rule.lhn) << " " << rule.fanout(0) << std::endl;
             return false;
         }
     }
@@ -401,6 +408,7 @@ bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
         fanout[rule.lhn] = rule.fanout(0);
 //        std::cerr << rule.lhn << " " << irank.at(rule.lhn) << " " << rule.irank(0) << std::endl;
 //        std::cerr << rule.lhn << " " << srank.at(rule.lhn) << " " << rule.srank(0) << std::endl;
+//        std::cerr << rule.lhn << " " << fanout.at(rule.lhn) << " " << rule.fanout(0) << std::endl;
         lhn_to_rule[rule.lhn] = std::vector<Rule<Nonterminal, Terminal>> ();
     }
     auto i = 1;
@@ -419,6 +427,7 @@ bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
             fanout[nonterminal] = rule.fanout(i);
 //            std::cerr << nonterminal << " " << irank.at(nonterminal) << " " << rule.irank(i) << std::endl;
 //            std::cerr << nonterminal << " " << srank.at(nonterminal) << " " << rule.srank(i) << std::endl;
+//            std::cerr << nonterminal << " " << fanout.at(nonterminal) << " " << rule.fanout(i) << std::endl;
             lhn_to_rule[nonterminal] = std::vector<Rule<Nonterminal, Terminal>> ();
         }
         ++i;

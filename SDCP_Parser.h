@@ -141,7 +141,7 @@ private:
 
                 if (var_flag) {
                     // TODO greedy matching is incomplete / requires normal form
-                    while (term.head != input.get_label(position) && ! input.is_final(position))
+                    while (term.head != input.get_tree_label(position) && ! input.is_final(position))
                         position = input.get_next(position);
                     var_flag = false;
                     var_assignment[*var].second = input.get_previous(position);
@@ -150,7 +150,7 @@ private:
                     position = input.get_next(position);
                 }
 
-                if (term.head != input.get_label(position))
+                if (term.head != input.get_tree_label(position))
                     return false;
                 if (term.children.size() > 0 != input.get_children(position).size() > 0)
                     return false;
@@ -214,11 +214,14 @@ private:
 
                     assert (i < lcfrs_terminals.size());
 
-                    const Position & sterm_pos = lcfrs_terminals[i++];
+                    const Position & tree_pos = lcfrs_terminals[i++];
+
+                    if (term != input.get_string_label(tree_pos))
+                        return false;
 
                     unsigned pos2 = 0;
-                    for ( ; pos2 < input.get_linearization().size(); pos2++) {
-                        if (input.get_linearization()[pos2] == sterm_pos) {
+                    for ( ; pos2 < input.get_linearization().size(); ++pos2) {
+                        if (input.get_linearization()[pos2] == tree_pos) {
                             if (begin) {
                                 span_start = pos2;
                                 pos = pos2 + 1;
@@ -255,10 +258,27 @@ private:
                 std::pair<Position, Position> span_assignment;
                 std::vector<Position> lcfrs_terminals;
                 if (match_and_retrieve_vars(input.get_previous(position), rule.outside_attributes[0][0], var_assignment, span_assignment, lcfrs_terminals)){
-                    std::vector<std::pair<int, int>> lcfrs_spans;
+                    if (debug)
+                        std::cerr << "matched sdcp" << std::endl;
 
-                    if (parse_lcfrs && !match_lcfrs(rule, lcfrs_terminals, no_rhs_items, lcfrs_spans))
+                    if (debug) {
+                        std::cerr << "lcfrs terminals: [";
+                        for (auto position : lcfrs_terminals)
+                            std::cerr << position << ", ";
+                        std::cerr << "]" << std::endl;
+                    }
+
+                    std::vector<std::pair<int, int>> lcfrs_spans;
+                    if (debug)
+                        std::cerr << "created vector" << std::endl;
+
+                    if (parse_lcfrs && !match_lcfrs(rule, lcfrs_terminals, no_rhs_items, lcfrs_spans)) {
+                        if (debug)
+                            std::cerr << "did not match lcfrs" << std::endl;
                         continue;
+                    }
+                    if (debug)
+                        std::cerr << "matched lcfrs" << std::endl;
 
                     std::shared_ptr<ParseItem<Nonterminal, Position>> item = std::make_shared<ParseItem<Nonterminal, Position>>();
                     item->nonterminal = rule.lhn;
@@ -306,7 +326,7 @@ private:
                     lhn_var = false;
                 }
                 pos = input.get_next(pos);
-                if (term.head != input.get_label(pos))
+                if (term.head != input.get_tree_label(pos))
                     return false;
                 else {
                     if (input.get_children(pos).size() > 0 && term.children.size() > 0) {
@@ -701,6 +721,8 @@ public:
     void reachability_simplification() {
         std::set<ParseItem<Nonterminal, Position>> reachable;
         if (this->goal) {
+            if (debug)
+                std::cerr << "goal: " << *(this->goal) << std::endl;
             std::map<ParseItem<Nonterminal, Position>, std::vector<std::pair<Rule<Nonterminal, Terminal>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>> >>>> trace_;
 
             reachable.insert(*(this->goal));
@@ -722,8 +744,7 @@ public:
         goal->spans_syn.emplace_back(std::make_pair(input.get_entry(), input.get_exit()));
         if (parse_lcfrs)
             goal->spans_lcfrs.push_back(std::make_pair(0, input.get_linearization().size()));
-        else
-            goal->spans_lcfrs.push_back(std::make_pair(0, 0));
+        //else goal->spans_lcfrs.push_back(std::make_pair(0, 0));
     }
 
 
