@@ -73,7 +73,7 @@ public:
     void output();
     void output_recur(Position position, int indent);
 
-    std::vector<std::pair<Position, Terminal>> terminals() {
+    const std::vector<std::pair<Position, Terminal>> terminals() {
         std::vector<std::pair<Position, Terminal>> terminals;
         Position position = get_entry();
         while (position != -1) {

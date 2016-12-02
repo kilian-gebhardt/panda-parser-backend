@@ -89,18 +89,18 @@ int main() {
     arg1.emplace_back(Term<std::string>(".", 1));
     std::vector<STerm<std::string>> arg1v;
     arg1v.push_back(arg1);
-    rule1.outside_attributes.push_back(arg1v);
+    rule1.inside_attributes.push_back(arg1v);
 
     // build rhs
     STerm <std::string> arg2;
     arg2.emplace_back(Variable(2, 2));
     std::vector<STerm<std::string>> arg2v;
     arg2v.push_back(arg2);
-    rule1.outside_attributes.push_back(arg2v);
+    rule1.inside_attributes.push_back(arg2v);
 
     std::vector<STerm<std::string>> arg3v;
-    rule1.outside_attributes.push_back(arg3v);
-    // std::cout << rule1.outside_attributes.size() << std::endl;
+    rule1.inside_attributes.push_back(arg3v);
+    // std::cout << rule1.inside_attributes.size() << std::endl;
 
     // constructing LCFRS part
     if (lcfrs) {
@@ -125,7 +125,7 @@ int main() {
     r2_term.children.emplace_back(Variable(0, 1));
     r2_arg_0_1.push_back(r2_term);
     r2_arg1v.push_back(r2_arg_0_1);
-    rule2.outside_attributes.push_back(r2_arg1v);
+    rule2.inside_attributes.push_back(r2_arg1v);
     // constructing LCFRS part
     if (lcfrs) {
         rule2.next_word_function_argument();
@@ -149,9 +149,9 @@ int main() {
     r3_arg_0_2.push_back(Variable(2,1));
     r3_arg1v.push_back(r3_arg_0_1);
     r3_arg1v.push_back(r3_arg_0_2);
-    rule3.outside_attributes.push_back(r3_arg1v);
-    rule3.outside_attributes.emplace_back(std::vector<STerm<std::string>>());
-    rule3.outside_attributes.emplace_back(std::vector<STerm<std::string>>());
+    rule3.inside_attributes.push_back(r3_arg1v);
+    rule3.inside_attributes.emplace_back(std::vector<STerm<std::string>>());
+    rule3.inside_attributes.emplace_back(std::vector<STerm<std::string>>());
     // constructing LCFRS part
     if (lcfrs) {
         rule3.next_word_function_argument();
@@ -173,7 +173,7 @@ int main() {
     r4_term.children.emplace_back(Term<std::string>("today", 1));
     r4_arg_0_1.push_back(r4_term);
     r4_arg1v.push_back(r4_arg_0_1);
-    rule4.outside_attributes.push_back(r4_arg1v);
+    rule4.inside_attributes.push_back(r4_arg1v);
     if (lcfrs) {
         rule4.next_word_function_argument();
         rule4.add_terminal_to_word_function("scheduled");
@@ -195,7 +195,7 @@ int main() {
     r5_term.children.push_back(r5_term_2);
     r5_arg_0_1.push_back(r5_term);
     r5_arg1v.push_back(r5_arg_0_1);
-    rule5.outside_attributes.push_back(r5_arg1v);
+    rule5.inside_attributes.push_back(r5_arg1v);
     if (lcfrs) {
         rule5.next_word_function_argument();
         rule5.add_terminal_to_word_function("on");
@@ -208,12 +208,12 @@ int main() {
     Rule<std::string, std::string> rule6;
     rule6.lhn = "D";
     // build lhs
-    rule6.outside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, Variable(1, 1))));
+    rule6.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, Variable(1, 1))));
     // build rhs
     rule6.rhs.push_back("F");
-    rule6.outside_attributes.push_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, Variable(2, 1))));
+    rule6.inside_attributes.push_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, Variable(2, 1))));
     rule6.rhs.push_back("E");
-    rule6.outside_attributes.push_back(std::vector<STerm<std::string>>());
+    rule6.inside_attributes.push_back(std::vector<STerm<std::string>>());
     if (lcfrs) {
         rule6.next_word_function_argument();
         rule6.add_var_to_word_function(1, 1);
@@ -224,7 +224,7 @@ int main() {
 
     Rule<std::string, std::string> rule7;
     rule7.lhn = "E";
-    rule7.outside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, Term<std::string>("the", 0))));
+    rule7.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, Term<std::string>("the", 0))));
     if (lcfrs) {
         rule7.next_word_function_argument();
         rule7.add_terminal_to_word_function("the");
@@ -235,9 +235,9 @@ int main() {
     rule8.lhn = "F";
     auto term8 = Term<std::string>("on", 0);
     term8.children.push_back(Variable(1, 1));
-    rule8.outside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, term8)));
+    rule8.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, term8)));
     rule8.rhs.push_back("G");
-    rule8.outside_attributes.push_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, Variable(0, 1))));
+    rule8.inside_attributes.push_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, Variable(0, 1))));
     if (lcfrs) {
         rule8.next_word_function_argument();
         rule8.add_terminal_to_word_function("on");
@@ -251,7 +251,7 @@ int main() {
     rule9.lhn = "G";
     auto term9 = Term<std::string>("issue", 0);
     term9.children.push_back(Variable(0, 1));
-    rule9.outside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, term9)));
+    rule9.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, term9)));
     if (lcfrs) {
         // rule9.next_word_function_argument();
         rule9.next_word_function_argument();
@@ -287,6 +287,12 @@ int main() {
     parser.print_trace();
 
     auto builder = STermBuilder<std::string, std::string>();
+
+    for (auto obj : parser.query_trace(*parser.goal)) {
+        std::cerr << obj.first << " ";
+        for (auto item : obj.second)
+            std::cerr << " " << item << " " << std::endl;
+    }
 
     return 0;
 }

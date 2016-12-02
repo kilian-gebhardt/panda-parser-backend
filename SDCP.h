@@ -175,7 +175,7 @@ public:
         return false;
     }
 
-    STerm<Terminal> get_sTerm() {
+    STerm<Terminal> & get_sTerm() {
 //        std::cerr << "output sterm " << sterm << std::endl;
         return sterm;
     }
@@ -188,7 +188,7 @@ public:
 
     void add_to_rule(Rule<Nonterminal, Terminal> * rule) {
 //        std::cerr << "adding sterm to rule " << sterm << std::endl;
-        rule->add_outside_attribute(sterm);
+        rule->add_inside_attribute(sterm);
     }
 };
 
@@ -197,7 +197,7 @@ class Rule {
 public:
     Nonterminal lhn;
     std::vector<Nonterminal> rhs;
-    std::vector<std::vector<STerm<Terminal>>> outside_attributes;
+    std::vector<std::vector<STerm<Terminal>>> inside_attributes;
     std::vector<std::vector<boost::variant<Terminal, Variable>>> word_function;
 
     int id;
@@ -206,7 +206,7 @@ public:
     int fanout(int nont_idx) const;
 
     std::pair<bool, Terminal> first_terminal() {
-        for (auto attributes: outside_attributes) {
+        for (auto attributes: inside_attributes) {
             for (STerm<Terminal> sterm : attributes) {
                 for (TermOrVariable<Terminal> obj : sterm) {
                     try {
@@ -227,18 +227,18 @@ public:
         rhs.push_back(nonterminal);
     }
 
-    void add_outside_attribute(STerm<Terminal> sterm){
-        outside_attributes.back().push_back(sterm);
+    void add_inside_attribute(STerm<Terminal> sterm){
+        inside_attributes.back().push_back(sterm);
     }
 
     void add_sterm_from_builder(STermBuilder<Nonterminal, Terminal> & builder) {
-        STerm<Terminal> sterm = builder.get_sTerm();
-        std::cerr << sterm << std::endl;
-        add_outside_attribute(sterm);
+        STerm<Terminal> & sterm = builder.get_sTerm();
+        // std::cerr << sterm << std::endl;
+        add_inside_attribute(sterm);
     }
 
-    void next_outside_attribute(){
-        outside_attributes.push_back(std::vector<STerm<Terminal>> ());
+    void next_inside_attribute(){
+        inside_attributes.push_back(std::vector<STerm<Terminal>> ());
     }
 
     void next_word_function_argument(){
@@ -275,15 +275,15 @@ public:
     bool single_syntactic_use(){
         std::vector<Variable> sdcp_vars, lcfrs_vars;
 
-        for (auto attribute : outside_attributes)
-            for (STerm<Terminal> sterm : attribute)
+        for (auto attribute : inside_attributes)
+            for (const STerm<Terminal> & sterm : attribute)
                 collect_variables(sterm, sdcp_vars);
 
         if (!pairwise_different(sdcp_vars))
             return false;
 
         for (auto argument : word_function)
-            for (auto obj : argument)
+            for (const auto & obj : argument)
                 try {
                     Variable v = boost::get<Variable>(obj);
                     lcfrs_vars.push_back(v);
@@ -299,9 +299,9 @@ public:
     // attributes of the sDCP may not be empty
     bool verify_sdcp_restrictions_recursive(const STerm<Terminal> & sterm, std::vector<bool> & lcfrs_terminals, unsigned mem, bool root) {
         bool lhn_var = false;
-        for (TermOrVariable<Terminal> obj : sterm) {
+        for (const TermOrVariable<Terminal> & obj : sterm) {
             try {
-                Variable v = boost::get<Variable>(obj);
+                const Variable & v = boost::get<Variable>(obj);
                 if (v.member == 0) {
                     // a lhn_var must be followed by a non_lhn var
                     if (lhn_var)
@@ -317,7 +317,7 @@ public:
                     lhn_var = false;
             }
             catch (boost::bad_get &) {
-                Term<Terminal> t = boost::get<Term<Terminal>>(obj);
+                const Term<Terminal> & t = boost::get<Term<Terminal>>(obj);
                 if (!verify_sdcp_restrictions_recursive(t.children, lcfrs_terminals, mem, false))
                     return false;
 
@@ -338,7 +338,7 @@ public:
         std::vector<bool> lcfrs_terminals;
 
         unsigned mem = 0;
-        for (auto attributes : outside_attributes){
+        for (auto attributes : inside_attributes){
             // exactly one synthesized attribute for lhn, if rhs is empty
             if (rhs.size() == 0 && mem == 0 && attributes.size() != 1)
                 return false;
@@ -358,10 +358,10 @@ public:
 
             for (auto obj : argument)
                 try {
-                    Variable v = boost::get<Variable>(obj);
+                    const Variable & v = boost::get<Variable>(obj);
                 }
                 catch (boost::bad_get &) {
-                    Terminal t = boost::get<Terminal>(obj);
+                    const Terminal & t = boost::get<Terminal>(obj);
 
                     // all terminals in the LCFRS may be linked
                     if (lcfrs_terminals.size() <= i || !lcfrs_terminals[i])
@@ -379,7 +379,7 @@ template <typename Nonterminal, typename Terminal>
 std::ostream &operator<<(std::ostream &os, const Rule<Nonterminal, Terminal> & rule) {
     os << rule.lhn;
     int i = 0;
-    for (auto attributes : rule.outside_attributes) {
+    for (auto attributes : rule.inside_attributes) {
         if (i > 0)
             os << " " << rule.rhs[i - 1] << " ";
         os << " ⟨ ";
@@ -410,13 +410,14 @@ std::ostream &operator<<(std::ostream &os, const Rule<Nonterminal, Terminal> & r
 
 template <typename Nonterminal, typename Terminal>
 class SDCP {
+private:
+    std::map<Nonterminal, std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>>> left_nont_corner;
+    std::map<Nonterminal, std::vector<std::pair<std::shared_ptr<Rule<Nonterminal, Terminal>>, int>>> nont_corner;
+    std::map<Terminal, std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>>> axioms;
+    std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>> epsilon_axioms;
 public:
+    std::map<Nonterminal, std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>>> lhn_to_rule;
     Nonterminal initial;
-    std::map<Nonterminal, std::vector<Rule<Nonterminal, Terminal>>> lhn_to_rule;
-    std::map<Nonterminal, std::vector<Rule<Nonterminal, Terminal>>> left_nont_corner;
-    std::map<Nonterminal, std::vector<std::pair<Rule<Nonterminal, Terminal>, int>>> nont_corner;
-    std::map<Terminal, std::vector<Rule<Nonterminal, Terminal>>> axioms;
-    std::vector<Rule<Nonterminal, Terminal>> epsilon_axioms;
     std::map<Nonterminal, int> irank, srank, fanout;
 
     bool add_rule(Rule<Nonterminal, Terminal> rule);
@@ -425,6 +426,18 @@ public:
     void output(){
         std::cerr << *this << std::endl;
     }
+
+    const std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>> & get_lhn_to_rule(Nonterminal nonterminal) {
+        return lhn_to_rule[nonterminal];
+    };
+
+    const std::vector<std::pair<std::shared_ptr<Rule<Nonterminal, Terminal>>, int>> & get_nont_corner(Nonterminal nonterminal) {
+        return nont_corner[nonterminal];
+    };
+
+    const std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>> & get_axioms(Terminal terminal) {
+        return axioms[terminal];
+    };
 };
 
 template <typename Nonterminal, typename Terminal>
@@ -432,7 +445,7 @@ std::ostream &operator<<(std::ostream &os, SDCP<Nonterminal, Terminal> & sdcp) {
     os << "initial " << sdcp.initial << std::endl;
     for (auto p : sdcp.lhn_to_rule) {
         for (auto rule : p.second)
-            os << rule << std::endl;
+            os << *rule << std::endl;
     }
     return os;
 }
@@ -458,7 +471,7 @@ void countVariableRecursive(int idx, int & counter, STerm<Terminal> sterm) {
 template <typename Nonterminal, typename Terminal>
 int countVariable(int idx, const Rule<Nonterminal, Terminal> & rule) {
     int counter = 0;
-    for (auto member_attributes: rule.outside_attributes) {
+    for (auto member_attributes: rule.inside_attributes) {
         for (auto attribute : member_attributes) {
             countVariableRecursive<Terminal>(idx, counter, attribute);
         }
@@ -471,16 +484,16 @@ int Rule<Nonterminal, Terminal>::irank(int nont_idx) const {
     if (nont_idx == 0)
         return countVariable<Nonterminal, Terminal>(0, *this);
     else {
-        if (nont_idx >= outside_attributes.size())
+        if (nont_idx >= inside_attributes.size())
             return 0;
-        return outside_attributes[nont_idx].size();
+        return inside_attributes[nont_idx].size();
     }
 }
 
 template <typename Nonterminal, typename Terminal>
 int Rule<Nonterminal, Terminal>::srank(int nont_idx) const {
     if (nont_idx == 0)
-        return outside_attributes[0].size();
+        return inside_attributes[0].size();
     return countVariable<Nonterminal, Terminal>(nont_idx, *this);
 }
 
@@ -505,7 +518,7 @@ int Rule<Nonterminal, Terminal>::fanout(int nont_idx) const {
 template <typename Nonterminal, typename Terminal>
 bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
     // basic sanitiy checks
-    if (! rule.rhs.size() == rule.outside_attributes.size() - 1)
+    if (! rule.rhs.size() == rule.inside_attributes.size() - 1)
         return false;
 
     if (! rule.single_syntactic_use())
@@ -533,7 +546,7 @@ bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
 //        std::cerr << rule.lhn << " " << irank.at(rule.lhn) << " " << rule.irank(0) << std::endl;
 //        std::cerr << rule.lhn << " " << srank.at(rule.lhn) << " " << rule.srank(0) << std::endl;
 //        std::cerr << rule.lhn << " " << fanout.at(rule.lhn) << " " << rule.fanout(0) << std::endl;
-        lhn_to_rule[rule.lhn] = std::vector<Rule<Nonterminal, Terminal>> ();
+        lhn_to_rule[rule.lhn] = std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>> ();
     }
     auto i = 1;
     for (Nonterminal nonterminal : rule.rhs) {
@@ -552,25 +565,26 @@ bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
 //            std::cerr << nonterminal << " " << irank.at(nonterminal) << " " << rule.irank(i) << std::endl;
 //            std::cerr << nonterminal << " " << srank.at(nonterminal) << " " << rule.srank(i) << std::endl;
 //            std::cerr << nonterminal << " " << fanout.at(nonterminal) << " " << rule.fanout(i) << std::endl;
-            lhn_to_rule[nonterminal] = std::vector<Rule<Nonterminal, Terminal>> ();
+            lhn_to_rule[nonterminal] = std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>> ();
         }
         ++i;
     }
 
+    auto rule_ptr = std::make_shared<Rule<Nonterminal, Terminal>>(rule);
     // finally adding rule
-    lhn_to_rule[rule.lhn].push_back(rule);
+    lhn_to_rule[rule.lhn].push_back(rule_ptr);
     if (rule.rhs.size() > 0) {
-        left_nont_corner[rule.rhs[0]].push_back(rule);
+        left_nont_corner[rule.rhs[0]].push_back(rule_ptr);
         int j = 0;
         for (Nonterminal nont : rule.rhs)
-            nont_corner[nont].push_back(std::make_pair(rule, j++));
+            nont_corner[nont].push_back(std::make_pair(rule_ptr, j++));
     }
     else {
         auto term = rule.first_terminal();
         if (term.first)
-            axioms[term.second].push_back(rule);
+            axioms[term.second].push_back(rule_ptr);
         else
-            epsilon_axioms.push_back(rule);
+            epsilon_axioms.push_back(rule_ptr);
     }
 
 //    std::cerr << "added rule " << rule << std::endl;
@@ -590,7 +604,7 @@ bool SDCP<Nonterminal, Terminal>::set_initial(Nonterminal nonterminal) {
     catch  (const std::out_of_range&){
         irank[nonterminal] = 0;
         srank[nonterminal] = 1;
-        lhn_to_rule[nonterminal] = std::vector<Rule<Nonterminal, Terminal>> ();
+        lhn_to_rule[nonterminal] = std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>> ();
     }
     initial = nonterminal;
     return true;

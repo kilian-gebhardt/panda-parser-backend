@@ -73,14 +73,14 @@ bool operator<(const ParseItem<Nonterminal, Position>& lhs, const ParseItem<Nont
 template <typename Nonterminal, typename Position>
 std::ostream &operator<<(std::ostream &os, ParseItem<Nonterminal, Position> const &item) {
     os << item.nonterminal << " ( ";
-    for(auto range : item.spans_inh)
+    for(const auto & range : item.spans_inh)
         os << " <" << range.first << "-" << range.second << ">";
     os << " ; ";
-    for(auto range : item.spans_syn)
+    for(const auto & range : item.spans_syn)
         os << " <" << range.first << "-" << range.second << ">";
     if (item.spans_lcfrs.size()) {
         os << " | ";
-        for(auto range : item.spans_lcfrs)
+        for(const auto & range : item.spans_lcfrs)
             os << " <" << range.first << "-" << range.second << ">";
     }
     os << " ) ";
@@ -156,7 +156,7 @@ private:
         for (auto argument : rule.word_function) {
             span_start = -1;
             bool begin = true;
-            for (auto obj : argument) {
+            for (const auto & obj : argument) {
                 try {
                     const Variable & var = boost::get<Variable>(obj);
 
@@ -210,25 +210,25 @@ private:
 
     void match_lexical_rules(){
         const std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> no_rhs_items;
-        for (auto pair : input.terminals()){
-            Position & position = pair.first;
-            Terminal & terminal = pair.second;
-            for (Rule<Nonterminal, Terminal> rule : sDCP.axioms[terminal]) {
+        for (const auto & pair : input.terminals()){
+            const Position & position = pair.first;
+            const Terminal & terminal = pair.second;
+            for (std::shared_ptr<Rule<Nonterminal, Terminal>> rule : sDCP.get_axioms(terminal)) {
                 // std::cerr << rule.lhn << std::endl;
-                assert ("Assume normal form that " && rule.outside_attributes.size() == 1);
-                assert ("Assume normal form that " && rule.outside_attributes.front().size() == 1);
-                Term<Terminal> term = boost::get<Term<Terminal>>(rule.outside_attributes[0][0][0]);
+                assert ("Assume normal form that " && rule->inside_attributes.size() == 1);
+                assert ("Assume normal form that " && rule->inside_attributes.front().size() == 1);
+                Term<Terminal> term = boost::get<Term<Terminal>>(rule->inside_attributes[0][0][0]);
                 assert (term.head == terminal);
                 std::map<Variable, std::pair<Position, Position>> var_assignment;
                 std::pair<Position, Position> span_assignment;
                 std::vector<Position> lcfrs_terminals;
-                if (match_and_retrieve_vars(input.get_previous(position), rule.outside_attributes[0][0], var_assignment, span_assignment, lcfrs_terminals)){
+                if (match_and_retrieve_vars(input.get_previous(position), rule->inside_attributes[0][0], var_assignment, span_assignment, lcfrs_terminals)){
                     if (debug)
                         std::cerr << "matched sdcp" << std::endl;
 
                     if (debug) {
                         std::cerr << "lcfrs terminals: [";
-                        for (auto position : lcfrs_terminals)
+                        for (const auto & position : lcfrs_terminals)
                             std::cerr << position << ", ";
                         std::cerr << "]" << std::endl;
                     }
@@ -237,7 +237,7 @@ private:
                     if (debug)
                         std::cerr << "created vector" << std::endl;
 
-                    if (parse_lcfrs && !match_lcfrs(rule, lcfrs_terminals, no_rhs_items, lcfrs_spans)) {
+                    if (parse_lcfrs && !match_lcfrs(*rule, lcfrs_terminals, no_rhs_items, lcfrs_spans)) {
                         if (debug)
                             std::cerr << "did not match lcfrs" << std::endl;
                         continue;
@@ -246,8 +246,8 @@ private:
                         std::cerr << "matched lcfrs" << std::endl;
 
                     std::shared_ptr<ParseItem<Nonterminal, Position>> item = std::make_shared<ParseItem<Nonterminal, Position>>();
-                    item->nonterminal = rule.lhn;
-                    for (int j = 1; j <= rule.irank(0); ++j) {
+                    item->nonterminal = rule->lhn;
+                    for (int j = 1; j <= rule->irank(0); ++j) {
                         auto p = var_assignment.at(Variable(0, j));
                         item->spans_inh.emplace_back(p);
                     }
@@ -266,7 +266,8 @@ private:
                     if (debug)
                         std::cerr << "Agenda : added " << *item << std::endl;
                     agenda.push(item);
-                    trace[*item].push_back(std::make_pair(rule, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> ()));//std::pair<Rule<Nonterminal, Terminal>, std::vector<ParseItem<Nonterminal, Position>>>(rule, std::vector<ParseItem<Nonterminal, Position>> ()));
+                    trace[*item].push_back(std::make_pair(rule, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> ()));
+                    //std::pair<Rule<Nonterminal, Terminal>, std::vector<ParseItem<Nonterminal, Position>>>(rule, std::vector<ParseItem<Nonterminal, Position>> ()));
                 }
             }
         }
@@ -277,8 +278,7 @@ private:
             , Position & goal
             , std::vector<std::pair<Position,Position>> & inherited
             , std::vector<std::pair<Position,Position>> & synthesized
-            , const std::vector<std::shared_ptr<ParseItem<Nonterminal
-            , Position>>> & items
+            , const std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & items
             , std::vector<Position> & lcfrs_terminals){
         bool lhn_var = false;
         Variable var(0,0);
@@ -382,11 +382,13 @@ private:
         return false;
     }
 
-    void match_rule(const Rule<Nonterminal, Terminal> & rule, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & transport, const std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> items) {
-
+    void match_rule( std::shared_ptr<Rule<Nonterminal, Terminal>> rule_ptr
+                   , std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & transport
+                   , const std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & items) {
+        const Rule<Nonterminal, Terminal> & rule = *rule_ptr;
         if (debug) {
             std::cerr << "match: ";
-            for (auto item : items) std::cerr << *item;
+            for (const auto & item : items) std::cerr << *item;
             std::cerr << "with rule " << rule << std::endl;
         }
 
@@ -402,12 +404,12 @@ private:
         std::vector<Position> lcfrs_terminals;
         int mem = 0;
         int arg = 1;
-        for (auto attributes : rule.outside_attributes){
+        for (auto attributes : rule.inside_attributes){
             // first, check compatibility of rhs inherited attributes
             // and determine lhs inherited attributes
             arg = 1;
             if (mem > 0) {
-                for (STerm<Terminal> sterm : attributes) {
+                for (const STerm<Terminal> & sterm : attributes) {
                     // obtain predicted span start
                     Position & pos = items[mem-1]->spans_inh[arg-1].first;
                     Position & goal = items[mem-1]->spans_inh[arg-1].second;
@@ -431,7 +433,7 @@ private:
         }
         // now check compatibility of lhs synthesized attributes
         arg = 1;
-        for (STerm<Terminal> sterm : rule.outside_attributes[0]) {
+        for (const STerm<Terminal> & sterm : rule.inside_attributes[0]) {
             Position start;
             if (!find_start(sterm, start, 0, inherited, synthesized, items))
                 return;
@@ -464,8 +466,8 @@ private:
         }
 
         if (inh_strict_successor) {
-            for (auto s1 : new_item->spans_inh) {
-                for (auto s2 : new_item->spans_syn) {
+            for (const auto & s1 : new_item->spans_inh) {
+                for (const auto & s2 : new_item->spans_syn) {
                     if (s1 == s2) {
                         if (debug)
                             std::cerr << "skipped (inherent strict successor) " << *new_item << std::endl;
@@ -475,96 +477,29 @@ private:
             }
         }
 
-
-//        std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> predecessors;
-//        for (auto item : items)
-//            predecessors.push_back(item);
-        trace[*new_item].push_back( // std::pair<Rule<Nonterminal, Terminal>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>>>
-                                   std::make_pair(rule, items));
+        trace[*new_item].push_back( std::make_pair(rule_ptr, items));
 
         if (debug)
             std::cerr << *new_item << std::endl;
         transport.push_back(new_item);
     }
-//    void match_structural_rules(Rule<Nonterminal, Terminal> & rule, ParseItem<Nonterminal, Position> item, int mem){
-//        std::vector<std::vector<std::pair<Position,Position>>> inherit, synthesized;
-//        inherit[mem] = item.spans_syn;
-//        synthesized[mem] = item.spans_inh;
-//        mem = 0;
-//        for (auto attributes : rule.outside_attributes){
-//            for (STerm<Terminal> sterm : attributes){
-//
-//            }
-//
-//            mem++;
-//        }
-//    }
-//
-//    std::vector<ParseItem<Nonterminal, Position>> get_by(Nonterminal nonterminal, int arg, Position position, bool inh=false, bool start=true){
-//        return chart[std::tuple<Nonterminal, bool, int, bool, Position>(nonterminal, inh, arg, start, position)];
-//    };
-//
-//    const std::vector<ParseItem<Nonterminal, Position>> get_by_inh_start(Nonterminal nonterminal, int arg, Position position) {
-//        return get_by(nonterminal, arg, position, true, true);
-//    };
-//    const std::vector<ParseItem<Nonterminal, Position>> get_by_inh_end(Nonterminal nonterminal, int arg, Position position) {
-//        return get_by(nonterminal, arg, position, true, false);
-//    };
-//    const std::vector<ParseItem<Nonterminal, Position>> get_by_syn_start(Nonterminal nonterminal, int arg, Position position) {
-//        return get_by(nonterminal, arg, position, false, true);
-//    };
-//    const std::vector<ParseItem<Nonterminal, Position>> get_by_syn_end(Nonterminal nonterminal, int arg, Position position) {
-//        return get_by(nonterminal, arg, position, false, false);
-//    };
-//
+
 
 
     bool addToChart(std::shared_ptr<ParseItem<Nonterminal, Position>> item) {
         if (!chart.count(item->nonterminal))
             chart[item->nonterminal];
         else {
-            for (auto item2 : chart[item->nonterminal])
+            for (const auto & item2 : chart[item->nonterminal])
                 if (*item == *item2)
                     return false;
         }
         chart[item->nonterminal].push_back(item);
         return true;
-//        int arg = 1;
-//        bool first = true;
-//        for(auto range : item->spans_syn) {
-//            auto key1 = std::tuple<Nonterminal, bool, int, bool, Position>(item->nonterminal, false, arg, true, range.first);
-//            auto key2 = std::tuple<Nonterminal, bool, int, bool, Position>(item->nonterminal, false, arg, false, range.second);
-//            if (!chart.count(key1))
-//                chart[key1];
-//            else if (first) {
-//                for (auto item2 : chart[key1])
-//                    if (*item == *item2)
-//                        return false;
-//                first = false;
-//            }
-//            chart[key1].push_back(item);
-//            if (!chart.count(key2))
-//                chart[key2];
-//            chart[key2].push_back(item);
-//            arg++;
-//        }
-//        arg = 1;
-//        for(auto range : item->spans_inh){
-//            auto key1 = std::tuple<Nonterminal, bool, int, bool, Position>(item->nonterminal, true, arg, true, range.first);
-//            auto key2 = std::tuple<Nonterminal, bool, int, bool, Position>(item->nonterminal, true, arg, false, range.second);
-//            if (!chart.count(key1))
-//                chart[key1];
-//            chart[key1].push_back(item);
-//            if (!chart.count(key2))
-//                chart[key2];
-//            chart[key2].push_back(item);
-//            arg++;
-//        }
-//        return true;
     }
 public:
     std::queue<std::shared_ptr<ParseItem<Nonterminal, Position>>> agenda;
-    std::map<ParseItem<Nonterminal, Position>, std::vector<std::pair<Rule<Nonterminal, Terminal>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>> >>>> trace;
+    std::map<ParseItem<Nonterminal, Position>, std::vector<std::pair<std::shared_ptr<Rule<Nonterminal, Terminal>>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>> >>>> trace;
     std::map<Nonterminal, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>>> chart;
 
     SDCP<Nonterminal, Terminal> sDCP;
@@ -575,7 +510,11 @@ public:
     const bool debug;
     const bool parse_lcfrs;
 
-    SDCPParser(bool parse_lcfrs=false, bool debug=false, bool no_parallel=true, bool inh_strict_successor=true) : no_parallel(no_parallel), inh_strict_successor(inh_strict_successor), debug(debug), parse_lcfrs(parse_lcfrs) {};
+    SDCPParser(bool parse_lcfrs=false, bool debug=false, bool no_parallel=true, bool inh_strict_successor=true)
+            : no_parallel(no_parallel)
+            , inh_strict_successor(inh_strict_successor)
+            , debug(debug)
+            , parse_lcfrs(parse_lcfrs) {};
 
 
     void set_input(HybridTree<Terminal, Position>& tree) {
@@ -603,15 +542,15 @@ public:
             if (! addToChart(item_))
                 continue;
 
-            for (auto p : sDCP.nont_corner[item_->nonterminal]) {
-                Rule<Nonterminal, Terminal> & rule = p.first;
-                int & j_ = p.second;
+            for (const auto & p : sDCP.get_nont_corner(item_->nonterminal)) { //} nont_corner[item_->nonterminal]) {
+                Rule<Nonterminal, Terminal> & rule = *(p.first);
+                const int & j_ = p.second;
                 int j = 0;
                 selection.resize(rule.rhs.size(), 0);
 
                 while (0 <= j) {
                     if (j == rule.rhs.size()) {
-                        match_rule(rule, transport, candidates);
+                        match_rule(p.first, transport, candidates);
                         j --;
                         continue;
                     }
@@ -673,7 +612,7 @@ public:
     }
 
     void add_recursively(std::set<ParseItem<Nonterminal, Position>> & reachable, ParseItem<Nonterminal, Position>& start) {
-        for (auto list : trace[start]) {
+        for (const auto & list : trace[start]) {
             for (std::shared_ptr<ParseItem<Nonterminal, Position>> item : list.second) {
                 if (! reachable.count(*item)) {
                     reachable.insert(*item);
@@ -688,11 +627,11 @@ public:
         if (this->goal) {
             if (debug)
                 std::cerr << "goal: " << *(this->goal) << std::endl;
-            std::map<ParseItem<Nonterminal, Position>, std::vector<std::pair<Rule<Nonterminal, Terminal>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>> >>>> trace_;
+            std::map<ParseItem<Nonterminal, Position>, std::vector<std::pair<std::shared_ptr<Rule<Nonterminal, Terminal>>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>> >>>> trace_;
 
             reachable.insert(*(this->goal));
             add_recursively(reachable, *(this->goal));
-            for (auto p : trace) {
+            for (const auto & p : trace) {
                 if (reachable.count(p.first)) {
                     trace_.insert(p);
                 }
@@ -714,14 +653,14 @@ public:
 
 
     void print_chart(){
-        for (auto pairs : chart) {
+        for (const auto & pairs : chart) {
                 std::cerr << pairs.first << " : " << std::endl;
-                for (auto item : pairs.second) {
+                for (const auto & item : pairs.second) {
                     if (trace[*item].size() > 0) {
                         std::cerr << "  " << *item << " [ ";
-                        for (auto trace_entry : trace[*item]) {
+                        for (const auto & trace_entry : trace[*item]) {
                             std::cerr << " [ ";
-                            for (auto item_ : trace_entry.second)
+                            for (const auto & item_ : trace_entry.second)
                                 std::cerr << *item_;
                             std::cerr << " ] ";
                         }
@@ -734,12 +673,12 @@ public:
     };
 
     void print_trace(){
-            for (auto item : trace) {
+            for (const auto & item : trace) {
                 std::cerr << "  " << item.first << " [ ";
-                for (auto trace_entry : item.second) {
-                    std::cerr << trace_entry.first << " using ";
+                for (const auto & trace_entry : item.second) {
+                    std::cerr << *trace_entry.first << " using ";
                     std::cerr << " [ ";
-                    for (auto item_ : trace_entry.second)
+                    for (const auto & item_ : trace_entry.second)
                         std::cerr << *item_;
                     std::cerr << " ] ";
                 }
@@ -762,21 +701,18 @@ public:
     std::vector<std::pair<Rule<Nonterminal, Terminal>, std::vector<ParseItem<Nonterminal,Position>>>>
         query_trace(ParseItem<Nonterminal, Position> start) {
         std::vector<std::pair<Rule<Nonterminal, Terminal>, std::vector<ParseItem<Nonterminal,Position>>>> result;
-        for(auto item : trace[start]) {
-            Rule<Nonterminal, Terminal> & rule = item.first;
+        for(const auto & item : trace[start]) {
+            // Rule<Nonterminal, Terminal> & rule = item.first;
             std::vector<ParseItem<Nonterminal, Position>> child_items;
-            for (auto child : item.second) {
+            for (const auto & child : item.second) {
                 child_items.push_back(*child);
             }
 
-            result.emplace_back(std::make_pair(item.first, child_items));
+            result.emplace_back(std::make_pair(*item.first, child_items));
         }
         return result;
     }
 
-
-
-    // std::
 };
 
 #endif //STERMPARSER_SDCP_PARSER_H
