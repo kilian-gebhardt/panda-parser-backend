@@ -11,6 +11,7 @@
 #include <iostream>
 #include <term.h>
 #include <assert.h>
+#include "util.h"
 
 class Variable {
 public:
@@ -257,6 +258,120 @@ public:
     int get_id() {
        return id;
     }
+
+    void collect_variables(const STerm<Terminal> & sterm, std::vector<Variable> & sdcp_vars) {
+        for (TermOrVariable<Terminal> obj : sterm) {
+            try {
+                Variable v = boost::get<Variable>(obj);
+                sdcp_vars.push_back(v);
+            }
+            catch (boost::bad_get &) {
+                Term<Terminal> t = boost::get<Term<Terminal>>(obj);
+                collect_variables(t.children, sdcp_vars);
+            }
+        }
+    }
+
+    bool single_syntactic_use(){
+        std::vector<Variable> sdcp_vars, lcfrs_vars;
+
+        for (auto attribute : outside_attributes)
+            for (STerm<Terminal> sterm : attribute)
+                collect_variables(sterm, sdcp_vars);
+
+        if (!pairwise_different(sdcp_vars))
+            return false;
+
+        for (auto argument : word_function)
+            for (auto obj : argument)
+                try {
+                    Variable v = boost::get<Variable>(obj);
+                    lcfrs_vars.push_back(v);
+                }
+                catch (boost::bad_get &) {
+                    // Terminal t = boost::get<Terminal>(obj);
+                }
+
+        return pairwise_different(lcfrs_vars);
+    }
+
+
+    // attributes of the sDCP may not be empty
+    bool verify_sdcp_restrictions_recursive(const STerm<Terminal> & sterm, std::vector<bool> & lcfrs_terminals, unsigned mem, bool root) {
+        bool lhn_var = false;
+        for (TermOrVariable<Terminal> obj : sterm) {
+            try {
+                Variable v = boost::get<Variable>(obj);
+                if (v.member == 0) {
+                    // a lhn_var must be followed by a non_lhn var
+                    if (lhn_var)
+                        return false;
+                    lhn_var = true;
+                    // a lhn_var may occur at root level only in the inherent attribute of an rhs nonterminal
+                    // TODO could be softened a bit to "a lhn_var can occur at root level,
+                    // TODO if it is followed and succeeded by a rhs_var which sufficiently constrain it"
+                    if (root && mem == 0)
+                        return false;
+                }
+                else
+                    lhn_var = false;
+            }
+            catch (boost::bad_get &) {
+                Term<Terminal> t = boost::get<Term<Terminal>>(obj);
+                if (!verify_sdcp_restrictions_recursive(t.children, lcfrs_terminals, mem, false))
+                    return false;
+
+                if (t.is_ordered()) {
+                    if (lcfrs_terminals.size() < t.order + 1)
+                        lcfrs_terminals.resize(t.order + 1, false);
+                    if (lcfrs_terminals[t.order])
+                        // only one sDCP symbol may link to the same string position
+                        return false;
+                    lcfrs_terminals[t.order] = true;
+                }
+            }
+        }
+       return true;
+    }
+
+    bool verify_grammar_restrictions(){
+        std::vector<bool> lcfrs_terminals;
+
+        unsigned mem = 0;
+        for (auto attributes : outside_attributes){
+            // exactly one synthesized attribute for lhn, if rhs is empty
+            if (rhs.size() == 0 && mem == 0 && attributes.size() != 1)
+                return false;
+            for (auto sterm : attributes) {
+                if (!verify_sdcp_restrictions_recursive(sterm, lcfrs_terminals, mem, true))
+                    return false;
+            }
+            ++mem;
+        }
+
+        unsigned i = 0;
+        for (auto argument : word_function) {
+
+            // the LCFRS may not have ε arguments
+            if (!argument.size())
+                return false;
+
+            for (auto obj : argument)
+                try {
+                    Variable v = boost::get<Variable>(obj);
+                }
+                catch (boost::bad_get &) {
+                    Terminal t = boost::get<Terminal>(obj);
+
+                    // all terminals in the LCFRS may be linked
+                    if (lcfrs_terminals.size() <= i || !lcfrs_terminals[i])
+                        return false;
+                    i++;
+                }
+        }
+        return true;
+    }
+
 };
 
 
@@ -372,7 +487,7 @@ int Rule<Nonterminal, Terminal>::srank(int nont_idx) const {
 template <typename Nonterminal, typename Terminal>
 int Rule<Nonterminal, Terminal>::fanout(int nont_idx) const {
     if (nont_idx == 0)
-        return word_function.size();
+        return (int) word_function.size();
     int counter = 0;
     for (auto arg : word_function) {
         for (auto obj : arg) {
@@ -389,8 +504,17 @@ int Rule<Nonterminal, Terminal>::fanout(int nont_idx) const {
 
 template <typename Nonterminal, typename Terminal>
 bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
-    assert (rule.rhs.size() == rule.outside_attributes.size() - 1);
-    // Checking that iranks and sranks match
+    // basic sanitiy checks
+    if (! rule.rhs.size() == rule.outside_attributes.size() - 1)
+        return false;
+
+    if (! rule.single_syntactic_use())
+        return false;
+
+    if (! rule.verify_grammar_restrictions())
+        return false;
+
+    // Checking that iranks, sranks, and fanouts match globally
     try {
         if (irank.at(rule.lhn) != rule.irank(0) ||
             srank.at(rule.lhn) != rule.srank(0) ||
