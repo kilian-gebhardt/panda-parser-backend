@@ -713,6 +713,19 @@ public:
         return result;
     }
 
+    const std::map<
+            ParseItem<Nonterminal, Position>
+            , std::vector<
+                    std::pair<
+                            std::shared_ptr<Rule<Nonterminal, Terminal>>
+                            , std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>
+                            >
+                    >
+            >
+    > & get_trace(){
+        return trace;
+    }
+
 };
 
 #endif //STERMPARSER_SDCP_PARSER_H

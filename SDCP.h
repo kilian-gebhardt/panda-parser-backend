@@ -200,7 +200,7 @@ public:
     std::vector<std::vector<STerm<Terminal>>> inside_attributes;
     std::vector<std::vector<boost::variant<Terminal, Variable>>> word_function;
 
-    int id;
+    int id = 0;
     int irank(int nont_idx) const;
     int srank(int nont_idx) const;
     int fanout(int nont_idx) const;
@@ -296,7 +296,7 @@ public:
     }
 
 
-    // attributes of the sDCP may not be empty
+    // attributes of the sDCP may not be empty_trace
     bool verify_sdcp_restrictions_recursive(const STerm<Terminal> & sterm, std::vector<bool> & lcfrs_terminals, unsigned mem, bool root) {
         bool lhn_var = false;
         for (const TermOrVariable<Terminal> & obj : sterm) {
@@ -339,7 +339,7 @@ public:
 
         unsigned mem = 0;
         for (auto attributes : inside_attributes){
-            // exactly one synthesized attribute for lhn, if rhs is empty
+            // exactly one synthesized attribute for lhn, if rhs is empty_trace
             if (rhs.size() == 0 && mem == 0 && attributes.size() != 1)
                 return false;
             for (auto sterm : attributes) {
