@@ -536,6 +536,9 @@ public:
         while (! agenda.empty()) {
             auto item_ = agenda.front();
             agenda.pop();
+
+            assert(trace.count(*item_));
+
             if (debug)
                 std::cerr << *item_ << std::endl;
 
@@ -611,8 +614,8 @@ public:
         }
     }
 
-    void add_recursively(std::set<ParseItem<Nonterminal, Position>> & reachable, ParseItem<Nonterminal, Position>& start) {
-        for (const auto & list : trace[start]) {
+    void add_recursively(std::set<ParseItem<Nonterminal, Position>> & reachable, ParseItem<Nonterminal, Position>& start) const {
+        for (const auto & list : trace.at(start)) {
             for (std::shared_ptr<ParseItem<Nonterminal, Position>> item : list.second) {
                 if (! reachable.count(*item)) {
                     reachable.insert(*item);
@@ -633,6 +636,7 @@ public:
             add_recursively(reachable, *(this->goal));
             for (const auto & p : trace) {
                 if (reachable.count(p.first)) {
+                    assert (p.second.size());
                     trace_.insert(p);
                 }
             }
@@ -652,13 +656,13 @@ public:
     }
 
 
-    void print_chart(){
+    void print_chart() const {
         for (const auto & pairs : chart) {
                 std::cerr << pairs.first << " : " << std::endl;
                 for (const auto & item : pairs.second) {
-                    if (trace[*item].size() > 0) {
+                    if (trace.at(*item).size() > 0) {
                         std::cerr << "  " << *item << " [ ";
-                        for (const auto & trace_entry : trace[*item]) {
+                        for (const auto & trace_entry : trace.at(*item)) {
                             std::cerr << " [ ";
                             for (const auto & item_ : trace_entry.second)
                                 std::cerr << *item_;
@@ -672,7 +676,7 @@ public:
         }
     };
 
-    void print_trace(){
+    void print_trace() const {
             for (const auto & item : trace) {
                 std::cerr << "  " << item.first << " [ ";
                 for (const auto & trace_entry : item.second) {
@@ -690,6 +694,7 @@ public:
     void clear() {
         std::cerr << "clear" << std::endl;
         agenda = std::queue<std::shared_ptr<ParseItem<Nonterminal, Position>>>();
+        assert(!agenda.size());
         chart.clear();
         trace.clear();
     }
@@ -699,16 +704,18 @@ public:
     }
 
     std::vector<std::pair<Rule<Nonterminal, Terminal>, std::vector<ParseItem<Nonterminal,Position>>>>
-        query_trace(ParseItem<Nonterminal, Position> start) {
+        query_trace(ParseItem<Nonterminal, Position> start) const {
         std::vector<std::pair<Rule<Nonterminal, Terminal>, std::vector<ParseItem<Nonterminal,Position>>>> result;
-        for(const auto & item : trace[start]) {
-            // Rule<Nonterminal, Terminal> & rule = item.first;
-            std::vector<ParseItem<Nonterminal, Position>> child_items;
-            for (const auto & child : item.second) {
-                child_items.push_back(*child);
-            }
+        if (trace.count(start)) {
+            for (const auto &item : trace.at(start)) {
+                // Rule<Nonterminal, Terminal> & rule = item.first;
+                std::vector<ParseItem<Nonterminal, Position>> child_items;
+                for (const auto &child : item.second) {
+                    child_items.push_back(*child);
+                }
 
-            result.emplace_back(std::make_pair(*item.first, child_items));
+                result.emplace_back(std::make_pair(*item.first, child_items));
+            }
         }
         return result;
     }
@@ -722,7 +729,7 @@ public:
                             >
                     >
             >
-    > & get_trace(){
+    > & get_trace() const {
         return trace;
     }
 

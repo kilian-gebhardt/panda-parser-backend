@@ -4,6 +4,7 @@
 #include "SDCP.h"
 #include "SDCP_Parser.h"
 #include <vector>
+#include "Trace.h"
 
 
 std::shared_ptr<HybridTree<std::string, int>> build_hybrid_tree(bool lcfrs) {
@@ -59,7 +60,7 @@ std::shared_ptr<HybridTree<std::string, int>> build_hybrid_tree(bool lcfrs) {
 
 
 int main() {
-    bool lcfrs = false;
+    bool lcfrs = true;
     // std::cout << "Hello, World!" << std::endl;
 
     HybridTree<std::string, int> tree = *build_hybrid_tree(lcfrs);
@@ -77,6 +78,7 @@ int main() {
     // Rule 1:
     // std::cout << "rule 1" << std::endl;
     Rule<std::string, std::string> rule1;
+    rule1.set_id(1);
     rule1.lhn = "S";
     rule1.rhs.push_back("A");
     rule1.rhs.push_back("B");
@@ -116,6 +118,7 @@ int main() {
     // Rule 2:
     // std::cout << "rule 2" << std::endl;
     Rule<std::string, std::string> rule2;
+    rule2.set_id(2);
     rule2.lhn = "A";
     // build lhs
     std::vector<STerm<std::string>> r2_arg1v;
@@ -138,6 +141,7 @@ int main() {
     // Rule 3:
     // std::cout << "rule 3" << std::endl;
     Rule<std::string, std::string> rule3;
+    rule3.set_id(3);
     rule3.lhn = "B";
     rule3.rhs.push_back("C");
     rule3.rhs.push_back("D");
@@ -165,6 +169,7 @@ int main() {
     // Rule 4:
     // std::cout << "rule 4" << std::endl;
     Rule<std::string, std::string> rule4;
+    rule4.set_id(4);
     rule4.lhn = "C";
     // build lhs
     std::vector<STerm<std::string>> r4_arg1v;
@@ -185,6 +190,7 @@ int main() {
 
     // Rule 5:
     Rule<std::string, std::string> rule5;
+    rule5.set_id(5);
     rule5.lhn = "D";
     // build lhs
     std::vector<STerm<std::string>> r5_arg1v;
@@ -207,6 +213,7 @@ int main() {
 
     Rule<std::string, std::string> rule6;
     rule6.lhn = "D";
+    rule6.set_id(6);
     // build lhs
     rule6.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, Variable(1, 1))));
     // build rhs
@@ -223,6 +230,7 @@ int main() {
     assert (sDCP.add_rule(rule6));
 
     Rule<std::string, std::string> rule7;
+    rule7.set_id(7);
     rule7.lhn = "E";
     rule7.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, Term<std::string>("the", 0))));
     if (lcfrs) {
@@ -232,6 +240,7 @@ int main() {
     assert (sDCP.add_rule(rule7));
 
     Rule<std::string, std::string> rule8;
+    rule8.set_id(8);
     rule8.lhn = "F";
     auto term8 = Term<std::string>("on", 0);
     term8.children.push_back(Variable(1, 1));
@@ -248,6 +257,7 @@ int main() {
     assert (sDCP.add_rule(rule8));
 
     Rule<std::string, std::string> rule9;
+    rule9.set_id(9);
     rule9.lhn = "G";
     auto term9 = Term<std::string>("issue", 0);
     term9.children.push_back(Variable(0, 1));
@@ -292,6 +302,27 @@ int main() {
         std::cerr << obj.first << " ";
         for (auto item : obj.second)
             std::cerr << " " << item << " " << std::endl;
+    }
+
+    std::cerr << "Trace manager: " << std::endl;
+
+    TraceManager<std::string, std::string, int> manager;
+    manager.add_trace_entry(parser.get_trace(), *parser.goal, 0);
+
+    auto my_rule_weights = std::vector<int>({0, 1, 1, 1, 1, 1, 1, 1, 1, 1});
+    auto pair = manager.io_weights(my_rule_weights, 1, 1, 0, [] (int x, int y) -> int { return x + y; }, [] (int x, int y) -> int { return x * y; }, 0);
+    for (const auto & item : manager.get_order(0)) {
+        std::cerr << "T: " << item << " " << pair.first[item] << " " << pair.second[item] << std::endl;
+    }
+
+    auto my_rule_groups = std::vector<std::vector<unsigned>>({{1}, {2}, {3}, {4, 6}, {5}, {7}, {8}, {9}});
+
+    auto my_rule_weights2 = std::vector<double>({0, 1, 1, 1, 1, 0.5, 0.5, 1, 1, 1});
+
+    auto vec_new = manager.do_em_training(my_rule_weights2, my_rule_groups, 10);
+
+    for (auto i = 0; i < vec_new.size(); ++i) {
+        std::cerr << vec_new[i] << " ";
     }
 
     return 0;
