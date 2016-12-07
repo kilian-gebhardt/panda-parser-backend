@@ -692,7 +692,8 @@ public:
     };
 
     void clear() {
-        std::cerr << "clear" << std::endl;
+        if (debug)
+            std::cerr << "clear" << std::endl;
         agenda = std::queue<std::shared_ptr<ParseItem<Nonterminal, Position>>>();
         assert(!agenda.size());
         chart.clear();
