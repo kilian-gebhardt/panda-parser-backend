@@ -8,6 +8,103 @@
 #include "SDCP_Parser.h"
 #include <limits>
 #include <math.h>
+#include <malloc.h>
+#include <random>
+#include "SplitMergeUtil.h"
+
+
+class Chance {
+    std::default_random_engine generator;
+    std::normal_distribution<double> distribution;
+public:
+    double get_chance() {
+        return distribution(generator);
+    }
+};
+
+//class RuleLA {
+//    const int rule_id;
+//    unsigned lhs;
+//    unsigned * const rhs;
+//public:
+//    bool valid = true;
+//    const unsigned rhs_size;
+//    double weight;
+//    RuleLA(int rule_id, unsigned lhs, const std::vector<unsigned> & rhs, double weight) :
+//              rule_id(rule_id)
+//            , lhs(lhs)
+//            , weight(weight)
+//            , rhs_size(rhs.size())
+//            , rhs((unsigned * const) malloc(sizeof(unsigned) * rhs_size)) {
+//        for (auto i = 0; i < rhs.size(); ++i)
+//            this->rhs[i] = rhs[i];
+//    }
+//
+//    const unsigned & get_lhs_la() {
+//        return lhs;
+//    }
+//
+//    const int & get_rule_id() {
+//        return rule_id;
+//    }
+//
+//    const unsigned & get_rhs_la(unsigned i) const {
+//        return rhs[i];
+//    }
+//
+//    void expand() {
+//        lhs *= 2;
+//        for (unsigned i = 0; i < rhs_size; ++i) {
+//            rhs[i] *= 2;
+//        }
+//    }
+//
+//    void shift_la(const unsigned from, const unsigned to) {
+//        if (lhs == from)
+//            lhs = to;
+//        for (unsigned i = 0; i < rhs_size; ++i) {
+//            unsigned & la = rhs[i];
+//            if (la == from)
+//                la = to;
+//        }
+//    }
+//
+//    const std::vector<RuleLA> splits(Chance & chance) const {
+//        std::vector<RuleLA> transport;
+//        std::vector<unsigned> selection;
+//
+//        for (unsigned lhs_ : {lhs, lhs + 1})
+//            selections(lhs_, transport, selection);
+//
+//        // assuming log likelihood
+//        double base_weight = weight - log(pow(2, rhs_size + 1));
+//        double chance_sum = 0;
+//        for (auto & la : transport) {
+//            la.weight = chance.get_chance();
+//            chance_sum += la.weight;
+//        }
+//        for (auto & la : transport) {
+//            la.weight = la.weight / chance_sum * base_weight;
+//        }
+//
+//        return transport;
+//    }
+//
+//    void selections(const unsigned lhs, std::vector<RuleLA> & transport, std::vector<unsigned> & selection) const {
+//        if (selection.size() == rhs_size) {
+//            transport.push_back(RuleLA(rule_id, lhs, selection, 0.0));
+//        } else {
+//            const unsigned rhs_la = rhs[selection.size() - 1];
+//            for (unsigned var_ : {rhs_la, rhs_la + 1}) {
+//                selection.push_back(var_);
+//                selections(lhs, transport, selection);
+//                selection.pop_back();
+//            }
+//        }
+//    }
+//
+//};
+
 
 template <typename Nonterminal, typename Terminal, typename Position>
 class TraceManager {
@@ -325,6 +422,136 @@ public:
         return rule_weights;
     }
 
+//    void split_merge(std::vector<std::vector<RuleLA>> rule_las, std::vector<unsigned> & nont_las) {
+//        Chance chance;
+//
+//        // splitting
+//        std::vector<std::vector<RuleLA>> rule_las_split;
+//
+//        for (unsigned nont_idx = 0; nont_idx < rule_las.size(); ++nont_idx) {
+//            std::vector<RuleLA> splits;
+//            for (const auto & rule_la : rule_las[nont_idx]) {
+//                for (const auto & rule_la_ : rule_la.splits(chance)) {
+//                    splits.push_back(rule_la_);
+//                }
+//            }
+//            rule_las_split.push_back(splits);
+//        }
+//
+//        // em-training
+//
+//        // merging
+//
+//
+//        // em-training
+//
+//    }
+
+    void split_merge(std::vector<unsigned> nont_dimensions, std::vector<double*> rule_weights_la, const std::vector<std::vector<unsigned>> & rule_to_nonterminals) {
+        // splitting
+        std::vector<double *> rule_weights_splitted;
+        for (auto i = 0; i < rule_weights_la.size(); ++i) {
+            const double * rule_weight = rule_weights_la[i];
+            std::vector<unsigned> dimensions;
+            for (auto nont : rule_to_nonterminals[i]) {
+                dimensions.push_back(nont_dimensions[nont]);
+            }
+            rule_weights_splitted.push_back(split_rule(rule_weight, dimensions));
+        }
+
+        // em training
+
+        // TODO determine merges
+
+        // nonterminal -> new_la -> contributing old_las
+        std::vector<std::vector<std::vector<unsigned>>> merge_selection;
+
+        // merging
+        // TODO continue here!
+        // for (auto i = 0; i < rule)
+
+
+        // em training
+    }
+
 };
+
+
+//void merge_lhs(std::vector<RuleLA> & rule_las, const unsigned lhs);
+//void merge_rhs(std::vector<RuleLA> & rule_las, const unsigned var_pos, const unsigned la);
+//
+//void apply_merges_to_rule(std::vector<RuleLA> & rule_las, const std::vector<std::pair<unsigned, unsigned>> & merges) {
+//
+//    // TODO perhaps reverse order neccessary?!
+//    for (const auto tmp : merges) {
+//        if (tmp.first == 0) {
+//            merge_lhs(rule_las, tmp.second);
+//        }
+//        else {
+//            merge_rhs(rule_las, tmp.first - 1, tmp.second);
+//        }
+//    }
+//
+//    // TODO we still need to alpha-convert the names
+//
+//
+//    // now collapse everything
+//    unsigned next_free = 0;
+//    unsigned current_item = 0;
+//    while (current_item < rule_las.size()) {
+//        while (current_item < rule_las.size() && rule_las[current_item].valid)
+//            // TODO noch nicht fertig
+//            ++current_item;
+//    }
+//}
+//
+//void merge_rhs(std::vector<RuleLA> & rule_las, const unsigned var_pos, const unsigned la) {
+//    unsigned i = 0;
+//    while (i < rule_las.size()) {
+//        // search items
+//        while (rule_las[i].get_rhs_la(var_pos) != la && i < rule_las.size())
+//            ++i;
+//        if (i == rule_las.size())
+//            break;
+//        unsigned j = i;
+//        while (j < rule_las.size() && rule_las[j].get_rhs_la(var_pos) == la)
+//            ++j;
+//        assert (rule_las[j].get_rhs_la(var_pos) == la + 1);
+//        while (j < rule_las.size() && rule_las[i].get_rhs_la(var_pos) == la) {
+//            assert (rule_las[i].get_rhs_la(var_pos) + 1 == rule_las[j].get_rhs_la(var_pos));
+//            assert (rule_las[i].get_lhs_la() == rule_las[j].get_lhs_la());
+//            for (unsigned k = 0; k < rule_las[i].rhs_size; ++k) {
+//                if (k != var_pos)
+//                    assert(rule_las[i].get_rhs_la(k) == rule_las[j].get_rhs_la(j));
+//            }
+//
+//            rule_las[i].weight += rule_las[j].weight;
+//            rule_las[j].valid = false;
+//            ++i;
+//            ++j;
+//        }
+//    }
+//}
+//
+//void merge_lhs(std::vector<RuleLA> & rule_las, const unsigned lhs) {
+//    const unsigned block_size = pow(2, rule_las[0].rhs_size);
+//    unsigned i = block_size * lhs;
+//    unsigned j = block_size * lhs + rule_las.size() / 2;
+//
+//    // we assume a particular order on of the las in rule_las,
+//    // i.e., the first half has annotiton 0, the second one annotation j
+//    for (; i < (lhs + 1) * block_size; ++i) {
+//        assert (rule_las[i].get_lhs_la() + 1 == rule_las[j].get_lhs_la());
+//        for (unsigned k = 0; k < rule_las[i].rhs_size; ++k) {
+//            assert(rule_las[i].get_rhs_la(k) == rule_las[j].get_rhs_la(j));
+//        }
+//        rule_las[i].weight += rule_las[j].weight;
+//        rule_las[j].valid = false;
+//        ++j;
+//    }
+//}
+
+
+
 
 #endif //STERMPARSER_TRACE_H
