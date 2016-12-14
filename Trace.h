@@ -11,6 +11,7 @@
 #include <malloc.h>
 #include <random>
 #include "SplitMergeUtil.h"
+#include <functional>
 
 
 class Chance {
@@ -449,9 +450,9 @@ public:
 
 
     template <typename NontToIdx>
-    std::pair<std::vector<unsigned>, std::vector<double*>> split_merge(
+    std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge(
               const std::vector<double> & rule_weights
-            , const std::vector<std::vector<Nonterminal>> & rule_to_nonterminals
+            , const std::vector<std::vector<unsigned>> & rule_to_nonterminals
             , const std::vector<std::vector<unsigned>> & normalization_groups
             , const unsigned n_epochs
             , const NontToIdx nont_idx
@@ -459,16 +460,19 @@ public:
             , const unsigned n_nonts
     ) {
 
-        // TODO implement true flexibility for semiring!
-        auto sum = [] (double x, double y) -> double {
+        // TODO implement flexibility for semiring!
+        auto sum = [] (const double x, const double y) -> double {
             const double minus_infinity = std::numeric_limits<double>::infinity();
             if (x == minus_infinity)
                 return y;
             else if (y == minus_infinity)
                 return x;
             return log(exp(x) + exp(y));};
-        auto prod = [] (double x, double y) -> double {return x + y;};;
-        auto division = [] (double x, double y) -> double {return x - y;};;
+        auto difference = [] (const double x, const double y) -> double {
+            // const double minus_infinity = std::numeric_limits<double>::infinity();
+            return log(exp(x) - exp(y));};
+        auto prod = [] (const double x, const double y) -> double {return x + y;};
+        auto division = [] (const double x, const double y) -> double {return x - y;};
         double root = 0.0;
         double one = 0.0;
         double leaf = 0.0;
@@ -479,68 +483,78 @@ public:
         // rule weights for latent annotated rules before and after
         // each split/merge cycle
         std::vector<unsigned> nont_dimensions = std::vector<unsigned>(n_nonts, 1);
-        std::vector<double*> rule_weights_la;
+        std::vector<std::vector<double>> rule_weights_la;
         for (const double & rule_weight : rule_weights) {
-            rule_weights_la.push_back((double *) malloc(sizeof(double)));
-            *rule_weights_la.back() = rule_weight;
+            // TODO log
+            rule_weights_la.emplace_back(std::vector<double>(1, log(rule_weight)));
         }
 
 
-        std::vector<double *> rule_weights_splitted;
-        std::vector<double *> rule_weights_merged;
+        std::vector<std::vector<double>> rule_weights_splitted;
+        std::vector<std::vector<double>> rule_weights_merged;
 
         for (unsigned cycle = 0; cycle < split_merge_cycles; ++cycle) {
-
+            std::vector<unsigned> split_dimensions;
+            for (const unsigned dim : nont_dimensions)
+                split_dimensions.push_back(dim * 2);
             // splitting
             for (auto i = 0; i < rule_weights_la.size(); ++i) {
-                const double *rule_weight = rule_weights_la[i];
+                const std::vector<double> & rule_weight = rule_weights_la[i];
                 std::vector<unsigned> dimensions;
                 for (auto nont : rule_to_nonterminals[i]) {
-                    dimensions.push_back(nont_dimensions[nont_idx(nont)]);
+                    dimensions.push_back(nont_dimensions[nont]);
                 }
+                if (dimensions.size() == 0)
+                    continue;
                 rule_weights_splitted.push_back(split_rule(rule_weight, dimensions));
             }
 
             // clear rule_weights_la
-            for (double * ptr : rule_weights_la)
-                free(ptr);
+//            for (double * ptr : rule_weights_la)
+//                free(ptr);
             rule_weights_la.clear();
 
             // em training
-            do_em_training_la(rule_weights_splitted, normalization_groups, n_epochs, nont_dimensions,
+            do_em_training_la(rule_weights_splitted, normalization_groups, n_epochs, split_dimensions,
                               rule_to_nonterminals, nont_idx, zero, one, root, leaf, prod, sum, division);
 
 
-            // TODO determine merges
+            // determine merges
+            const auto merge_info = merge_prepare(rule_weights_splitted
+                    , split_dimensions
+                    , rule_to_nonterminals
+                    , nont_idx
+                    , leaf, root, zero, one, sum, prod, division, difference
+                    , exp(0.1));
 
 
             // nonterminal -> new_la -> contributing old_las
-            std::vector<std::vector<std::vector<unsigned>>> merge_selection;
-            std::vector<unsigned> new_nont_dimensions;
-            std::vector<double *> outside_weigths;
+            const std::vector<std::vector<std::vector<unsigned>>> & merge_selection = std::get<0>(merge_info);
+            const std::vector<unsigned> & new_nont_dimensions = std::get<1>(merge_info);
+            const std::vector<std::vector<double>> merge_factors = std::get<2>(merge_info);
 
             // merging
-            std::vector<double *> rule_weights_merged;
+            std::vector<std::vector<double>> rule_weights_merged;
             for (unsigned i = 0; i < rule_weights_splitted.size(); ++i) {
                 std::vector<unsigned> old_dimensions;
                 std::vector<unsigned> new_dimensions;
                 boost::ptr_vector<std::vector<std::vector<unsigned>>> merges;
                 merges.reserve(rule_to_nonterminals[i].size());
-                const double *const lhn_outside_weights = outside_weigths[nont_idx(rule_to_nonterminals[i][0])];
+                const std::vector<double> & lhn_merge_factors = merge_factors[rule_to_nonterminals[i][0]];
                 for (auto nont : rule_to_nonterminals[i]) {
-                    old_dimensions.push_back(nont_dimensions[nont_idx(nont)] * 2);
+                    old_dimensions.push_back(nont_dimensions[nont] * 2);
                     new_dimensions[i] = merge_selection[i].size();
                     merges[i] = merge_selection[i];
                 }
                 rule_weights_merged.push_back(
                         merge_rule(rule_weights_splitted[i], old_dimensions, new_dimensions, merges,
-                                   lhn_outside_weights));
+                                   lhn_merge_factors));
             }
 
             // free memory of split weights
-            for (double *ptr : rule_weights_splitted) {
-                free(ptr);
-            }
+//            for (double *ptr : rule_weights_splitted) {
+//                free(ptr);
+//            }
             rule_weights_splitted.clear();
 
             // em training
@@ -558,7 +572,7 @@ public:
     template<typename Val, typename Accum, typename Accum2, typename NontToIdx>
     std::pair<std::map<ParseItem<Nonterminal, Position>, std::vector<Val>>,
             std::map<ParseItem<Nonterminal, Position>, std::vector<Val>>>
-    io_weights_la(  const std::vector<Val * const> & rules
+    io_weights_la(  const std::vector<std::vector<Val>> & rules
                   , const std::vector<unsigned> & nont_dimensions
                   , const std::vector<std::vector<unsigned>> rule_id_to_nont_ids
                   , const NontToIdx nont_idx
@@ -579,29 +593,29 @@ public:
         // computation of inside weights
         std::map<ParseItem<Nonterminal, Position>, std::vector<Val>> inside_weights;
         for (const auto & item : topological_order) {
-            inside_weights[item] = std::vector<Val>(nont_dimensions[nont_idx(item)], zero);
+            inside_weights[item] = std::vector<Val>(nont_dimensions[nont_idx(item.nonterminal)], zero);
             std::vector<Val> & inside_weight = inside_weights[item];
             for (const auto & witness : traces[i].at(item)) {
-                boost::ptr_vector<std::vector<Val>> nont_vectors;
+                std::vector<std::vector<Val>> nont_vectors;
+                // nont_vectors.reserve(witness.second.size());
                 std::vector<unsigned> rule_dim;
                 for (auto nont_idx : rule_id_to_nont_ids[witness.first->id]) {
                     rule_dim.push_back(nont_dimensions[nont_idx]);
                 }
                 for (const auto & dep_item : witness.second) {
-                    nont_vectors.push_back(inside_weights.at(dep_item));
+                    nont_vectors.push_back(inside_weights.at(*dep_item));
                 }
                 inside_weight = dot_product(sum, inside_weight, compute_inside_weights(rules[witness.first->id], nont_vectors,
-                                                                       rule_dim, zero,
-                                                                       sum, prod));
+                                                                       rule_dim, zero, one, sum, prod));
             }
         }
 
         // TODO implement for general case (== no topological order) solution by gauss jordan
         std::map<ParseItem<Nonterminal, Position>, std::vector<Val>> outside_weights;
-        const auto empty = std::vector<Val>(0,0);
+        std::vector<Val> empty = std::vector<Val>(0,0);
         for (int j = topological_order.size() - 1; j >= 0; --j) {
             const ParseItem<Nonterminal, Position> & item = topological_order[j];
-            outside_weights[item] = std::vector<Val>(nont_dimensions[nont_idx(item)], zero);
+            outside_weights[item] = std::vector<Val>(nont_dimensions[nont_idx(item.nonterminal)], zero);
             std::vector<Val> & outside_weight = outside_weights[item];
 
             if (item == goals[i])
@@ -612,36 +626,39 @@ public:
 
                 for (const auto & witness : traces[i].at(parent)) {
                     bool item_found = false;
-                    boost::ptr_vector<std::vector<Val>> relevant_inside_weights;
+                    std::vector<std::vector<Val>> relevant_inside_weights;
                     std::vector<unsigned> rule_dim;
                     rule_dim.push_back(nont_dimensions[nont_idx(parent.nonterminal)]);
 
                     unsigned item_pos = 1;
                     for (const auto & rhs_item : witness.second) {
-                        rule_dim.push_back(nont_dimensions[nont_idx(rhs_item.nonterminal)]);
+                        rule_dim.push_back(nont_dimensions[nont_idx(rhs_item->nonterminal)]);
                         if (*rhs_item == item) {
                             item_found = true;
                             relevant_inside_weights.push_back(empty);
                             continue;
                         } else if (!item_found)
                             ++item_pos;
-                        relevant_inside_weights.push_back(inside_weights[inside_weights[*rhs_item]]);
+                        relevant_inside_weights.push_back(inside_weights[*rhs_item]);
                     }
                     if (!item_found)
                         continue;
 
-                    dot_product( sum
+                    const std::vector<Val> new_weights
+                            = compute_outside_weights(
+                              rules[witness.first->id]
+                            , outside_weights[parent]
+                            , relevant_inside_weights
+                            , rule_dim
+                            , zero
+                            , one
+                            , sum
+                            , prod
+                            , item_pos);
+
+                    outside_weight = dot_product( sum
                                , outside_weight
-                               , compute_outside_weights(
-                                      rules[witness.first->id]
-                                    , outside_weights[parent]
-                                    , relevant_inside_weights
-                                    , rule_dim
-                                    , zero
-                                    , one
-                                    , sum
-                                    , prod
-                                    , item_pos));
+                               , new_weights);
                 }
             }
         }
@@ -652,7 +669,7 @@ public:
 
     template <typename NontToIdx, typename Val, typename Accum1, typename Accum2, typename Accum3>
     void do_em_training_la(
-            std::vector<double *> rule_weights
+            std::vector<std::vector<double>> rule_weights
             , const std::vector<std::vector<unsigned>> & normalization_groups
             , const unsigned n_epochs
             , const std::vector<unsigned> & nont_dimensions
@@ -660,13 +677,17 @@ public:
             , const NontToIdx nont_idx
             , Val zero, Val one, Val root, Val leaf, Accum1 prod, Accum2 sum, Accum3 division
     ){
-        std::vector<double *> rule_counts;
+        std::vector<std::vector<Val>> rule_counts;
         std::vector<std::vector<unsigned>> rule_dimensions;
         unsigned epoch = 0;
 
         std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
-        for (auto i = 0; i < rule_weights.size(); ++i)
-            std::cerr << rule_weights[i] << " ";
+        for (auto i = 0; i < rule_weights.size(); ++i) {
+            std::cerr << " { ";
+            for (double elem : rule_weights[i])
+                std::cerr << elem << " ";
+            std::cerr << " } , ";
+        }
         std::cerr << std::endl;
 
         while (epoch < n_epochs) {
@@ -675,18 +696,20 @@ public:
             assert (rule_counts.size() == 0);
             // allocate memory for rule counts
             for (auto nont_ids : rule_to_nont_ids) {
-                unsigned size = 0;
+                unsigned size = 1;
                 std::vector<unsigned> rule_dimension;
                 for (auto nont_id : nont_ids) {
                     rule_dimension.push_back(nont_dimensions[nont_id]);
                     size *= nont_dimensions[nont_id];
                 }
                 rule_dimensions.push_back(rule_dimension);
-                rule_counts.push_back((double *) malloc(sizeof(double) * size));
+
+                rule_counts.push_back(std::vector<Val>(size, zero));
+//                rule_counts.push_back((double *) malloc(sizeof(Val) * size));
                 // init counts with zeros
-                for (double * i = rule_counts.back(); i < rule_counts.back() + size; ++i) {
-                    *i = zero;
-                }
+//                for (double * i = rule_counts.back(); i < rule_counts.back() + size; ++i) {
+//                    *i = zero;
+//                }
             }
 
             for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
@@ -697,27 +720,37 @@ public:
                 const auto tr_io_weight = io_weights_la(rule_weights, nont_dimensions, rule_to_nont_ids, nont_idx, leaf, root, zero, one, sum, prod, trace_id);
                 if (debug) {
                     for (const auto &item : get_order(trace_id)) {
-                        std::cerr << "T: " << item << " " << tr_io_weight.first.at(item) << " "
-                                  << tr_io_weight.second.at(item) << std::endl;
+                        std::cerr << "T: " << item << std::endl;
+
+                        for (unsigned offset = 0; offset < nont_dimensions[nont_idx(item.nonterminal)]; ++offset) {
+                            std::cerr << "    " << tr_io_weight.first.at(item)[offset] << " "
+                                      << tr_io_weight.second.at(item)[offset] << std::endl;
+
+                        }
                     }
                     std::cerr << std::endl;
                 }
-                const double * const root_weights = tr_io_weight.first.at(goals[trace_id]);
+                const std::vector<Val> & root_weights = tr_io_weight.first.at(goals[trace_id]);
                 for (auto & pair : trace) {
-                    const std::vector<double> & lhn_outside_weights = tr_io_weight.second.at(pair.first);
+                    const std::vector<Val> & lhn_outside_weights = tr_io_weight.second.at(pair.first);
                     for (const auto & witness : pair.second) {
                         const int rule_id = witness.first->id;
 
-                        boost::ptr_vector<std::vector<Val>> nont_weight_vectors;
+                        std::vector<std::vector<Val>> nont_weight_vectors;
+                        nont_weight_vectors.reserve(witness.second.size());
+                        // TODO root weights?!
+//                        unsigned i = 0;
                         for (const auto & rhs_item : witness.second) {
+                            // TODO second -> first ?!
                             nont_weight_vectors.push_back(tr_io_weight.second.at(*rhs_item));
+//                            ++i;
                         }
 
                         std::vector<Val> rule_val;
-                        rule_val = compute_inside_weights(rule_weights[rule_id], nont_weight_vectors, rule_dimensions[rule_id], zero, sum, prod);
+                        rule_val = compute_inside_weights(rule_weights[rule_id], nont_weight_vectors, rule_dimensions[rule_id], zero, one, sum, prod);
                         rule_val = dot_product(prod, lhn_outside_weights, rule_val);
 
-                        rule_counts[rule_id] = sum(rule_counts[rule_id], rule_val);
+                        rule_counts[rule_id] = dot_product(sum, rule_counts[rule_id], rule_val);
                     }
                 }
             }
@@ -727,21 +760,22 @@ public:
                 const unsigned group_dim = rule_dimensions[group[0]][0];
                 std::vector<Val> group_counts = std::vector<Val>(group_dim, zero);
                 for (auto member : group) {
-                    const unsigned block_size = reduce([] (unsigned x, unsigned y) {return x * y;}, rule_dimensions[member], 1, 1);
+                    const unsigned block_size = reduce([] (const unsigned x, const unsigned y) -> unsigned {return x * y;}, rule_dimensions[member], (unsigned) 1, (unsigned) 1);
                     for (unsigned dim = 0; dim < rule_dimensions[member][0]; ++dim) {
-                        double * const block_start = rule_counts[member] + block_size * dim;
-                        for (double * ptr = block_start; ptr < block_start + block_size; ++ptr) {
-                            group[dim] = sum(*ptr, group[dim]);
+
+                        const std::vector<double>::iterator block_start = rule_counts[member].begin() + block_size * dim;
+                        for (auto it = block_start; it != block_start + block_size * (dim + 1); ++it) {
+                            group[dim] = sum(*it, group[dim]);
                         }
                     }
                 }
                 for (auto member : group) {
-                    const unsigned block_size = reduce([] (unsigned x, unsigned y) {return x * y;}, rule_dimensions[member], 1, 1);
+                    const unsigned block_size = reduce([] (unsigned x, unsigned y) -> unsigned {return x * y;}, rule_dimensions[member], (unsigned) 1, (unsigned) 1);
                     for (unsigned dim = 0; dim < rule_dimensions[member][0]; ++dim) {
                         if (group[dim] > 0) {
                             const unsigned block_start = block_size * dim;
                             for (unsigned offset = block_start; offset < block_start + block_size; ++offset) {
-                                *(rule_weights[member] + offset) = division(*(rule_counts[member] + offset), group[dim]);
+                                *(rule_weights[member].begin() + offset) = division(*(rule_counts[member].begin() + offset), group[dim]);
                             }
                         }
                     }
@@ -750,19 +784,161 @@ public:
             epoch++;
             std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
             for (auto i = 0; i < rule_weights.size(); ++i) {
-                std::cerr << rule_weights[i] << " ";
+                std::cerr << " { ";
+                for (double elem : rule_weights[i])
+                    std::cerr << elem << " ";
+                std::cerr << " } , ";
             }
             std::cerr << std::endl;
 
+
+            rule_counts.clear();
         }
 
         // clear memory for rule counts
-        for (auto ptr : rule_counts) {
-            free(ptr);
-        }
+//        for (auto ptr : rule_counts) {
+//            free(ptr);
+//        }
 
         // return rule_weights;
     }
+
+    template <typename Val, typename Accum1, typename Accum2, typename Accum3, typename Accum4, typename NontToIdx>
+    std::tuple< std::vector<std::vector<std::vector<unsigned>>>
+              , std::vector<unsigned>
+              , std::vector<std::vector<Val>>
+              >
+    merge_prepare(const std::vector<std::vector<Val>> & rule_weights
+            , const std::vector<unsigned> & nont_dimensions
+            , const std::vector<std::vector<unsigned>> & rule_ids_to_nont_ids
+                       , const NontToIdx nont_idx
+                       , const Val leaf
+                       , const Val root
+                       , const Val zero
+                       , const Val one
+                       , const Accum1 sum
+                       , const Accum2 prod
+                       , const Accum3 quotient
+                       , const Accum4 difference
+                       , const Val merge_threshold
+            ) {
+
+
+        // first we compute the fractions p_1, p_2
+        // with which the probabality mass is shared between merged latent states
+
+        // this is prepared with computing globally averaged outside weights
+        std::vector<std::vector<Val>> global_nont_outside_weights;
+        for (auto dim : nont_dimensions) {
+            global_nont_outside_weights.emplace_back(std::vector<Val>(dim, zero));
+        }
+
+        // computing out(A_x) for every A ∈ N and x ∈ X_A
+        for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
+            std::map<Nonterminal, std::pair<std::vector<Val>, unsigned>> nonterminal_count;
+            const auto io_weight = io_weights_la(rule_weights, nont_dimensions, rule_ids_to_nont_ids, nont_idx, leaf, root, zero, one, sum, prod, trace_id);
+
+            for (const auto & pair : traces[trace_id]) {
+                const ParseItem<Nonterminal, Position> & item = pair.first;
+
+                const std::vector<Val> & outside_weight = io_weight.second.at(item);
+
+                if (nonterminal_count.count(item.nonterminal)) {
+                    std::pair<std::vector<Val>, unsigned> &entry = nonterminal_count.at(item.nonterminal);
+                    entry.first = dot_product(sum, entry.first, outside_weight);
+                    ++entry.second;
+                } else {
+                    nonterminal_count[item.nonterminal] = std::make_pair(outside_weight, 1);
+                }
+            }
+
+            for (const auto pair : nonterminal_count) {
+                std::vector<Val> & gow = global_nont_outside_weights[nont_idx(pair.first)];
+                gow = dot_product(sum, gow,
+                                  scalar_product(quotient, pair.second.first, (double) pair.second.second));
+            }
+        }
+
+        // finally we compute the fractions
+        std::vector<std::vector<Val>> p;
+        for (auto las_weights : global_nont_outside_weights) {
+            p.emplace_back(std::vector<Val>());
+            for (unsigned i = 0; i < las_weights.size(); i = i + 2) {
+                const Val combined_weight = sum(las_weights[i], las_weights[i+1]);
+                p.back().push_back(quotient(las_weights[i], combined_weight));
+                p.back().push_back(quotient(las_weights[i+1], combined_weight));
+            }
+        }
+
+        // now we approximate the likelihood Δ of merging two latent states
+        std::vector<std::vector<Val>> merge_delta;
+        for (auto dim : nont_dimensions) {
+            merge_delta.push_back(std::vector<Val>(dim / 2, one));
+        }
+
+        for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
+            const auto io_weight = io_weights_la(rule_weights, nont_dimensions, rule_ids_to_nont_ids, nont_idx, leaf, root, zero, one, sum, prod, trace_id);
+            for (const auto & pair : traces[trace_id]) {
+                const ParseItem<Nonterminal, Position> &item = pair.first;
+
+                // compute Q( item )
+                Val denominator = zero;
+                for (unsigned dim = 0; dim < nont_dimensions[nont_idx(item.nonterminal)]; ++dim) {
+                    const Val in = io_weight.first.at(item)[dim];
+                    const Val out = io_weight.second.at(item)[dim];
+                    denominator = sum(denominator, prod(in, out));
+                }
+
+                for (unsigned dim = 0; dim < nont_dimensions[nont_idx(item.nonterminal)]; dim = dim+2) {
+                    Val nominator = denominator;
+                    const Val in1 = io_weight.first.at(item)[dim];
+                    const Val in2 = io_weight.first.at(item)[dim+1];
+                    const Val out1 = io_weight.second.at(item)[dim];
+                    const Val out2 = io_weight.second.at(item)[dim+1];
+                    const unsigned nont = nont_idx(item.nonterminal);
+                    const Val p1 = p[nont][dim];
+                    const Val p2 = p[nont][dim+1];
+
+                    const Val out_merged = sum(out1, out2);
+                    const Val in_merged = sum(prod(p1, in1), prod(p2, in2));
+
+                    nominator = difference(nominator, prod(in1, out1));
+                    nominator = difference(nominator, prod(in2, out2));
+                    nominator = sum(nominator, prod(in_merged, out_merged));
+
+                    const Val Q = quotient(nominator, denominator);
+
+                    double & delta = merge_delta[nont][dim / 2];
+
+                    delta = prod(delta, Q);
+                }
+            }
+        }
+
+        // evaluate Δ and build merge table accordingly
+        std::vector<std::vector<std::vector<unsigned>>> merge_selection;
+        std::vector<unsigned> new_nont_dimensions;
+        unsigned nont = 0;
+        for (auto delta : merge_delta) {
+            merge_selection.push_back(std::vector<std::vector<unsigned>>());
+            for (unsigned dim = 0; dim < nont_dimensions[nont] / 2; ++dim) {
+                if (delta[dim] >= merge_threshold) {
+                    merge_selection.back().push_back(std::vector<unsigned>());
+                    merge_selection.back().back().push_back(dim);
+                    merge_selection.back().back().push_back(dim + 1);
+                } else {
+                    merge_selection.back().push_back(std::vector<unsigned>(1, dim));
+                    merge_selection.back().push_back(std::vector<unsigned>(1, dim + 1));
+                }
+            }
+            ++nont;
+            new_nont_dimensions.push_back(merge_selection.back().size());
+        }
+
+
+        return std::make_tuple(merge_selection, new_nont_dimensions, p);
+    }
+
 };
 
 

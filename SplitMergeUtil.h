@@ -23,23 +23,27 @@ unsigned indexation (const std::vector<unsigned> & positions, const std::vector<
     return index;
 }
 
-double weight(const double * const weights, const std::vector<unsigned> & positions, const std::vector<unsigned> & dimensions) {
+double weight(const std::vector<double> & weights, const std::vector<unsigned> & positions, const std::vector<unsigned> & dimensions) {
     unsigned index = indexation(positions, dimensions);
     return weights[index];
 }
 
 
-double rand_split() {
-    return 0.55;
+double rand_split(unsigned id) {
+    if (id % 2)
+        return 0.55;
+    else
+        return 0.45;
 }
 
-void fill_split(const double * const old_weights, double * const new_weights, const std::vector<unsigned> & dimensions
+void fill_split(const std::vector<double> & old_weights, std::vector<double> & new_weights, const std::vector<unsigned> & dimensions
         , std::vector<unsigned> & selection, const unsigned dim) {
     if (dimensions.size() == dim) {
         unsigned origin_index = indexation(selection, dimensions, true);
+        // TODO new dimensions needed here!
         unsigned index = indexation(selection, dimensions);
         // TODO log likelihoods
-        double split_weight = old_weights[origin_index] * rand_split();
+        double split_weight = old_weights[origin_index] + log(rand_split(selection.back()));
         new_weights[index] = split_weight;
     }
     else {
@@ -54,25 +58,25 @@ void fill_split(const double * const old_weights, double * const new_weights, co
     }
 }
 
-double * split_rule(const double * const weights, const std::vector<unsigned> & dimensions) {
+std::vector<double> split_rule(const std::vector<double> & weights, const std::vector<unsigned> & dimensions) {
     unsigned new_size = 1;
     for (auto dim : dimensions) {
         new_size *= dim * 2;
     }
-    double * splits = (double *) malloc(sizeof(double) * new_size);
+    std::vector<double> splits = std::vector<double>(new_size, 0);
     std::vector<unsigned> selection;
     fill_split(weights, splits, dimensions, selection, 0);
     return splits;
 }
 
-void accumulate_probabilites( double * const goal_value
-                              , const double * const old_weights
+void accumulate_probabilites(double & goal_value
+                              , const std::vector<double> & old_weights
         , const std::vector<unsigned> & old_dimensions
         , std::vector<unsigned> & selection, const unsigned dim
         , const boost::ptr_vector<std::vector<unsigned>> & merges
-        , const double * const lhn_merge_weights) {
+        , const std::vector<double> & lhn_merge_weights) {
     if (dim == old_dimensions.size()) {
-        *goal_value += weight(old_weights, selection, old_dimensions) * lhn_merge_weights[selection[0]];
+        goal_value += weight(old_weights, selection, old_dimensions) * lhn_merge_weights[selection[0]];
     }
     else {
         assert(merges[dim].size() > 0);
@@ -84,20 +88,20 @@ void accumulate_probabilites( double * const goal_value
     }
 }
 
-void fill_merge(const double * const weights, double * merged_weights, const std::vector<unsigned> & old_dimensions
+void fill_merge(const std::vector<double> & weights, std::vector<double> merged_weights, const std::vector<unsigned> & old_dimensions
         , const std::vector<unsigned> & new_dimensions, std::vector<unsigned> & selection, const unsigned dim,
-                const boost::ptr_vector<std::vector<std::vector<unsigned>>> & merges, const double * const lhn_merge_weights
+                const boost::ptr_vector<std::vector<std::vector<unsigned>>> & merges, const std::vector<double> & lhn_merge_weights
 ) {
     if (new_dimensions.size() == dim) {
         unsigned index = indexation(selection, new_dimensions);
-        double * goal_value = merged_weights + index;
+        std::vector<double>::iterator goal_value = merged_weights.begin() + index;
         std::vector<unsigned> witnesses;
         boost::ptr_vector<std::vector<unsigned>> the_merges;
         the_merges.reserve(selection.size());
         for (unsigned i; i < selection.size(); ++i) {
             the_merges[i] = merges[i][selection[i]];
         }
-        accumulate_probabilites(goal_value, weights, old_dimensions, witnesses, 0, the_merges, lhn_merge_weights);
+        accumulate_probabilites(*goal_value, weights, old_dimensions, witnesses, 0, the_merges, lhn_merge_weights);
     }
     else {
         assert(new_dimensions[dim] > 0);
@@ -109,20 +113,22 @@ void fill_merge(const double * const weights, double * merged_weights, const std
     }
 }
 
-double * merge_rule(  const double * const weights
+std::vector<double> merge_rule(  const std::vector<double> & weights
                     , const std::vector<unsigned> & old_dimensions
                     , const std::vector<unsigned> & new_dimensions
                     , const boost::ptr_vector<std::vector<std::vector<unsigned>>> & merges
-                    , const double * const lhn_merge_weights
+                    , const std::vector<double> & lhn_merge_weights
                     ) {
     unsigned new_size = 1;
     for (auto dim : new_dimensions) {
         new_size *= dim * 2;
     }
 
-    double * merged_weights = (double *) malloc(sizeof(double) * new_size);
+    std::vector<double> merged_weights;
+    merged_weights.reserve(new_size);
     std::vector<unsigned> selection;
     fill_merge(weights, merged_weights, old_dimensions, new_dimensions, selection, 0, merges, lhn_merge_weights);
+    return merged_weights;
 }
 
 unsigned subdim(const std::vector<unsigned> & dims, const unsigned target = 0) {
@@ -135,27 +141,33 @@ unsigned subdim(const std::vector<unsigned> & dims, const unsigned target = 0) {
 }
 
 template <typename Accum1, typename Accum2>
-std::vector<double> compute_inside_weights(const double * const rule_weight_tensor
-        , const boost::ptr_vector<std::vector<unsigned>> & nont_weight_vectors
-        , const std::vector<unsigned> & dim_rule, const double zero
+std::vector<double> compute_inside_weights(const std::vector<double> & rule_weight_tensor
+        , const std::vector<std::vector<double>> & nont_weight_vectors
+        , const std::vector<unsigned> & dim_rule, const double zero, const double one
         , const Accum1 sum , Accum2 prod) {
     std::vector<double> result = std::vector<double>(dim_rule[0], zero);
-        const double * next_la_weight = rule_weight_tensor;
+        std::vector<double>::const_iterator next_la_weight = rule_weight_tensor.begin();
         for (unsigned lhs = 0; lhs < dim_rule[0]; ++ lhs) {
-            assert(next_la_weight - rule_weight_tensor == lhs * subdim(dim_rule));
+            const unsigned sd = subdim(dim_rule);
+            assert(next_la_weight == rule_weight_tensor.begin() + lhs * sd);
             double & target = result[lhs];
 
             unsigned rhs = 0;
             std::vector<unsigned> selection = std::vector<unsigned>(dim_rule.size() - 1, 0);
             std::vector<double> factors;
+            factors.reserve(dim_rule.size() - 1);
             while (rhs >= 0) {
                 if (rhs == dim_rule.size() - 1) {
-                    double val = prod(next_la_weight, factors[rhs - 1]);
+                    const double val = prod(*next_la_weight, rhs > 0 ? factors[rhs - 1] : one);
                     target = sum(target, val);
                     ++next_la_weight;
+                    if (rhs == 0)
+                        break;
                     rhs--;
                 } else if (selection[rhs] == nont_weight_vectors[rhs].size()) {
                         selection[rhs] = 0;
+                        if (rhs == 0)
+                            break;
                         rhs--;
                 } else {
                     if (rhs > 0)
@@ -172,29 +184,34 @@ std::vector<double> compute_inside_weights(const double * const rule_weight_tens
 
 
 template <typename Accum1, typename Accum2>
-std::vector<double> compute_outside_weights(const double * const rule_weight_tensor
-        , const std::vector<unsigned> & lhn_outside_weight_vector
-        , const boost::ptr_vector<std::vector<unsigned>> & inside_weight_vectors
+std::vector<double> compute_outside_weights(const std::vector<double> & rule_weight_tensor
+        , const std::vector<double> & lhn_outside_weight_vector
+        , const std::vector<std::vector<double>> & inside_weight_vectors
         , const std::vector<unsigned> & dim_rule, const double zero, const double one
         , const Accum1 sum , Accum2 prod, const unsigned target_pos) {
 
     std::vector<double> result = std::vector<double>(dim_rule[target_pos], zero);
 
-    const double * next_la_weight = rule_weight_tensor;
+    std::vector<double>::const_iterator next_la_weight = rule_weight_tensor.begin();
     for (unsigned lhs = 0; lhs < dim_rule[0]; ++lhs) {
-        assert(next_la_weight - rule_weight_tensor == lhs * subdim(dim_rule, 0));
+        assert(next_la_weight == rule_weight_tensor.begin() + lhs * subdim(dim_rule, 0));
 
         unsigned rhs = 0;
         std::vector<unsigned> selection = std::vector<unsigned>(dim_rule.size() - 1, 0);
         std::vector<double> factors;
+        factors.reserve(dim_rule.size() - 1);
         while (rhs >= 0) {
             if (rhs == dim_rule.size() - 1) {
-                double val = prod(next_la_weight, factors[rhs - 1]);
+                double val = prod(*next_la_weight, (rhs > 0) ? factors[rhs - 1] : one);
                 result[target_pos] = sum(result[target_pos], val);
                 ++next_la_weight;
+                if (rhs == 0)
+                    break;
                 rhs--;
             } else if (selection[rhs] == inside_weight_vectors[rhs].size()) {
                 selection[rhs] = 0;
+                if (rhs == 0)
+                    break;
                 rhs--;
             } else {
                 if (rhs == target_pos) {
@@ -232,7 +249,7 @@ std::vector<Val> scalar_product(const Accum1 point_scalar, const std::vector<Val
 };
 
 template<typename Accum, typename Val>
-Val reduce(const Accum accum, const std::vector<Val> vec, Val init, const unsigned start = 0) {
+Val reduce(const Accum accum, const std::vector<Val> & vec, Val init, const unsigned start = 0) {
     for (unsigned i = start; i < vec.size(); ++i)
         init = accum(vec[i], init);
     return init;

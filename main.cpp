@@ -325,5 +325,39 @@ int main() {
         std::cerr << vec_new[i] << " ";
     }
 
+    auto nont_idx = [] (const std::string & nont) {
+        if (nont == "S")
+            return 0;
+        else if (nont == "A")
+            return 1;
+        else if (nont == "B")
+            return 2;
+        else if (nont == "C")
+            return 3;
+        else if (nont == "D")
+            return 4;
+        else if (nont == "E")
+            return 5;
+        else if (nont == "F")
+            return 6;
+        else if (nont == "G")
+            return 7;
+        else
+            return 8;
+    };
+    auto rule_to_nont_idx = std::vector<std::vector<unsigned>>(10);
+    for (auto p : sDCP.lhn_to_rule) {
+        for (auto rule : p.second) {
+            rule_to_nont_idx[rule->id].push_back(nont_idx(rule->lhn));
+            for (auto nont : rule->rhs) {
+                rule_to_nont_idx[rule->id].push_back(nont_idx(nont));
+            }
+        }
+    }
+
+    std::cerr << std::endl;
+
+    manager.split_merge(vec_new, rule_to_nont_idx, my_rule_groups, 20, nont_idx, 5, 8);
+
     return 0;
 }
