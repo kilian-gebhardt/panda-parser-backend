@@ -230,8 +230,8 @@ public:
         }
     };
 
-    const double plus_infinity = std::numeric_limits<double>::max();
-    const double minus_infinity = std::numeric_limits<double>::infinity();
+    // const double plus_infinity = std::numeric_limits<double>::max();
+    const double minus_infinity = -std::numeric_limits<double>::infinity();
 
     double log_sum(double x, double y) {
         if (x == minus_infinity)
@@ -329,7 +329,7 @@ public:
 
 //        if (log_semiring) {
             auto sum = [] (double x, double y) -> double {
-                const double minus_infinity = std::numeric_limits<double>::infinity();
+                const double minus_infinity = -std::numeric_limits<double>::infinity();
                 if (x == minus_infinity)
                     return y;
                 else if (y == minus_infinity)
@@ -462,7 +462,7 @@ public:
 
         // TODO implement flexibility for semiring!
         auto sum = [] (const double x, const double y) -> double {
-            const double minus_infinity = std::numeric_limits<double>::infinity();
+            const double minus_infinity = -std::numeric_limits<double>::infinity();
             if (x == minus_infinity)
                 return y;
             else if (y == minus_infinity)
@@ -502,11 +502,10 @@ public:
                 const std::vector<double> & rule_weight = rule_weights_la[i];
                 std::vector<unsigned> dimensions;
                 for (auto nont : rule_to_nonterminals[i]) {
-                    dimensions.push_back(nont_dimensions[nont]);
+                    dimensions.push_back(split_dimensions[nont]);
                 }
-                if (dimensions.size() == 0)
-                    continue;
-                rule_weights_splitted.push_back(split_rule(rule_weight, dimensions));
+                const std::vector<double> split_probabilities= split_rule(rule_weight, dimensions);
+                rule_weights_splitted.push_back(split_probabilities);
             }
 
             // clear rule_weights_la
@@ -538,13 +537,14 @@ public:
             for (unsigned i = 0; i < rule_weights_splitted.size(); ++i) {
                 std::vector<unsigned> old_dimensions;
                 std::vector<unsigned> new_dimensions;
-                boost::ptr_vector<std::vector<std::vector<unsigned>>> merges;
-                merges.reserve(rule_to_nonterminals[i].size());
+                //new_dimensions.reserve(rule_to_nonterminals[i].size());
+                std::vector<std::vector<std::vector<unsigned>>> merges;
+                //merges.reserve(rule_to_nonterminals[i].size());
                 const std::vector<double> & lhn_merge_factors = merge_factors[rule_to_nonterminals[i][0]];
                 for (auto nont : rule_to_nonterminals[i]) {
                     old_dimensions.push_back(nont_dimensions[nont] * 2);
-                    new_dimensions[i] = merge_selection[i].size();
-                    merges[i] = merge_selection[i];
+                    new_dimensions.push_back(merge_selection[nont].size());
+                    merges.push_back(merge_selection[nont]);
                 }
                 rule_weights_merged.push_back(
                         merge_rule(rule_weights_splitted[i], old_dimensions, new_dimensions, merges,
@@ -630,12 +630,12 @@ public:
                     std::vector<unsigned> rule_dim;
                     rule_dim.push_back(nont_dimensions[nont_idx(parent.nonterminal)]);
 
-                    unsigned item_pos = 1;
+                    unsigned item_pos = 0;
                     for (const auto & rhs_item : witness.second) {
                         rule_dim.push_back(nont_dimensions[nont_idx(rhs_item->nonterminal)]);
                         if (*rhs_item == item) {
                             item_found = true;
-                            relevant_inside_weights.push_back(empty);
+                            relevant_inside_weights.push_back(std::vector<double>(rule_dim.back(), one));
                             continue;
                         } else if (!item_found)
                             ++item_pos;
@@ -742,13 +742,12 @@ public:
 //                        unsigned i = 0;
                         for (const auto & rhs_item : witness.second) {
                             // TODO second -> first ?!
-                            nont_weight_vectors.push_back(tr_io_weight.second.at(*rhs_item));
+                            nont_weight_vectors.push_back(tr_io_weight.first.at(*rhs_item));
 //                            ++i;
                         }
 
                         std::vector<Val> rule_val;
-                        rule_val = compute_inside_weights(rule_weights[rule_id], nont_weight_vectors, rule_dimensions[rule_id], zero, one, sum, prod);
-                        rule_val = dot_product(prod, lhn_outside_weights, rule_val);
+                        rule_val = compute_rule_frequency(rule_weights[rule_id], lhn_outside_weights, nont_weight_vectors, rule_dimensions[rule_id], zero, one, sum, prod);
 
                         rule_counts[rule_id] = dot_product(sum, rule_counts[rule_id], rule_val);
                     }
@@ -756,7 +755,7 @@ public:
             }
 
             // maximization
-            for (auto group : normalization_groups) {
+            for (const std::vector<unsigned> & group : normalization_groups) {
                 const unsigned group_dim = rule_dimensions[group[0]][0];
                 std::vector<Val> group_counts = std::vector<Val>(group_dim, zero);
                 for (auto member : group) {
@@ -764,18 +763,18 @@ public:
                     for (unsigned dim = 0; dim < rule_dimensions[member][0]; ++dim) {
 
                         const std::vector<double>::iterator block_start = rule_counts[member].begin() + block_size * dim;
-                        for (auto it = block_start; it != block_start + block_size * (dim + 1); ++it) {
-                            group[dim] = sum(*it, group[dim]);
+                        for (auto it = block_start; it != block_start + block_size; ++it) {
+                            group_counts[dim] = sum(*it, group[dim]);
                         }
                     }
                 }
                 for (auto member : group) {
                     const unsigned block_size = reduce([] (unsigned x, unsigned y) -> unsigned {return x * y;}, rule_dimensions[member], (unsigned) 1, (unsigned) 1);
                     for (unsigned dim = 0; dim < rule_dimensions[member][0]; ++dim) {
-                        if (group[dim] > 0) {
+                        if (group_counts[dim] > 0) {
                             const unsigned block_start = block_size * dim;
                             for (unsigned offset = block_start; offset < block_start + block_size; ++offset) {
-                                *(rule_weights[member].begin() + offset) = division(*(rule_counts[member].begin() + offset), group[dim]);
+                                *(rule_weights[member].begin() + offset) = division(*(rule_counts[member].begin() + offset), group_counts[dim]);
                             }
                         }
                     }
