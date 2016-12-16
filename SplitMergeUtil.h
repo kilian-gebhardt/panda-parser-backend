@@ -13,8 +13,12 @@ unsigned indexation (const std::vector<unsigned> & positions, const std::vector<
     assert(positions.size() == dimensions.size());
     for (unsigned i = 0; i < positions.size(); ++i){
         unsigned offset = 1;
-        for (unsigned j = i + 1; j < dimensions.size(); ++j)
-            offset *= dimensions[j];
+        for (unsigned j = i + 1; j < dimensions.size(); ++j) {
+            if (half)
+                offset *= dimensions[j] / 2;
+            else
+                offset *= dimensions[j];
+        }
         if (half)
             index += (positions[i] / 2) * offset;
         else
@@ -96,7 +100,7 @@ void accumulate_probabilites(const std::vector<double>::iterator goal_value
     }
 }
 
-void fill_merge(const std::vector<double> & weights, std::vector<double> merged_weights, const std::vector<unsigned> & old_dimensions
+void fill_merge(const std::vector<double> & weights, std::vector<double> & merged_weights, const std::vector<unsigned> & old_dimensions
         , const std::vector<unsigned> & new_dimensions, std::vector<unsigned> & selection, const unsigned dim,
                 const std::vector<std::vector<std::vector<unsigned>>> & merges, const std::vector<double> & lhn_merge_weights
 ) {
@@ -126,10 +130,7 @@ std::vector<double> merge_rule(  const std::vector<double> & weights
                     , const std::vector<std::vector<std::vector<unsigned>>> & merges
                     , const std::vector<double> & lhn_merge_weights
                     ) {
-    unsigned new_size = 1;
-    for (auto dim : new_dimensions) {
-        new_size *= dim * 2;
-    }
+    unsigned new_size = calc_size(new_dimensions);
 
     std::vector<double> merged_weights = std::vector<double>(new_size);
     std::vector<unsigned> selection;
@@ -243,7 +244,7 @@ std::vector<double> compute_outside_weights(const std::vector<double> & rule_wei
         , const std::vector<unsigned> & dim_rule, const double zero, const double one
         , const Accum1 sum , Accum2 prod, const unsigned target_pos) {
 
-    std::vector<double> result = std::vector<double>(dim_rule[target_pos], zero);
+    std::vector<double> result = std::vector<double>(dim_rule[target_pos + 1], zero);
 
     std::vector<double>::const_iterator next_la_weight = rule_weight_tensor.begin();
     unsigned steps = 0;

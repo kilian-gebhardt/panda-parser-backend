@@ -508,15 +508,19 @@ public:
                 rule_weights_splitted.push_back(split_probabilities);
             }
 
-            // clear rule_weights_la
-//            for (double * ptr : rule_weights_la)
-//                free(ptr);
             rule_weights_la.clear();
 
             // em training
             do_em_training_la(rule_weights_splitted, normalization_groups, n_epochs, split_dimensions,
                               rule_to_nonterminals, nont_idx, zero, one, root, leaf, prod, sum, division);
 
+            for (auto rule_weights_ : rule_weights_splitted) {
+                for (auto rule_weight : rule_weights_) {
+                    if (std::isnan(rule_weight))
+                        continue;
+                    assert(rule_weight <= one);
+                }
+            }
 
             // determine merges
             const auto merge_info = merge_prepare(rule_weights_splitted
@@ -524,7 +528,7 @@ public:
                     , rule_to_nonterminals
                     , nont_idx
                     , leaf, root, zero, one, sum, prod, division, difference
-                    , exp(0.1));
+                    , log(0.1));
 
 
             // nonterminal -> new_la -> contributing old_las
@@ -542,7 +546,7 @@ public:
                 //merges.reserve(rule_to_nonterminals[i].size());
                 const std::vector<double> & lhn_merge_factors = merge_factors[rule_to_nonterminals[i][0]];
                 for (auto nont : rule_to_nonterminals[i]) {
-                    old_dimensions.push_back(nont_dimensions[nont] * 2);
+                    old_dimensions.push_back(split_dimensions[nont]);
                     new_dimensions.push_back(merge_selection[nont].size());
                     merges.push_back(merge_selection[nont]);
                 }
@@ -551,10 +555,6 @@ public:
                                    lhn_merge_factors));
             }
 
-            // free memory of split weights
-//            for (double *ptr : rule_weights_splitted) {
-//                free(ptr);
-//            }
             rule_weights_splitted.clear();
 
             // em training
@@ -669,7 +669,7 @@ public:
 
     template <typename NontToIdx, typename Val, typename Accum1, typename Accum2, typename Accum3>
     void do_em_training_la(
-            std::vector<std::vector<double>> rule_weights
+            std::vector<std::vector<double>> & rule_weights
             , const std::vector<std::vector<unsigned>> & normalization_groups
             , const unsigned n_epochs
             , const std::vector<unsigned> & nont_dimensions
@@ -764,14 +764,14 @@ public:
 
                         const std::vector<double>::iterator block_start = rule_counts[member].begin() + block_size * dim;
                         for (auto it = block_start; it != block_start + block_size; ++it) {
-                            group_counts[dim] = sum(*it, group[dim]);
+                            group_counts[dim] = sum(*it, group_counts[dim]);
                         }
                     }
                 }
                 for (auto member : group) {
                     const unsigned block_size = reduce([] (unsigned x, unsigned y) -> unsigned {return x * y;}, rule_dimensions[member], (unsigned) 1, (unsigned) 1);
                     for (unsigned dim = 0; dim < rule_dimensions[member][0]; ++dim) {
-                        if (group_counts[dim] > 0) {
+                        if (group_counts[dim] > zero) {
                             const unsigned block_start = block_size * dim;
                             for (unsigned offset = block_start; offset < block_start + block_size; ++offset) {
                                 *(rule_weights[member].begin() + offset) = division(*(rule_counts[member].begin() + offset), group_counts[dim]);
@@ -785,8 +785,27 @@ public:
             for (auto i = 0; i < rule_weights.size(); ++i) {
                 std::cerr << " { ";
                 for (double elem : rule_weights[i])
-                    std::cerr << elem << " ";
+                    std::cerr << exp(elem) << " ";
                 std::cerr << " } , ";
+            }
+            std::cerr << std::endl;
+            std::cerr<<"Nont sums: ";
+            unsigned i = 0;
+            for (auto group : normalization_groups) {
+                std::vector<double> dim_weights = std::vector<double>(nont_dimensions[i], zero);
+                for (auto rule_id : group) {
+                    unsigned size = rule_weights[rule_id].size();
+                    for (unsigned weight_id = 0; weight_id < size; ++weight_id) {
+                        const unsigned index = weight_id / (size / nont_dimensions[i]);
+                        dim_weights[index] =sum(dim_weights[index], rule_weights[rule_id][weight_id]);
+                    }
+                }
+                std::cerr << " { ";
+                for (auto weight_sum : dim_weights) {
+                    std::cerr << exp(weight_sum) << " ";
+                }
+                std::cerr << " } " ;
+                ++i;
             }
             std::cerr << std::endl;
 
@@ -918,9 +937,12 @@ public:
         std::vector<std::vector<std::vector<unsigned>>> merge_selection;
         std::vector<unsigned> new_nont_dimensions;
         unsigned nont = 0;
+        std::cerr << "merge deltas: ";
         for (auto delta : merge_delta) {
+            std::cerr << " { ";
             merge_selection.push_back(std::vector<std::vector<unsigned>>());
             for (unsigned dim = 0; dim < nont_dimensions[nont] / 2; ++dim) {
+                std::cerr << exp(delta[dim]) << " ";
                 if (delta[dim] >= merge_threshold) {
                     merge_selection.back().push_back(std::vector<unsigned>());
                     merge_selection.back().back().push_back(dim);
@@ -930,9 +952,11 @@ public:
                     merge_selection.back().push_back(std::vector<unsigned>(1, dim + 1));
                 }
             }
+            std::cerr << " } ";
             ++nont;
             new_nont_dimensions.push_back(merge_selection.back().size());
         }
+        std::cerr << std::endl;
 
 
         return std::make_tuple(merge_selection, new_nont_dimensions, p);

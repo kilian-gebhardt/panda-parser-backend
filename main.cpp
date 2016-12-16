@@ -315,7 +315,7 @@ int main() {
         std::cerr << "T: " << item << " " << pair.first[item] << " " << pair.second[item] << std::endl;
     }
 
-    auto my_rule_groups = std::vector<std::vector<unsigned>>({{1}, {2}, {3}, {4, 6}, {5}, {7}, {8}, {9}});
+    auto my_rule_groups = std::vector<std::vector<unsigned>>({{1}, {2}, {3}, {4}, {5, 6}, {7}, {8}, {9}, {0}});
 
     auto my_rule_weights2 = std::vector<double>({0, 1, 1, 1, 1, 0.5, 0.5, 1, 1, 1});
 
@@ -346,6 +346,7 @@ int main() {
             return 8;
     };
     auto rule_to_nont_idx = std::vector<std::vector<unsigned>>(10);
+    rule_to_nont_idx[0] = std::vector<unsigned>({8});
     for (auto p : sDCP.lhn_to_rule) {
         for (auto rule : p.second) {
             rule_to_nont_idx[rule->id].push_back(nont_idx(rule->lhn));
@@ -354,10 +355,16 @@ int main() {
             }
         }
     }
-
     std::cerr << std::endl;
 
-    manager.split_merge(vec_new, rule_to_nont_idx, my_rule_groups, 20, nont_idx, 5, 8);
+    for (unsigned nont = 0; nont < my_rule_groups.size(); ++ nont) {
+        const auto & group = my_rule_groups[nont];
+        for (auto rule_id : group) {
+            assert(rule_to_nont_idx[rule_id][0] == nont);
+        }
+    }
+
+    manager.split_merge(vec_new, rule_to_nont_idx, my_rule_groups, 10, nont_idx, 2, 9);
 
     return 0;
 }
