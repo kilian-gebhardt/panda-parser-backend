@@ -12,6 +12,7 @@
 #include <random>
 #include "SplitMergeUtil.h"
 #include <functional>
+#include <boost/range/irange.hpp>
 
 
 class Chance {
@@ -448,16 +449,36 @@ public:
 //
 //    }
 
-
-    template <typename NontToIdx>
     std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge(
-              const std::vector<double> & rule_weights
-            , const std::vector<std::vector<unsigned>> & rule_to_nonterminals
-            , const std::vector<std::vector<unsigned>> & normalization_groups
-            , const unsigned n_epochs
-            , const NontToIdx nont_idx
-            , const unsigned split_merge_cycles
-            , const unsigned n_nonts
+            const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
+            const unsigned n_epochs, const std::map<Nonterminal, unsigned> &nont_idx, const unsigned split_merge_cycles
+    ) {
+        auto nont_idx_f = [&](const Nonterminal nont) -> unsigned { return nont_idx.at(nont); };
+
+        std::cerr << "building normalization groups" << std::endl;
+
+        std::vector<std::vector<unsigned>> normalization_groups;
+        for (unsigned rule_idx = 0; rule_idx < rule_to_nonterminals.size(); ++rule_idx) {
+            if (rule_to_nonterminals[rule_idx].size() > 0) {
+                if (normalization_groups.size() <= rule_to_nonterminals[rule_idx][0]) {
+                    normalization_groups.resize(rule_to_nonterminals[rule_idx][0] + 1);
+                }
+                normalization_groups[rule_to_nonterminals[rule_idx][0]].push_back(rule_idx);
+            }
+        }
+
+        std::cerr << "starting split merge training" << std::endl;
+        std::cerr << "# nonts: " << nont_idx.size() << std::endl;
+
+        return split_merge(rule_weights, rule_to_nonterminals, normalization_groups, n_epochs, nont_idx_f,
+                           split_merge_cycles, nont_idx.size());
+    };
+
+    template<typename NontToIdx>
+    std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge(
+            const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
+            const std::vector<std::vector<unsigned>> &normalization_groups, const unsigned n_epochs,
+            const NontToIdx nont_idx, const unsigned split_merge_cycles, const unsigned n_nonts
     ) {
 
         // TODO implement flexibility for semiring!
@@ -497,6 +518,9 @@ public:
 
         for (unsigned cycle = 0; cycle < split_merge_cycles; ++cycle) {
             std::vector<unsigned> split_dimensions;
+
+            std::cerr << "prepare split" << std::endl;
+
             for (const unsigned dim : nont_dimensions)
                 split_dimensions.push_back(dim * 2);
             // splitting
@@ -514,6 +538,8 @@ public:
             root_weights_splitted = {prod(log(root_split), root), prod(log(1 - root_split), root)};
 
             rule_weights_la.clear();
+
+            std::cerr << "em training after " << cycle + 1 << ". split" << std::endl;
 
             // em training
             do_em_training_la(rule_weights_splitted, root_weights_splitted, normalization_groups, n_epochs, split_dimensions,
@@ -584,19 +610,12 @@ public:
     }
 
     template<typename Val, typename Accum, typename Accum2, typename NontToIdx>
-    std::pair<std::map<ParseItem<Nonterminal, Position>, std::vector<Val>>,
-            std::map<ParseItem<Nonterminal, Position>, std::vector<Val>>>
-    io_weights_la(  const std::vector<std::vector<Val>> & rules
-                  , const std::vector<unsigned> & nont_dimensions
-                  , const std::vector<std::vector<unsigned>> rule_id_to_nont_ids
-                  , const NontToIdx nont_idx
-            , const Val leaf
-            , const std::vector<Val> & root
-            , const Val zero
-            , const Val one
-            , Accum sum
-            , Accum2 prod
-            , const unsigned i) const {
+    std::pair<std::map<ParseItem < Nonterminal, Position>, std::vector<Val>>,
+    std::map<ParseItem < Nonterminal, Position>, std::vector<Val>>>
+    io_weights_la(const std::vector<std::vector<Val>> &rules, const std::vector<unsigned> &nont_dimensions,
+                  const std::vector<std::vector<unsigned>> rule_id_to_nont_ids, const NontToIdx nont_idx,
+                  const Val leaf, const std::vector<Val> &root, const Val zero, const Val one, const Accum sum, const Accum2 prod,
+                  const unsigned i) const {
 
 
         // TODO implement for general case (== no topological order) approximation of inside weights
@@ -690,11 +709,9 @@ public:
             , const std::vector<unsigned> & nont_dimensions
             , const std::vector<std::vector<unsigned>> & rule_to_nont_ids
             , const NontToIdx nont_idx
-            , Val zero, Val one, Val leaf, Accum1 prod, Accum2 sum, Accum3 division
+            , const Val zero, const Val one, const Val leaf, const Accum1 prod, const Accum2 sum, const Accum3 division
     ){
-        std::vector<std::vector<Val>> rule_counts;
-        std::vector<Val> root_counts;
-        std::vector<std::vector<unsigned>> rule_dimensions;
+
         unsigned epoch = 0;
 
         std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
@@ -712,11 +729,15 @@ public:
 
         while (epoch < n_epochs) {
 
+            std::vector<std::vector<Val>> rule_counts;
+            std::vector<std::vector<unsigned>> rule_dimensions;
+
             // expectation
             assert (rule_counts.size() == 0);
             // allocate memory for rule counts
             for (auto nont_ids : rule_to_nont_ids) {
                 unsigned size = 1;
+                // todo rule_dimensions do not change during the iterations
                 std::vector<unsigned> rule_dimension;
                 for (auto nont_id : nont_ids) {
                     rule_dimension.push_back(nont_dimensions[nont_id]);
@@ -725,14 +746,9 @@ public:
                 rule_dimensions.push_back(rule_dimension);
 
                 rule_counts.push_back(std::vector<Val>(size, zero));
-//                rule_counts.push_back((double *) malloc(sizeof(Val) * size));
-                // init counts with zeros
-//                for (double * i = rule_counts.back(); i < rule_counts.back() + size; ++i) {
-//                    *i = zero;
-//                }
             }
 
-            root_counts = std::vector<Val>(nont_dimensions[nont_idx(goals[0].nonterminal)], zero);
+            std::vector<Val> root_counts = std::vector<Val>(nont_dimensions[nont_idx(goals[0].nonterminal)], zero);
 
 
             for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
@@ -754,7 +770,12 @@ public:
                     std::cerr << std::endl;
                 }
 //
-                root_counts = dot_product(sum, root_counts, tr_io_weight.first.at(goals[trace_id]));
+                root_counts = dot_product(sum, root_counts, dot_product(prod, tr_io_weight.first.at(goals[trace_id]), tr_io_weight.second.at(goals[trace_id])));
+
+                const auto instance_root_weights = tr_io_weight.first.at(goals[trace_id]);
+                const Val instance_root_weight = reduce(sum, dot_product(prod, instance_root_weights, the_root_weights), zero);
+                if (debug)
+                    std::cerr << "instance root weight: " << instance_root_weight << std::endl;
 
                 for (auto & pair : trace) {
                     const std::vector<Val> & lhn_outside_weights = tr_io_weight.second.at(pair.first);
@@ -763,16 +784,13 @@ public:
 
                         std::vector<std::vector<Val>> nont_weight_vectors;
                         nont_weight_vectors.reserve(witness.second.size());
-                        // TODO root weights?!
-//                        unsigned i = 0;
                         for (const auto & rhs_item : witness.second) {
-                            // TODO second -> first ?!
                             nont_weight_vectors.push_back(tr_io_weight.first.at(*rhs_item));
-//                            ++i;
                         }
 
                         std::vector<Val> rule_val;
                         rule_val = compute_rule_frequency(rule_weights[rule_id], lhn_outside_weights, nont_weight_vectors, rule_dimensions[rule_id], zero, one, sum, prod);
+                        rule_val = scalar_product(division, rule_val, instance_root_weight);
 
                         rule_counts[rule_id] = dot_product(sum, rule_counts[rule_id], rule_val);
                     }
@@ -784,9 +802,9 @@ public:
                 const unsigned group_dim = rule_dimensions[group[0]][0];
                 std::vector<Val> group_counts = std::vector<Val>(group_dim, zero);
                 for (auto member : group) {
-                    const unsigned block_size = reduce([] (const unsigned x, const unsigned y) -> unsigned {return x * y;}, rule_dimensions[member], (unsigned) 1, (unsigned) 1);
-                    for (unsigned dim = 0; dim < rule_dimensions[member][0]; ++dim) {
-
+                    const unsigned block_size = subdim(rule_dimensions[member]);
+                    // reduce([] (const unsigned x, const unsigned y) -> unsigned {return x * y;}, rule_dimensions[member], (unsigned) 1, (unsigned) 1);
+                    for (unsigned dim : boost::irange((unsigned) 0, group_dim)) {
                         const std::vector<double>::iterator block_start = rule_counts[member].begin() + block_size * dim;
                         for (auto it = block_start; it != block_start + block_size; ++it) {
                             group_counts[dim] = sum(*it, group_counts[dim]);
@@ -794,8 +812,8 @@ public:
                     }
                 }
                 for (auto member : group) {
-                    const unsigned block_size = reduce([] (unsigned x, unsigned y) -> unsigned {return x * y;}, rule_dimensions[member], (unsigned) 1, (unsigned) 1);
-                    for (unsigned dim = 0; dim < rule_dimensions[member][0]; ++dim) {
+                    const unsigned block_size = subdim(rule_dimensions[member]);
+                    for (unsigned dim : boost::irange((unsigned) 0, group_dim)) {
                         if (group_counts[dim] > zero) {
                             const unsigned block_start = block_size * dim;
                             for (unsigned offset = block_start; offset < block_start + block_size; ++offset) {
@@ -808,11 +826,15 @@ public:
 
             // maximize root weights:
             const Val root_sum = reduce(sum, root_counts, zero);
-            std::cerr << "root sum " << root_sum << std::endl;
+            std::cerr << "root sum " << exp(root_sum) << std::endl;
             const unsigned len = the_root_weights.size();
             the_root_weights.clear();
-            for (const auto weight : root_counts)
+            std::cerr << "single root weights: ";
+            for (const auto weight : root_counts) {
+                std::cerr << exp(weight) << "/" << exp(division(weight, root_sum)) << " ";
                 the_root_weights.push_back(division(weight, root_sum));
+            }
+            std::cerr << std::endl;
             assert(len == the_root_weights.size());
 
             epoch++;
@@ -940,7 +962,7 @@ public:
 
                 // compute Q( item )
                 Val denominator = zero;
-                for (unsigned dim = 0; dim < nont_dimensions[nont_idx(item.nonterminal)]; ++dim) {
+                for (unsigned dim : boost::irange((unsigned) 0, nont_dimensions[nont_idx(item.nonterminal)])) {
                     const Val in = io_weight.first.at(item)[dim];
                     const Val out = io_weight.second.at(item)[dim];
                     denominator = sum(denominator, prod(in, out));

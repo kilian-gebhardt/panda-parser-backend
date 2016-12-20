@@ -325,33 +325,51 @@ int main() {
         std::cerr << vec_new[i] << " ";
     }
 
-    auto nont_idx = [] (const std::string & nont) {
-        if (nont == "S")
-            return 0;
-        else if (nont == "A")
-            return 1;
-        else if (nont == "B")
-            return 2;
-        else if (nont == "C")
-            return 3;
-        else if (nont == "D")
-            return 4;
-        else if (nont == "E")
-            return 5;
-        else if (nont == "F")
-            return 6;
-        else if (nont == "G")
-            return 7;
-        else
-            return 8;
+    const std::map<std::string, unsigned> mymap = {
+                {"S", 0}
+              , {"A", 1}
+              , {"B", 2}
+              , {"C", 3}
+              , {"D", 4}
+              , {"E", 5}
+              , {"F", 6}
+              , {"G", 7}
+              , {"H", 8}
     };
+
+    auto nont_idx2 = [&] (const std::string & nont) {
+        if (mymap.count(nont))
+            return mymap.at(nont);
+        else
+            return (unsigned) 8;
+    };
+//    auto nont_idx = [] (const std::string & nont) {
+//        if (nont == "S")
+//            return 0;
+//        else if (nont == "A")
+//            return 1;
+//        else if (nont == "B")
+//            return 2;
+//        else if (nont == "C")
+//            return 3;
+//        else if (nont == "D")
+//            return 4;
+//        else if (nont == "E")
+//            return 5;
+//        else if (nont == "F")
+//            return 6;
+//        else if (nont == "G")
+//            return 7;
+//        else
+//            return 8;
+//    };
     auto rule_to_nont_idx = std::vector<std::vector<unsigned>>(10);
     rule_to_nont_idx[0] = std::vector<unsigned>({8});
     for (auto p : sDCP.lhn_to_rule) {
         for (auto rule : p.second) {
-            rule_to_nont_idx[rule->id].push_back(nont_idx(rule->lhn));
+            rule_to_nont_idx[rule->id].push_back(nont_idx2(rule->lhn));
             for (auto nont : rule->rhs) {
-                rule_to_nont_idx[rule->id].push_back(nont_idx(nont));
+                rule_to_nont_idx[rule->id].push_back(nont_idx2(nont));
             }
         }
     }
@@ -364,7 +382,8 @@ int main() {
         }
     }
 
-    manager.split_merge(vec_new, rule_to_nont_idx, my_rule_groups, 10, nont_idx, 4, 9);
+    // manager.split_merge(vec_new, rule_to_nont_idx, my_rule_groups, 10, nont_idx2, 4, 9);
+    manager.split_merge(vec_new, rule_to_nont_idx, 10, mymap, 4);
 
     return 0;
 }
