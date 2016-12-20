@@ -6,6 +6,7 @@
 #define STERMPARSER_SPLITMERGEUTIL_H
 
 #include <boost/ptr_container/ptr_vector.hpp>
+#include <stdlib.h>
 
 // new representation
 unsigned indexation (const std::vector<unsigned> & positions, const std::vector<unsigned> & dimensions, bool half=false) {
@@ -32,12 +33,18 @@ double weight(const std::vector<double> & weights, const std::vector<unsigned> &
     return weights[index];
 }
 
+double fRand(double fMin, double fMax)
+{
+    double f = (double) rand() / RAND_MAX;
+    return fMin + f * (fMax - fMin);
+}
 
 double rand_split(unsigned id) {
-    if (id % 2)
-        return 0.55;
-    else
-        return 0.45;
+    return fRand(0.45, 0.55);
+//    if (id % 2)
+//        return 0.55;
+//    else
+//        return 0.45;
 }
 
 void fill_split(const std::vector<double> & old_weights, std::vector<double> & new_weights, const std::vector<unsigned> & dimensions
@@ -81,28 +88,32 @@ std::vector<double> split_rule(const std::vector<double> & weights, const std::v
     return splits;
 }
 
+template <typename Accum1, typename Accum2>
 void accumulate_probabilites(const std::vector<double>::iterator goal_value
                               , const std::vector<double> & old_weights
         , const std::vector<unsigned> & old_dimensions
         , std::vector<unsigned> & selection, const unsigned dim
         , const std::vector<std::vector<unsigned>> & merges
-        , const std::vector<double> & lhn_merge_weights) {
+        , const std::vector<double> & lhn_merge_weights
+        , const Accum1 & sum
+        , const Accum2 & prod) {
     if (dim == old_dimensions.size()) {
-        *goal_value += weight(old_weights, selection, old_dimensions) * lhn_merge_weights[selection[0]];
+        *goal_value = sum(*goal_value, prod(weight(old_weights, selection, old_dimensions), lhn_merge_weights[selection[0]]));
     }
     else {
         assert(merges[dim].size() > 0);
         for (auto value : merges[dim]) {
             selection.push_back(value);
-            accumulate_probabilites(goal_value, old_weights, old_dimensions, selection, dim+1, merges, lhn_merge_weights);
+            accumulate_probabilites(goal_value, old_weights, old_dimensions, selection, dim+1, merges, lhn_merge_weights, sum, prod);
             selection.pop_back();
         }
     }
 }
 
+template <typename Accum1, typename Accum2>
 void fill_merge(const std::vector<double> & weights, std::vector<double> & merged_weights, const std::vector<unsigned> & old_dimensions
         , const std::vector<unsigned> & new_dimensions, std::vector<unsigned> & selection, const unsigned dim,
-                const std::vector<std::vector<std::vector<unsigned>>> & merges, const std::vector<double> & lhn_merge_weights
+                const std::vector<std::vector<std::vector<unsigned>>> & merges, const std::vector<double> & lhn_merge_weights, const Accum1 & sum, const Accum2 & prod
 ) {
     if (new_dimensions.size() == dim) {
         unsigned index = indexation(selection, new_dimensions);
@@ -112,29 +123,33 @@ void fill_merge(const std::vector<double> & weights, std::vector<double> & merge
         for (unsigned i = 0; i < selection.size(); ++i) {
             the_merges.push_back(merges[i][selection[i]]);
         }
-        accumulate_probabilites(goal_value, weights, old_dimensions, witnesses, 0, the_merges, lhn_merge_weights);
+        accumulate_probabilites(goal_value, weights, old_dimensions, witnesses, 0, the_merges, lhn_merge_weights, sum, prod);
     }
     else {
         assert(new_dimensions[dim] > 0);
         for (unsigned i = 0; i < new_dimensions[dim]; ++i){
             selection.push_back(i);
-            fill_merge(weights, merged_weights, old_dimensions, new_dimensions, selection, dim + 1, merges, lhn_merge_weights);
+            fill_merge(weights, merged_weights, old_dimensions, new_dimensions, selection, dim + 1, merges, lhn_merge_weights, sum, prod);
             selection.pop_back();
         }
     }
 }
 
+template <typename Accum1, typename Accum2>
 std::vector<double> merge_rule(  const std::vector<double> & weights
                     , const std::vector<unsigned> & old_dimensions
                     , const std::vector<unsigned> & new_dimensions
                     , const std::vector<std::vector<std::vector<unsigned>>> & merges
                     , const std::vector<double> & lhn_merge_weights
+                    , const Accum1 & sum
+                    , const Accum2 & prod
+                    , const double zero
                     ) {
     unsigned new_size = calc_size(new_dimensions);
 
-    std::vector<double> merged_weights = std::vector<double>(new_size);
+    std::vector<double> merged_weights = std::vector<double>(new_size, zero);
     std::vector<unsigned> selection;
-    fill_merge(weights, merged_weights, old_dimensions, new_dimensions, selection, 0, merges, lhn_merge_weights);
+    fill_merge(weights, merged_weights, old_dimensions, new_dimensions, selection, 0, merges, lhn_merge_weights, sum, prod);
     return merged_weights;
 }
 

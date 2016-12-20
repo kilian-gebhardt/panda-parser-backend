@@ -364,7 +364,7 @@ int main() {
         }
     }
 
-    manager.split_merge(vec_new, rule_to_nont_idx, my_rule_groups, 10, nont_idx, 2, 9);
+    manager.split_merge(vec_new, rule_to_nont_idx, my_rule_groups, 10, nont_idx, 4, 9);
 
     return 0;
 }
