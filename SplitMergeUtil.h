@@ -7,6 +7,13 @@
 
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <stdlib.h>
+#include <iostream>
+
+#ifdef NDEBUG
+# define NDEBUG_DISABLED
+# undef NDEBUG
+#endif
+#include <cassert>
 
 // new representation
 unsigned indexation (const std::vector<unsigned> & positions, const std::vector<unsigned> & dimensions, bool half=false) {
@@ -40,7 +47,7 @@ double fRand(double fMin, double fMax)
     return fMin + f * (fMax - fMin);
 }
 
-double rand_split(unsigned id) {
+double rand_split() {
     return fRand(0.45, 0.55);
 //    if (id % 2)
 //        return 0.55;
@@ -56,7 +63,7 @@ void fill_split(const std::vector<double> & old_weights, std::vector<double> & n
         // TODO log likelihoods
         assert (origin_index < old_weights.size());
         assert (index < new_weights.size());
-        double split_weight = old_weights[origin_index] + log(rand_split(selection.back()));
+        double split_weight = old_weights[origin_index] + log(rand_split());
         new_weights[index] = split_weight;
     }
     else {

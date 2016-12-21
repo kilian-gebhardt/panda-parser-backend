@@ -38,10 +38,9 @@ operator<<(std::ostream& os, const std::tuple<T0, T...>& t){
 
 template <typename T>
 bool pairwise_different(const std::vector<T> & vec){
-    auto i = 0;
-    for (auto s1 : vec) {
-        for(auto j = ++i; j < vec.size(); ++j) {
-            if (s1 == vec[j]) {
+    for (auto s1 = vec.begin(); s1 != vec.end(); ++s1) {
+        for(auto s2 = s1 + 1; s2 != vec.end(); ++s2) {
+            if (*s1 == *s2) {
                 return false;
             }
         }

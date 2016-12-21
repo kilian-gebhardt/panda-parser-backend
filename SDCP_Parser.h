@@ -41,7 +41,7 @@ bool operator<(const ParseItem<Nonterminal, Position>& lhs, const ParseItem<Nont
         return true;
     if (lhs.nonterminal > rhs.nonterminal)
         return false;
-    int i = 0;
+    unsigned i = 0;
     while (i < lhs.spans_inh.size()) {
         if (lhs.spans_inh[i] < rhs.spans_inh[i])
             return true;
@@ -117,7 +117,7 @@ private:
 
                 if (term.head != input.get_tree_label(position))
                     return false;
-                if (term.children.size() > 0 != input.get_children(position).size() > 0)
+                if ((term.children.size() > 0) != (input.get_children(position).size() > 0))
                     return false;
                 if (term.children.size() > 0) {
                     std::pair<Position, Position> dummy;

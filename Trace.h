@@ -347,7 +347,7 @@ public:
         unsigned epoch = 0;
 
 
-        std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
+        std::cerr << "Epoch " << epoch << "/" << n_epochs << ": ";
 /*
         for (auto i = rule_weights.begin(); i != rule_weights.end(); ++i) {
             std::cerr << *i << " ";
@@ -407,8 +407,8 @@ public:
                 }
             }
             epoch++;
-            std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
-            for (auto i = 0; i < rule_weights.size(); ++i) {
+            std::cerr << "Epoch " << epoch << "/" << n_epochs << ": ";
+            for (unsigned i = 0; i < rule_weights.size(); ++i) {
                 std::cerr << rule_weights[i] << " ";
             }
             std::cerr << std::endl;
@@ -506,22 +506,25 @@ public:
     ) {
 
         // TODO implement flexibility for semiring!
-        auto sum = [] (const double x, const double y) -> double {
+        const auto sum = [](const double x, const double y) -> double {
             const double minus_infinity = -std::numeric_limits<double>::infinity();
             if (x == minus_infinity)
                 return y;
             else if (y == minus_infinity)
                 return x;
-            return log(exp(x) + exp(y));};
-        auto difference = [] (const double x, const double y) -> double {
+            return log(exp(x) + exp(y));
+        };
+        const auto difference = [](const double x, const double y) -> double {
             // const double minus_infinity = std::numeric_limits<double>::infinity();
-            return log(exp(x) - exp(y));};
-        auto prod = [] (const double x, const double y) -> double {return x + y;};
-        auto division = [] (const double x, const double y) -> double {return x - y;};
-        double root = 0.0;
-        double one = 0.0;
-        double leaf = 0.0;
-        double zero = minus_infinity;
+            return log(exp(x) - exp(y));
+        };
+        const auto prod = [](const double x, const double y) -> double { return x + y; };
+        const auto division = [](const double x, const double y) -> double { return x - y; };
+        const double root = 0.0;
+        const double one = 0.0;
+        const double leaf = 0.0;
+        const double zero = minus_infinity;
+        const double epsilon = log(0.0001);
 
 
         // the next two structures hold split-dimensions and
@@ -543,22 +546,22 @@ public:
         for (unsigned cycle = 0; cycle < split_merge_cycles; ++cycle) {
             std::vector<unsigned> split_dimensions;
 
-            std::cerr << "prepare split" << std::endl;
+            if (debug) std::cerr << "prepare split" << std::endl;
 
             for (const unsigned dim : nont_dimensions)
                 split_dimensions.push_back(dim * 2);
             // splitting
-            for (auto i = 0; i < rule_weights_la.size(); ++i) {
-                const std::vector<double> & rule_weight = rule_weights_la[i];
+            for (unsigned i = 0; i < rule_weights_la.size(); ++i) {
+                const std::vector<double> &rule_weight = rule_weights_la[i];
                 std::vector<unsigned> dimensions;
                 for (auto nont : rule_to_nonterminals[i]) {
                     dimensions.push_back(split_dimensions[nont]);
                 }
-                const std::vector<double> split_probabilities= split_rule(rule_weight, dimensions);
+                const std::vector<double> split_probabilities = split_rule(rule_weight, dimensions);
                 rule_weights_splitted.push_back(split_probabilities);
             }
 
-            const double root_split = rand_split(0);
+            const double root_split = rand_split();
             root_weights_splitted = {prod(log(root_split), root), prod(log(1 - root_split), root)};
 
             rule_weights_la.clear();
@@ -571,9 +574,10 @@ public:
 
             for (auto rule_weights_ : rule_weights_splitted) {
                 for (auto rule_weight : rule_weights_) {
-                    if (std::isnan(rule_weight))
-                        continue;
-                    assert(rule_weight <= one);
+                    if (rule_weight > sum(one, epsilon)) {
+                        std::cerr << "bad rule weight: " << rule_weight << std::endl;
+                    }
+                    assert(rule_weight <= sum(one, epsilon));
                 }
             }
 
@@ -626,9 +630,10 @@ public:
 
             for (auto rule_weights_ : rule_weights_merged) {
                 for (auto rule_weight : rule_weights_) {
-                    if (std::isnan(rule_weight))
-                        continue;
-                    assert(rule_weight <= one);
+                    if (rule_weight > sum(one, epsilon)) {
+                        std::cerr << "bad rule weight: " << rule_weight << std::endl;
+                    }
+                    assert(rule_weight <= sum(one, epsilon));
                 }
             }
 
@@ -663,8 +668,8 @@ public:
                 std::vector<std::vector<Val>> nont_vectors;
                 // nont_vectors.reserve(witness.second.size());
                 std::vector<unsigned> rule_dim;
-                for (auto nont_idx : rule_id_to_nont_ids[witness.first->id]) {
-                    rule_dim.push_back(nont_dimensions[nont_idx]);
+                for (auto nont : rule_id_to_nont_ids[witness.first->id]) {
+                    rule_dim.push_back(nont_dimensions[nont]);
                 }
                 for (const auto & dep_item : witness.second) {
                     nont_vectors.push_back(inside_weights.at(*dep_item));
@@ -746,7 +751,7 @@ public:
         unsigned epoch = 0;
 
         std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
-        for (auto i = 0; i < rule_weights.size(); ++i) {
+        for (unsigned i = 0; i < rule_weights.size(); ++i) {
             std::cerr << i << " { ";
             for (double elem : rule_weights[i])
                 std::cerr << exp(elem) << " ";
@@ -889,17 +894,17 @@ public:
                     }
                 }
             }
-            std::cerr << std::endl;
+            if (debug) std::cerr << std::endl;
 
             // maximize root weights:
-            const Val root_sum = reduce(sum, root_counts, zero);
-            std::cerr << "root sum " << exp(root_sum) << std::endl;
+            const Val likelihood = reduce(sum, root_counts, zero);
+            std::cerr << "likelihood " << exp(likelihood) << std::endl;
             const unsigned len = the_root_weights.size();
             the_root_weights.clear();
             if (debug) std::cerr << "single root weights: ";
             for (const auto weight : root_counts) {
-                if (debug) std::cerr << exp(weight) << "/" << exp(division(weight, root_sum)) << " ";
-                the_root_weights.push_back(division(weight, root_sum));
+                if (debug) std::cerr << exp(weight) << "/" << exp(division(weight, likelihood)) << " ";
+                the_root_weights.push_back(division(weight, likelihood));
             }
             if (debug) std::cerr << std::endl;
 
@@ -907,7 +912,7 @@ public:
 
             epoch++;
             std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
-            for (auto i = 0; i < rule_weights.size(); ++i) {
+            for (unsigned i = 0; i < rule_weights.size(); ++i) {
                 std::cerr << i << " { ";
                 for (double elem : rule_weights[i])
                     std::cerr << exp(elem) << " ";
@@ -1046,6 +1051,12 @@ public:
                     assert(! isnan(denominator));
                 }
 
+                // in of some item can be zero in certain LA-dimensions
+                // since LA-rule weights may converge to zero
+                // we ignore those dimensions in Δ computation
+                if (denominator == zero)
+                    continue;
+
                 for (unsigned dim = 0; dim < nont_dimensions[nont_idx(item.nonterminal)]; dim = dim+2) {
                     Val nominator = denominator;
                     const Val in1 = io_weight.first.at(item)[dim];
@@ -1068,7 +1079,14 @@ public:
                     double & delta = merge_delta[nont][dim / 2];
 
                     delta = prod(delta, Q);
-                    assert(! isnan(delta));
+
+
+                    if (isnan(delta)) {
+                        std::cerr << "bad fraction" << nominator << "/" << denominator << "=" << Q << std::endl;
+
+                        assert(!isnan(delta));
+                    }
+
                 }
             }
         }

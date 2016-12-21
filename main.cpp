@@ -321,7 +321,7 @@ int main() {
 
     auto vec_new = manager.do_em_training(my_rule_weights2, my_rule_groups, 10);
 
-    for (auto i = 0; i < vec_new.size(); ++i) {
+    for (unsigned i = 0; i < vec_new.size(); ++i) {
         std::cerr << vec_new[i] << " ";
     }
 

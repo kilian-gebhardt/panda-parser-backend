@@ -358,15 +358,15 @@ public:
 
             for (auto obj : argument)
                 try {
-                    const Variable & v = boost::get<Variable>(obj);
+                    boost::get<Variable>(obj);
                 }
                 catch (boost::bad_get &) {
-                    const Terminal & t = boost::get<Terminal>(obj);
+                    boost::get<Terminal>(obj);
 
                     // all terminals in the LCFRS may be linked
                     if (lcfrs_terminals.size() <= i || !lcfrs_terminals[i])
                         return false;
-                    i++;
+                    ++i;
                 }
         }
         return true;
