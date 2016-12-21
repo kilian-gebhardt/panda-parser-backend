@@ -13,6 +13,7 @@
 #include "SplitMergeUtil.h"
 #include <functional>
 #include <boost/range/irange.hpp>
+#include <cmath>
 
 
 class Chance {
@@ -335,7 +336,10 @@ public:
                     return y;
                 else if (y == minus_infinity)
                     return x;
-                return log(exp(x) + exp(y));};
+                // return log(exp(x) + exp(y));
+                // cf. wiki, better accuracy with very small probabilites
+                return x + log( 1 + exp(y - x));
+            };
             auto prod = [] (double x, double y) -> double {return x + y;};;
             auto division = [] (double x, double y) -> double {return x - y;};;
             double root = 0.0;
@@ -512,11 +516,19 @@ public:
                 return y;
             else if (y == minus_infinity)
                 return x;
-            return log(exp(x) + exp(y));
+            // return log(exp(x) + exp(y));
+            // cf. wiki, better accuracy with very small probabilites
+            if (x >= y)
+                return x + log1p(exp(y - x));
+            else
+                return y + log1p(exp(x - y));
         };
         const auto difference = [](const double x, const double y) -> double {
             // const double minus_infinity = std::numeric_limits<double>::infinity();
-            return log(exp(x) - exp(y));
+            if (x >= y)
+                return x + log(1 - exp(y - x));
+            else
+                return log(exp(x) - exp(y));
         };
         const auto prod = [](const double x, const double y) -> double { return x + y; };
         const auto division = [](const double x, const double y) -> double { return x - y; };
@@ -770,25 +782,26 @@ public:
             std::cerr << " } " << std::endl;
         }
 
-        while (epoch < n_epochs) {
+        std::vector<std::vector<Val>> rule_counts;
+        std::vector<std::vector<unsigned>> rule_dimensions;
+        for (auto nont_ids : rule_to_nont_ids) {
+            unsigned size = 1;
+            std::vector<unsigned> rule_dimension;
+            for (auto nont_id : nont_ids) {
+                rule_dimension.push_back(nont_dimensions[nont_id]);
+                size *= nont_dimensions[nont_id];
+            }
+            rule_dimensions.push_back(rule_dimension);
+        }
 
-            std::vector<std::vector<Val>> rule_counts;
-            std::vector<std::vector<unsigned>> rule_dimensions;
+        while (epoch < n_epochs) {
 
             // expectation
             assert (rule_counts.size() == 0);
-            // allocate memory for rule counts
-            for (auto nont_ids : rule_to_nont_ids) {
-                unsigned size = 1;
-                // todo rule_dimensions do not change during the iterations
-                std::vector<unsigned> rule_dimension;
-                for (auto nont_id : nont_ids) {
-                    rule_dimension.push_back(nont_dimensions[nont_id]);
-                    size *= nont_dimensions[nont_id];
-                }
-                rule_dimensions.push_back(rule_dimension);
 
-                rule_counts.push_back(std::vector<Val>(size, zero));
+            // initialize rule counts
+            for (const auto & dims : rule_dimensions) {
+                rule_counts.push_back(std::vector<Val>(calc_size(dims), zero));
             }
 
             std::vector<Val> root_counts = std::vector<Val>(nont_dimensions[nont_idx(goals[0].nonterminal)], zero);
@@ -1074,7 +1087,14 @@ public:
                     nominator = difference(nominator, prod(in1, out1));
                     nominator = difference(nominator, prod(in2, out2));
 
-                    const Val Q = quotient(nominator, denominator);
+                    const Val Q2 = quotient(nominator, denominator);
+
+                    // TODO: find a more generic solution to floating point accurcay problems
+                    const Val Q = log(exp(denominator)
+                                      + exp(in_merged + out_merged)
+                                      - exp(in1 + out1)
+                                      - exp(in2 + out2))
+                                   - denominator;
 
                     double & delta = merge_delta[nont][dim / 2];
 
@@ -1082,8 +1102,10 @@ public:
 
 
                     if (isnan(delta)) {
-                        std::cerr << "bad fraction" << nominator << "/" << denominator << "=" << Q << std::endl;
-
+                        std::cerr << "bad fraction " << nominator << " / " << denominator << " = " << Q << std::endl;
+                        std::cerr << "prod(in_merged, out_merged) = " << prod(in_merged, out_merged) << std::endl;
+                        std::cerr << "prod(in1, out1) = " << prod(in1, out1) << std::endl;
+                        std::cerr << "prod(in2, out2) = " << prod(in2, out2) << std::endl;
                         assert(!isnan(delta));
                     }
 

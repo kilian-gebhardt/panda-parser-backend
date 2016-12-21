@@ -202,6 +202,14 @@ unsigned subdim(const std::vector<unsigned> & dims, const unsigned target = 0) {
     return dim;
 }
 
+template <typename T>
+unsigned subdim_from(const std::vector<std::vector<T>> & dims, const unsigned start) {
+    unsigned dim = 1;
+    for (auto i = dims.begin() + start; i != dims.end(); ++i) {
+        dim *= i->size();
+    }
+    return dim;
+}
 
 template <typename Accum1, typename Accum2>
 std::vector<double> compute_inside_weights(const std::vector<double> & rule_weight_tensor
@@ -221,6 +229,7 @@ std::vector<double> compute_inside_weights(const std::vector<double> & rule_weig
             factors.reserve(dim_rule.size() - 1);
             while (rhs >= 0) {
                 if (rhs == dim_rule.size() - 1) {
+                    assert(next_la_weight != rule_weight_tensor.end());
                     const double val = prod(*next_la_weight, rhs > 0 ? factors[rhs - 1] : one);
                     target = sum(target, val);
                     ++next_la_weight;
@@ -238,10 +247,18 @@ std::vector<double> compute_inside_weights(const std::vector<double> & rule_weig
                     else
                         factors[rhs] = nont_weight_vectors[rhs][selection[rhs]];
                     ++selection[rhs];
-                    ++rhs;
+                    // if a factor is zero already, then we can abort early
+                    // but we have to increase next_la_weight accordingly
+                    if (factors[rhs] == zero) {
+                        unsigned skip = subdim_from(nont_weight_vectors, rhs+1);
+                        next_la_weight += skip;
+                    } else {
+                        ++rhs;
+                    }
                 }
             }
         }
+    assert(next_la_weight == rule_weight_tensor.end());
     return result;
 }
 
@@ -265,6 +282,8 @@ std::vector<double> compute_rule_frequency(const std::vector<double> & rule_weig
         std::vector<double> factors = std::vector<double>(dim_rule.size() - 1);
         while (rhs >= 0) {
             if (rhs == dim_rule.size() - 1) {
+                assert (target != result.end());
+                assert (next_la_weight != rule_weight_tensor.end());
                 const double val = prod(lhs_outside_weights[lhs], prod(*next_la_weight, rhs > 0 ? factors[rhs - 1] : one));
                 *target = val;
                 ++next_la_weight;
@@ -283,10 +302,20 @@ std::vector<double> compute_rule_frequency(const std::vector<double> & rule_weig
                 else
                     factors[rhs] = rhs_inside_weights[rhs][selection[rhs]];
                 ++selection[rhs];
-                ++rhs;
+                // if a factor is zero already, then we can abort early
+                // but we have to increase next_la_weight/ target accordingly
+                if (factors[rhs] == zero) {
+                    const unsigned skip = subdim_from(rhs_inside_weights, rhs+1);
+                    next_la_weight += skip;
+                    target += skip;
+                } else {
+                    ++rhs;
+                }
             }
         }
     }
+    assert (target == result.end());
+    assert (next_la_weight == rule_weight_tensor.end());
     return result;
 }
 
@@ -306,11 +335,18 @@ std::vector<double> compute_outside_weights(const std::vector<double> & rule_wei
         const unsigned sd = subdim(dim_rule);
         assert(next_la_weight == rule_weight_tensor.begin() + lhs * sd);
 
+        // we can skip rules with zero probability
+        if (lhn_outside_weight_vector[lhs] == zero) {
+            next_la_weight += sd;
+            continue;
+        }
+
         unsigned rhs = 0;
         std::vector<unsigned> selection = std::vector<unsigned>(dim_rule.size() - 1, 0);
         std::vector<double> factors = std::vector<double>(dim_rule.size() -1, one);
-        while (rhs >= 0) {
+        while (true) {
             if (rhs == dim_rule.size() - 1) {
+                assert (next_la_weight != rule_weight_tensor.end());
                 double val = prod(*next_la_weight, (rhs > 0) ? factors[rhs - 1] : one);
                 val = prod(val, lhn_outside_weight_vector[lhs]);
                 result[selection[target_pos] - 1] = sum(result[selection[target_pos] - 1], val);
@@ -330,10 +366,18 @@ std::vector<double> compute_outside_weights(const std::vector<double> & rule_wei
                 else
                     factors[rhs] = inside_weight_vectors[rhs][selection[rhs]];
                 ++selection[rhs];
-                ++rhs;
+                // if a factor is zero already, then we can abort early
+                // but we have to increase next_la_weight/ target accordingly
+                if (factors[rhs] == zero) {
+                    const unsigned skip = subdim_from(inside_weight_vectors, rhs+1);
+                    next_la_weight += skip;
+                } else {
+                    ++rhs;
+                }
             }
         }
     }
+    assert (next_la_weight == rule_weight_tensor.end());
     return result;
 }
 
