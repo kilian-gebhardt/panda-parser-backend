@@ -451,7 +451,7 @@ public:
 
     std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge(
             const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
-            const unsigned n_epochs, const std::map<Nonterminal, unsigned> &nont_idx, const unsigned split_merge_cycles
+            const unsigned n_epochs, const std::map<Nonterminal, unsigned> &nont_idx, const unsigned split_merge_cycles, const double merge_threshold
     ) {
         auto nont_idx_f = [&](const Nonterminal nont) -> unsigned { return nont_idx.at(nont); };
 
@@ -466,19 +466,43 @@ public:
                 normalization_groups[rule_to_nonterminals[rule_idx][0]].push_back(rule_idx);
             }
         }
+        if (debug) {
+            unsigned i = 0;
+            for (auto rtn : rule_to_nonterminals) {
+                std::cerr << i << ": ";
+                unsigned j = 0;
+                for (auto n : rtn) {
+                    if (j == 1) {
+                        std::cerr << "-> ";
+                    }
+                    std::cerr << n << " ";
+                    ++j;
+                }
+                std::cerr << ";" << std::endl;
+                ++i;
+            }
+            for (unsigned i = 0; i < normalization_groups.size(); ++i) {
+                std::cerr << i << " : { ";
+                for (auto n : normalization_groups[i]) {
+                    std::cerr << n << " ";
+                }
+                std::cerr << "} " ;
+            }
+            std::cerr << std::endl;
+        }
 
         std::cerr << "starting split merge training" << std::endl;
         std::cerr << "# nonts: " << nont_idx.size() << std::endl;
 
         return split_merge(rule_weights, rule_to_nonterminals, normalization_groups, n_epochs, nont_idx_f,
-                           split_merge_cycles, nont_idx.size());
+                           split_merge_cycles, nont_idx.size(), merge_threshold);
     };
 
     template<typename NontToIdx>
     std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge(
             const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
             const std::vector<std::vector<unsigned>> &normalization_groups, const unsigned n_epochs,
-            const NontToIdx nont_idx, const unsigned split_merge_cycles, const unsigned n_nonts
+            const NontToIdx nont_idx, const unsigned split_merge_cycles, const unsigned n_nonts, const double merge_threshold
     ) {
 
         // TODO implement flexibility for semiring!
@@ -554,19 +578,26 @@ public:
             }
 
             // determine merges
-            const auto merge_info = merge_prepare(rule_weights_splitted
-                    , root_weights_splitted
-                    , split_dimensions
-                    , rule_to_nonterminals
-                    , nont_idx
-                    , leaf, zero, one, sum, prod, division, difference
-                    , log(0.1));
+            const auto merge_info = merge_prepare(rule_weights_splitted, root_weights_splitted, split_dimensions,
+                                                  rule_to_nonterminals, nont_idx, leaf, zero, one, sum, prod, division,
+                                                  difference, log(merge_threshold));
 
 
             // nonterminal -> new_la -> contributing old_las
             const std::vector<std::vector<std::vector<unsigned>>> & merge_selection = std::get<0>(merge_info);
             const std::vector<unsigned> & new_nont_dimensions = std::get<1>(merge_info);
             const std::vector<std::vector<double>> merge_factors = std::get<2>(merge_info);
+
+
+            std::cerr << "merge factors ";
+            for (auto factors : merge_factors) {
+                std::cerr << "{ ";
+                for (auto factor : factors) {
+                    std::cerr<< factor << " ";
+                }
+                std::cerr << " } ";
+            }
+            std::cerr << std::endl;
 
             // merging
             std::vector<std::vector<double>> rule_weights_merged;
@@ -716,16 +747,23 @@ public:
 
         std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
         for (auto i = 0; i < rule_weights.size(); ++i) {
-            std::cerr << " { ";
+            std::cerr << i << " { ";
             for (double elem : rule_weights[i])
                 std::cerr << exp(elem) << " ";
             std::cerr << " } , ";
         }
         std::cerr << std::endl;
-        std::cerr << "Root weights { ";
-        for (auto weight : the_root_weights)
-            std::cerr << exp(weight) << " , ";
-        std::cerr << " } " << std::endl;
+        {
+            bool first = true;
+            std::cerr << "Root weights { ";
+            for (auto weight : the_root_weights) {
+                if (!first)
+                    std::cerr << " , ";
+                first = false;
+                std::cerr << exp(weight);
+            }
+            std::cerr << " } " << std::endl;
+        }
 
         while (epoch < n_epochs) {
 
@@ -759,7 +797,7 @@ public:
                 const auto tr_io_weight = io_weights_la(rule_weights, nont_dimensions, rule_to_nont_ids, nont_idx, leaf, the_root_weights, zero, one, sum, prod, trace_id);
                 if (debug) {
                     for (const auto &item : get_order(trace_id)) {
-                        std::cerr << "T: " << item << std::endl;
+                        std::cerr << "T: " << item << " (idx: " << nont_idx(item.nonterminal) << " )" << std::endl  ;
 
                         for (unsigned offset = 0; offset < nont_dimensions[nont_idx(item.nonterminal)]; ++offset) {
                             std::cerr << "    " << tr_io_weight.first.at(item)[offset] << " "
@@ -779,6 +817,9 @@ public:
 
                 for (auto & pair : trace) {
                     const std::vector<Val> & lhn_outside_weights = tr_io_weight.second.at(pair.first);
+                    if (debug) {
+                        std::cerr << pair.first << std::endl;
+                    }
                     for (const auto & witness : pair.second) {
                         const int rule_id = witness.first->id;
 
@@ -792,8 +833,26 @@ public:
                         rule_val = compute_rule_frequency(rule_weights[rule_id], lhn_outside_weights, nont_weight_vectors, rule_dimensions[rule_id], zero, one, sum, prod);
                         rule_val = scalar_product(division, rule_val, instance_root_weight);
 
+                        if (debug) {
+                            std::cerr << rule_id << ": {";
+                            for (auto val : rule_val)
+                                std::cerr << val << " ";
+                            std::cerr << " }" << std::endl;
+                        }
                         rule_counts[rule_id] = dot_product(sum, rule_counts[rule_id], rule_val);
                     }
+                }
+            }
+
+            if (debug) {
+                unsigned i = 0;
+                for (auto rule : rule_counts) {
+                    std::cerr << i << ": { ";
+                    for (auto count : rule) {
+                        std::cerr << count << " ";
+                    }
+                    std::cerr<<" } " << std::endl;
+                    ++i;
                 }
             }
 
@@ -811,6 +870,13 @@ public:
                         }
                     }
                 }
+                if (debug) {
+                    std::cerr << " { ";
+                    for (auto count : group_counts) {
+                        std::cerr << count << " ";
+                    }
+                    std::cerr << " } ";
+                }
                 for (auto member : group) {
                     const unsigned block_size = subdim(rule_dimensions[member]);
                     for (unsigned dim : boost::irange((unsigned) 0, group_dim)) {
@@ -823,52 +889,63 @@ public:
                     }
                 }
             }
+            std::cerr << std::endl;
 
             // maximize root weights:
             const Val root_sum = reduce(sum, root_counts, zero);
             std::cerr << "root sum " << exp(root_sum) << std::endl;
             const unsigned len = the_root_weights.size();
             the_root_weights.clear();
-            std::cerr << "single root weights: ";
+            if (debug) std::cerr << "single root weights: ";
             for (const auto weight : root_counts) {
-                std::cerr << exp(weight) << "/" << exp(division(weight, root_sum)) << " ";
+                if (debug) std::cerr << exp(weight) << "/" << exp(division(weight, root_sum)) << " ";
                 the_root_weights.push_back(division(weight, root_sum));
             }
-            std::cerr << std::endl;
+            if (debug) std::cerr << std::endl;
+
             assert(len == the_root_weights.size());
 
             epoch++;
             std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
             for (auto i = 0; i < rule_weights.size(); ++i) {
-                std::cerr << " { ";
+                std::cerr << i << " { ";
                 for (double elem : rule_weights[i])
                     std::cerr << exp(elem) << " ";
                 std::cerr << " } , ";
             }
             std::cerr << std::endl;
-            std::cerr<<"Nont sums: ";
-            unsigned i = 0;
-            for (auto group : normalization_groups) {
-                std::vector<double> dim_weights = std::vector<double>(nont_dimensions[i], zero);
-                for (auto rule_id : group) {
-                    unsigned size = rule_weights[rule_id].size();
-                    for (unsigned weight_id = 0; weight_id < size; ++weight_id) {
-                        const unsigned index = weight_id / (size / nont_dimensions[i]);
-                        dim_weights[index] =sum(dim_weights[index], rule_weights[rule_id][weight_id]);
+            if (debug) {
+                std::cerr << "Nont sums: ";
+                unsigned i = 0;
+                for (auto group : normalization_groups) {
+                    std::vector<double> dim_weights = std::vector<double>(nont_dimensions[i], zero);
+                    for (auto rule_id : group) {
+                        unsigned size = rule_weights[rule_id].size();
+                        for (unsigned weight_id = 0; weight_id < size; ++weight_id) {
+                            const unsigned index = weight_id / (size / nont_dimensions[i]);
+                            dim_weights[index] = sum(dim_weights[index], rule_weights[rule_id][weight_id]);
+                        }
                     }
+                    std::cerr << " { ";
+                    for (auto weight_sum : dim_weights) {
+                        std::cerr << exp(weight_sum) << " ";
+                    }
+                    std::cerr << " } ";
+                    ++i;
                 }
-                std::cerr << " { ";
-                for (auto weight_sum : dim_weights) {
-                    std::cerr << exp(weight_sum) << " ";
-                }
-                std::cerr << " } " ;
-                ++i;
+                std::cerr << std::endl;
             }
-            std::cerr << std::endl;
-            std::cerr << "Root weights { ";
-            for (auto weight : the_root_weights)
-                std::cerr << exp(weight) << " , ";
-            std::cerr << " } " << std::endl;
+            {
+                bool first = true;
+                std::cerr << "Root weights { ";
+                for (auto weight : the_root_weights) {
+                    if (!first)
+                        std::cerr << " , ";
+                    first = false;
+                    std::cerr << exp(weight);
+                }
+                std::cerr << " } " << std::endl;
+            }
 
             rule_counts.clear();
             root_counts.clear();
@@ -934,7 +1011,7 @@ public:
             for (const auto pair : nonterminal_count) {
                 std::vector<Val> & gow = global_nont_outside_weights[nont_idx(pair.first)];
                 gow = dot_product(sum, gow,
-                                  scalar_product(quotient, pair.second.first, (double) pair.second.second));
+                                  scalar_product(quotient, pair.second.first, (Val) pair.second.second));
             }
         }
 
@@ -1010,11 +1087,11 @@ public:
                     // always merge initial symbol
                     || nont_idx(goals[0].nonterminal) == nont) {
                     merge_selection.back().push_back(std::vector<unsigned>());
-                    merge_selection.back().back().push_back(dim);
-                    merge_selection.back().back().push_back(dim + 1);
+                    merge_selection.back().back().push_back(dim * 2);
+                    merge_selection.back().back().push_back(dim * 2 + 1);
                 } else {
-                    merge_selection.back().push_back(std::vector<unsigned>(1, dim));
-                    merge_selection.back().push_back(std::vector<unsigned>(1, dim + 1));
+                    merge_selection.back().push_back(std::vector<unsigned>(1, dim * 2 ));
+                    merge_selection.back().push_back(std::vector<unsigned>(1, dim * 2 + 1));
                 }
             }
             std::cerr << " } ";

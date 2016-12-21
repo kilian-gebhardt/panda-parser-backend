@@ -30,6 +30,7 @@ unsigned indexation (const std::vector<unsigned> & positions, const std::vector<
 
 double weight(const std::vector<double> & weights, const std::vector<unsigned> & positions, const std::vector<unsigned> & dimensions) {
     unsigned index = indexation(positions, dimensions);
+    assert (index < weights.size());
     return weights[index];
 }
 
@@ -90,31 +91,40 @@ std::vector<double> split_rule(const std::vector<double> & weights, const std::v
 
 template <typename Accum1, typename Accum2>
 void accumulate_probabilites(const std::vector<double>::iterator goal_value
-                              , const std::vector<double> & old_weights
+                              , const std::vector<double> & split_weights
         , const std::vector<unsigned> & old_dimensions
         , std::vector<unsigned> & selection, const unsigned dim
         , const std::vector<std::vector<unsigned>> & merges
         , const std::vector<double> & lhn_merge_weights
         , const Accum1 & sum
         , const Accum2 & prod) {
+    assert(dim == selection.size());
     if (dim == old_dimensions.size()) {
-        *goal_value = sum(*goal_value, prod(weight(old_weights, selection, old_dimensions), lhn_merge_weights[selection[0]]));
+        /*
+        std::cerr << "witness la: ";
+        for (auto i : selection) {
+            std::cerr << i <<" : ";
+        }*/
+        const auto val = prod(weight(split_weights, selection, old_dimensions), lhn_merge_weights[selection[0]]);
+        // std::cerr << val << std::endl;
+        *goal_value = sum(*goal_value, val);
     }
     else {
         assert(merges[dim].size() > 0);
         for (auto value : merges[dim]) {
             selection.push_back(value);
-            accumulate_probabilites(goal_value, old_weights, old_dimensions, selection, dim+1, merges, lhn_merge_weights, sum, prod);
+            accumulate_probabilites(goal_value, split_weights, old_dimensions, selection, dim+1, merges, lhn_merge_weights, sum, prod);
             selection.pop_back();
         }
     }
 }
 
 template <typename Accum1, typename Accum2>
-void fill_merge(const std::vector<double> & weights, std::vector<double> & merged_weights, const std::vector<unsigned> & old_dimensions
+void fill_merge(const std::vector<double> & split_weights, std::vector<double> & merged_weights, const std::vector<unsigned> & old_dimensions
         , const std::vector<unsigned> & new_dimensions, std::vector<unsigned> & selection, const unsigned dim,
                 const std::vector<std::vector<std::vector<unsigned>>> & merges, const std::vector<double> & lhn_merge_weights, const Accum1 & sum, const Accum2 & prod
 ) {
+    assert(dim == selection.size());
     if (new_dimensions.size() == dim) {
         unsigned index = indexation(selection, new_dimensions);
         std::vector<double>::iterator goal_value = merged_weights.begin() + index;
@@ -123,33 +133,55 @@ void fill_merge(const std::vector<double> & weights, std::vector<double> & merge
         for (unsigned i = 0; i < selection.size(); ++i) {
             the_merges.push_back(merges[i][selection[i]]);
         }
-        accumulate_probabilites(goal_value, weights, old_dimensions, witnesses, 0, the_merges, lhn_merge_weights, sum, prod);
+        /*
+        std::cerr << "merge   la: ";
+        for (auto i : selection) {
+            std::cerr << i <<" : ";
+        }
+        std::cerr << std::endl;*/
+        accumulate_probabilites(goal_value, split_weights, old_dimensions, witnesses, 0, the_merges, lhn_merge_weights, sum, prod);
     }
     else {
         assert(new_dimensions[dim] > 0);
         for (unsigned i = 0; i < new_dimensions[dim]; ++i){
             selection.push_back(i);
-            fill_merge(weights, merged_weights, old_dimensions, new_dimensions, selection, dim + 1, merges, lhn_merge_weights, sum, prod);
+            fill_merge(split_weights, merged_weights, old_dimensions, new_dimensions, selection, dim + 1, merges, lhn_merge_weights, sum, prod);
             selection.pop_back();
         }
     }
 }
 
 template <typename Accum1, typename Accum2>
-std::vector<double> merge_rule(  const std::vector<double> & weights
+std::vector<double> merge_rule(  const std::vector<double> & split_weights
                     , const std::vector<unsigned> & old_dimensions
                     , const std::vector<unsigned> & new_dimensions
                     , const std::vector<std::vector<std::vector<unsigned>>> & merges
-                    , const std::vector<double> & lhn_merge_weights
+                    , const std::vector<double> & lhn_merge_factors
                     , const Accum1 & sum
                     , const Accum2 & prod
                     , const double zero
                     ) {
     unsigned new_size = calc_size(new_dimensions);
-
+    /*
+    std::cerr << "sw: ";
+    for (auto sw : split_weights) {
+        std::cerr << sw << " ";
+    }
+    std::cerr << std::endl;
+    std::cerr << "mf: ";
+    for (auto mf : lhn_merge_factors) {
+        std::cerr << mf << " ";
+    }
+    std::cerr << std::endl;*/
     std::vector<double> merged_weights = std::vector<double>(new_size, zero);
     std::vector<unsigned> selection;
-    fill_merge(weights, merged_weights, old_dimensions, new_dimensions, selection, 0, merges, lhn_merge_weights, sum, prod);
+    fill_merge(split_weights, merged_weights, old_dimensions, new_dimensions, selection, 0, merges, lhn_merge_factors, sum, prod);
+
+    /*std::cerr << "mw: ";
+    for (auto mw : merged_weights) {
+        std::cerr << mw << " ";
+    }
+    std::cerr << std::endl;*/
     return merged_weights;
 }
 
@@ -264,7 +296,7 @@ std::vector<double> compute_outside_weights(const std::vector<double> & rule_wei
     std::vector<double>::const_iterator next_la_weight = rule_weight_tensor.begin();
     unsigned steps = 0;
     for (unsigned lhs = 0; lhs < dim_rule[0]; ++lhs) {
-        const unsigned sd = subdim(dim_rule, 0);
+        const unsigned sd = subdim(dim_rule);
         assert(next_la_weight == rule_weight_tensor.begin() + lhs * sd);
 
         unsigned rhs = 0;
@@ -273,6 +305,7 @@ std::vector<double> compute_outside_weights(const std::vector<double> & rule_wei
         while (rhs >= 0) {
             if (rhs == dim_rule.size() - 1) {
                 double val = prod(*next_la_weight, (rhs > 0) ? factors[rhs - 1] : one);
+                val = prod(val, lhn_outside_weight_vector[lhs]);
                 result[selection[target_pos] - 1] = sum(result[selection[target_pos] - 1], val);
                 ++next_la_weight;
                 ++steps;

@@ -383,7 +383,7 @@ int main() {
     }
 
     // manager.split_merge(vec_new, rule_to_nont_idx, my_rule_groups, 10, nont_idx2, 4, 9);
-    manager.split_merge(vec_new, rule_to_nont_idx, 10, mymap, 4);
+    manager.split_merge(vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5);
 
     return 0;
 }
