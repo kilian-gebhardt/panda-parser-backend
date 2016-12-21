@@ -78,7 +78,7 @@ int main() {
     // Rule 1:
     // std::cout << "rule 1" << std::endl;
     Rule<std::string, std::string> rule1;
-    rule1.set_id(1);
+    rule1.set_id(0);
     rule1.lhn = "S";
     rule1.rhs.push_back("A");
     rule1.rhs.push_back("B");
@@ -118,7 +118,7 @@ int main() {
     // Rule 2:
     // std::cout << "rule 2" << std::endl;
     Rule<std::string, std::string> rule2;
-    rule2.set_id(2);
+    rule2.set_id(1);
     rule2.lhn = "A";
     // build lhs
     std::vector<STerm<std::string>> r2_arg1v;
@@ -141,7 +141,7 @@ int main() {
     // Rule 3:
     // std::cout << "rule 3" << std::endl;
     Rule<std::string, std::string> rule3;
-    rule3.set_id(3);
+    rule3.set_id(2);
     rule3.lhn = "B";
     rule3.rhs.push_back("C");
     rule3.rhs.push_back("D");
@@ -169,7 +169,7 @@ int main() {
     // Rule 4:
     // std::cout << "rule 4" << std::endl;
     Rule<std::string, std::string> rule4;
-    rule4.set_id(4);
+    rule4.set_id(3);
     rule4.lhn = "C";
     // build lhs
     std::vector<STerm<std::string>> r4_arg1v;
@@ -190,7 +190,7 @@ int main() {
 
     // Rule 5:
     Rule<std::string, std::string> rule5;
-    rule5.set_id(5);
+    rule5.set_id(4);
     rule5.lhn = "D";
     // build lhs
     std::vector<STerm<std::string>> r5_arg1v;
@@ -213,7 +213,7 @@ int main() {
 
     Rule<std::string, std::string> rule6;
     rule6.lhn = "D";
-    rule6.set_id(6);
+    rule6.set_id(5);
     // build lhs
     rule6.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, Variable(1, 1))));
     // build rhs
@@ -230,7 +230,7 @@ int main() {
     assert (sDCP.add_rule(rule6));
 
     Rule<std::string, std::string> rule7;
-    rule7.set_id(7);
+    rule7.set_id(6);
     rule7.lhn = "E";
     rule7.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, Term<std::string>("the", 0))));
     if (lcfrs) {
@@ -240,7 +240,7 @@ int main() {
     assert (sDCP.add_rule(rule7));
 
     Rule<std::string, std::string> rule8;
-    rule8.set_id(8);
+    rule8.set_id(7);
     rule8.lhn = "F";
     auto term8 = Term<std::string>("on", 0);
     term8.children.push_back(Variable(1, 1));
@@ -257,7 +257,7 @@ int main() {
     assert (sDCP.add_rule(rule8));
 
     Rule<std::string, std::string> rule9;
-    rule9.set_id(9);
+    rule9.set_id(8);
     rule9.lhn = "G";
     auto term9 = Term<std::string>("issue", 0);
     term9.children.push_back(Variable(0, 1));
@@ -309,15 +309,15 @@ int main() {
     TraceManager<std::string, std::string, int> manager;
     manager.add_trace_entry(parser.get_trace(), *parser.goal, 0);
 
-    auto my_rule_weights = std::vector<int>({0, 1, 1, 1, 1, 1, 1, 1, 1, 1});
+    auto my_rule_weights = std::vector<int>({1, 1, 1, 1, 1, 1, 1, 1, 1});
     auto pair = manager.io_weights(my_rule_weights, 1, 1, 0, [] (int x, int y) -> int { return x + y; }, [] (int x, int y) -> int { return x * y; }, 0);
     for (const auto & item : manager.get_order(0)) {
         std::cerr << "T: " << item << " " << pair.first[item] << " " << pair.second[item] << std::endl;
     }
 
-    auto my_rule_groups = std::vector<std::vector<unsigned>>({{1}, {2}, {3}, {4}, {5, 6}, {7}, {8}, {9}, {0}});
+    auto my_rule_groups = std::vector<std::vector<unsigned>>({{0}, {1}, {2}, {3}, {4, 5}, {6}, {7}, {8}});
 
-    auto my_rule_weights2 = std::vector<double>({0, 1, 1, 1, 1, 0.5, 0.5, 1, 1, 1});
+    auto my_rule_weights2 = std::vector<double>({1, 1, 1, 1, 0.5, 0.5, 1, 1, 1});
 
     auto vec_new = manager.do_em_training(my_rule_weights2, my_rule_groups, 10);
 
@@ -334,37 +334,13 @@ int main() {
               , {"E", 5}
               , {"F", 6}
               , {"G", 7}
-              , {"H", 8}
     };
 
     auto nont_idx2 = [&] (const std::string & nont) {
-        if (mymap.count(nont))
-            return mymap.at(nont);
-        else
-            return (unsigned) 8;
+        return mymap.at(nont);
     };
-//    auto nont_idx = [] (const std::string & nont) {
-//        if (nont == "S")
-//            return 0;
-//        else if (nont == "A")
-//            return 1;
-//        else if (nont == "B")
-//            return 2;
-//        else if (nont == "C")
-//            return 3;
-//        else if (nont == "D")
-//            return 4;
-//        else if (nont == "E")
-//            return 5;
-//        else if (nont == "F")
-//            return 6;
-//        else if (nont == "G")
-//            return 7;
-//        else
-//            return 8;
-//    };
-    auto rule_to_nont_idx = std::vector<std::vector<unsigned>>(10);
-    rule_to_nont_idx[0] = std::vector<unsigned>({8});
+
+    auto rule_to_nont_idx = std::vector<std::vector<unsigned>>(9);
     for (auto p : sDCP.lhn_to_rule) {
         for (auto rule : p.second) {
             rule_to_nont_idx[rule->id].push_back(nont_idx2(rule->lhn));
@@ -378,11 +354,11 @@ int main() {
     for (unsigned nont = 0; nont < my_rule_groups.size(); ++ nont) {
         const auto & group = my_rule_groups[nont];
         for (auto rule_id : group) {
+            std::cerr << rule_to_nont_idx[rule_id][0] << " " << nont << std::endl;
             assert(rule_to_nont_idx[rule_id][0] == nont);
         }
     }
 
-    // manager.split_merge(vec_new, rule_to_nont_idx, my_rule_groups, 10, nont_idx2, 4, 9);
     manager.split_merge(vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5);
 
     return 0;
