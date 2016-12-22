@@ -366,7 +366,7 @@ public:
         if (log_semiring) {
             for (auto i = rule_weights.begin(); i != rule_weights.end(); ++i) {
                 *i = log(*i);
-                std::cerr << *i << " ";
+                if (debug) std::cerr << *i << " ";
             }
         }
         std::cerr << std::endl;
@@ -415,8 +415,10 @@ public:
             }
             epoch++;
             std::cerr << "Epoch " << epoch << "/" << n_epochs << ": ";
-            for (unsigned i = 0; i < rule_weights.size(); ++i) {
-                std::cerr << rule_weights[i] << " ";
+            if (debug) {
+                for (unsigned i = 0; i < rule_weights.size(); ++i) {
+                    std::cerr << rule_weights[i] << " ";
+                }
             }
             std::cerr << std::endl;
         }
@@ -607,16 +609,17 @@ public:
             const std::vector<unsigned> & new_nont_dimensions = std::get<1>(merge_info);
             const std::vector<std::vector<double>> merge_factors = std::get<2>(merge_info);
 
-
-            std::cerr << "merge factors ";
-            for (auto factors : merge_factors) {
-                std::cerr << "{ ";
-                for (auto factor : factors) {
-                    std::cerr<< factor << " ";
+            if (debug) {
+                std::cerr << "merge factors ";
+                for (auto factors : merge_factors) {
+                    std::cerr << "{ ";
+                    for (auto factor : factors) {
+                        std::cerr << factor << " ";
+                    }
+                    std::cerr << " } ";
                 }
-                std::cerr << " } ";
+                std::cerr << std::endl;
             }
-            std::cerr << std::endl;
 
             // merging
             std::vector<std::vector<double>> rule_weights_merged;
@@ -655,6 +658,13 @@ public:
             // create valid state after split/merge cycle
             nont_dimensions = new_nont_dimensions;
             rule_weights_la = rule_weights_merged;
+        }
+
+        // undo log conversion
+        for (auto & weights : rule_weights_la) {
+            for (double & weight : weights) {
+                weight = exp(weight);
+            }
         }
 
         return std::make_pair(nont_dimensions, rule_weights_la);
@@ -766,14 +776,16 @@ public:
         unsigned epoch = 0;
 
         std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
-        for (unsigned i = 0; i < rule_weights.size(); ++i) {
-            std::cerr << i << " { ";
-            for (double elem : rule_weights[i])
-                std::cerr << exp(elem) << " ";
-            std::cerr << " } , ";
+        if (debug) {
+            for (unsigned i = 0; i < rule_weights.size(); ++i) {
+                std::cerr << i << " { ";
+                for (double elem : rule_weights[i])
+                    std::cerr << exp(elem) << " ";
+                std::cerr << " } , ";
+            }
         }
         std::cerr << std::endl;
-        {
+        if (debug) {
             bool first = true;
             std::cerr << "Root weights { ";
             for (auto weight : the_root_weights) {
@@ -912,9 +924,20 @@ public:
             }
             if (debug) std::cerr << std::endl;
 
+            epoch++;
+            std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
+            if (debug)
+                for (unsigned i = 0; i < rule_weights.size(); ++i) {
+                    std::cerr << i << " { ";
+                    for (double elem : rule_weights[i])
+                        std::cerr << exp(elem) << " ";
+                    std::cerr << " } , ";
+                }
+            if (debug) std::cerr << std::endl;
+
             // maximize root weights:
             const Val likelihood = reduce(sum, root_counts, zero);
-            std::cerr << "likelihood " << exp(likelihood) << std::endl;
+            std::cerr << "corpus prob. sum " << exp(likelihood) << std::endl;
             const unsigned len = the_root_weights.size();
             the_root_weights.clear();
             if (debug) std::cerr << "single root weights: ";
@@ -922,19 +945,9 @@ public:
                 if (debug) std::cerr << exp(weight) << "/" << exp(division(weight, likelihood)) << " ";
                 the_root_weights.push_back(division(weight, likelihood));
             }
-            if (debug) std::cerr << std::endl;
-
             assert(len == the_root_weights.size());
-
-            epoch++;
-            std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
-            for (unsigned i = 0; i < rule_weights.size(); ++i) {
-                std::cerr << i << " { ";
-                for (double elem : rule_weights[i])
-                    std::cerr << exp(elem) << " ";
-                std::cerr << " } , ";
-            }
             std::cerr << std::endl;
+
             if (debug) {
                 std::cerr << "Nont sums: ";
                 unsigned i = 0;
@@ -956,7 +969,7 @@ public:
                 }
                 std::cerr << std::endl;
             }
-            {
+            if (debug) {
                 bool first = true;
                 std::cerr << "Root weights { ";
                 for (auto weight : the_root_weights) {
@@ -1120,12 +1133,13 @@ public:
         std::vector<std::vector<std::vector<unsigned>>> merge_selection;
         std::vector<unsigned> new_nont_dimensions;
         unsigned nont = 0;
-        std::cerr << "merge deltas: ";
+
+        if (debug) std::cerr << "merge deltas: ";
         for (auto delta : merge_delta) {
-            std::cerr << " { ";
+            if (debug) std::cerr << " { ";
             merge_selection.push_back(std::vector<std::vector<unsigned>>());
             for (unsigned dim = 0; dim < nont_dimensions[nont] / 2; ++dim) {
-                std::cerr << exp(delta[dim]) << " ";
+                if (debug) std::cerr << exp(delta[dim]) << " ";
                 if (delta[dim] >= merge_threshold
                     // always merge initial symbol
                     || nont_idx(goals[0].nonterminal) == nont) {
@@ -1137,11 +1151,11 @@ public:
                     merge_selection.back().push_back(std::vector<unsigned>(1, dim * 2 + 1));
                 }
             }
-            std::cerr << " } ";
+            if (debug) std::cerr << " } ";
             ++nont;
             new_nont_dimensions.push_back(merge_selection.back().size());
         }
-        std::cerr << std::endl;
+        if (debug) std::cerr << std::endl;
 
 
         return std::make_tuple(merge_selection, new_nont_dimensions, p);
