@@ -330,7 +330,7 @@ public:
 //        double zero = 0.0;
 
 //        if (log_semiring) {
-            auto sum = [] (double x, double y) -> double {
+            const auto sum = [](const double x, const double y) -> double {
                 const double minus_infinity = -std::numeric_limits<double>::infinity();
                 if (x == minus_infinity)
                     return y;
@@ -338,13 +338,16 @@ public:
                     return x;
                 // return log(exp(x) + exp(y));
                 // cf. wiki, better accuracy with very small probabilites
-                return x + log( 1 + exp(y - x));
+                if (x >= y)
+                    return x + log1p(exp(y - x));
+                else
+                    return y + log1p(exp(x - y));
             };
-            auto prod = [] (double x, double y) -> double {return x + y;};;
-            auto division = [] (double x, double y) -> double {return x - y;};;
-            double root = 0.0;
-            double leaf = 0.0;
-            double zero = minus_infinity;
+            const auto prod = [] (double x, double y) -> double {return x + y;};;
+            const auto division = [] (double x, double y) -> double {return x - y;};;
+            const double root = 0.0;
+            const double leaf = 0.0;
+            const double zero = minus_infinity;
 
 //        }
 
