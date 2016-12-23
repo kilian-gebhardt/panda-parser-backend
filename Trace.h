@@ -10,6 +10,7 @@
 #include <math.h>
 #include <malloc.h>
 #include <random>
+#include "util.h"
 #include "SplitMergeUtil.h"
 #include <functional>
 #include <boost/range/irange.hpp>
@@ -231,6 +232,111 @@ public:
             return traces[i];
         }
     };
+
+    const unsigned traces_size() {
+        return traces.size();
+    }
+
+    const std::pair<
+              std::vector<std::pair<Nonterminal
+                    , std::pair<std::vector<std::pair<Position, Position>>
+                    , std::pair<std::vector<std::pair<Position, Position>>
+                    , std::vector<std::pair<Position, Position>>
+                    >>>>
+            , std::pair<
+                std::vector<std::vector<std::pair<unsigned, std::vector<unsigned>>>>
+                    , unsigned
+            >> serialize(unsigned trace_id) {
+            std::vector<std::pair<Nonterminal
+                , std::pair<std::vector<std::pair<Position, Position>>
+                        , std::pair<std::vector<std::pair<Position, Position>>
+                                , std::vector<std::pair<Position, Position>>
+                        >>>> the_items;
+        unsigned counter = 0;
+        std::map<ParseItem<Nonterminal, Position>, unsigned> item_map;
+
+        for (const auto entry : traces.at(trace_id)) {
+            const ParseItem<Nonterminal, Position> item = entry.first;
+            item_map[item] = the_items.size();
+            the_items.push_back(std::make_pair(item.nonterminal, std::make_pair(item.spans_inh, std::make_pair(item.spans_syn, item.spans_lcfrs))));
+
+        }
+
+        std::vector<std::vector<std::pair<unsigned, std::vector<unsigned>>>> the_trace;
+
+        for (const auto entry : traces.at(trace_id)) {
+            const ParseItem<Nonterminal, Position> item = entry.first;
+            unsigned lhs_id = item_map.at(item);
+            std::vector<std::pair<unsigned, std::vector<unsigned>>> the_witnesses;
+            for (auto witness : entry.second) {
+                unsigned rule_id = witness.first->id;
+                std::vector<unsigned> rhs_items;
+                for (auto item : witness.second) {
+                    rhs_items.push_back(item_map.at(*item));
+                }
+                the_witnesses.push_back(std::make_pair(rule_id, rhs_items));
+            }
+
+            the_trace.push_back(the_witnesses);
+        }
+
+        return std::make_pair(the_items, std::make_pair(the_trace, item_map.at(goals[trace_id])));
+    };
+
+    void deserialize(const std::pair<
+            std::vector<std::pair<Nonterminal
+                    , std::pair<std::vector<std::pair<Position, Position>>
+                            , std::pair<std::vector<std::pair<Position, Position>>
+                                    , std::vector<std::pair<Position, Position>>
+                            >>>>
+            , std::pair<
+                    std::vector<std::vector<std::pair<unsigned, std::vector<unsigned>>>>
+                    , unsigned
+            >> & serial_info
+            , SDCP<Nonterminal, Terminal> & sDCP
+            ) {
+        const std::vector<std::pair<Nonterminal
+                , std::pair<std::vector<std::pair<Position, Position>>
+                        , std::pair<std::vector<std::pair<Position, Position>>
+                                , std::vector<std::pair<Position, Position>>
+                        >>>> & items = serial_info.first;
+        const std::vector<std::vector<std::pair<unsigned, std::vector<unsigned>>>> & trace_info = serial_info.second.first;
+        const unsigned goal = serial_info.second.second;
+
+        std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> parse_items;
+        for (auto enc : items) {
+            std::shared_ptr<ParseItem<Nonterminal, Position>> parse_item = std::make_shared<ParseItem<Nonterminal, Position>>(
+                    ParseItem<Nonterminal, Position>()
+            );
+            parse_item->nonterminal = enc.first;
+            parse_item->spans_inh = enc.second.first;
+            parse_item->spans_syn = enc.second.second.first;
+            parse_item->spans_lcfrs = enc.second.second.second;
+            parse_items.push_back(parse_item);
+        }
+
+        std::map<
+                ParseItem<Nonterminal, Position>
+                , std::vector<
+                        std::pair<
+                                std::shared_ptr<Rule<Nonterminal, Terminal>>
+                                , std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>
+                                >
+                        >
+                >
+        > trace;
+        for (unsigned item = 0; item < trace_info.size(); ++item){
+            auto & entry = trace[*parse_items[item]];
+            for (const std::pair<unsigned, std::vector<unsigned>> & witness : trace_info[item]) {
+                std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> rhss;
+                for (unsigned rhs : witness.second) {
+                    rhss.push_back(parse_items[rhs]);
+                }
+                entry.push_back(std::make_pair(sDCP.get_rule_by_id(witness.first), rhss));
+            }
+        }
+        add_trace_entry(trace, *parse_items[goal], traces_size());
+    }
 
     // const double plus_infinity = std::numeric_limits<double>::max();
     const double minus_infinity = -std::numeric_limits<double>::infinity();

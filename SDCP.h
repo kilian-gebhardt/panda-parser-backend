@@ -415,14 +415,19 @@ private:
     std::map<Nonterminal, std::vector<std::pair<std::shared_ptr<Rule<Nonterminal, Terminal>>, int>>> nont_corner;
     std::map<Terminal, std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>>> axioms;
     std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>> epsilon_axioms;
+    std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>> rules;
 public:
     std::map<Nonterminal, std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>>> lhn_to_rule;
     Nonterminal initial;
     std::map<Nonterminal, int> irank, srank, fanout;
 
     bool add_rule(Rule<Nonterminal, Terminal> rule);
-
     bool set_initial(Nonterminal nonterminal);
+
+    std::shared_ptr<Rule<Nonterminal, Terminal>> & get_rule_by_id(unsigned id) {
+        return rules[id];
+    };
+
     void output(){
         std::cerr << *this << std::endl;
     }
@@ -585,6 +590,10 @@ bool SDCP<Nonterminal, Terminal>::add_rule(Rule<Nonterminal, Terminal> rule) {
             axioms[term.second].push_back(rule_ptr);
         else
             epsilon_axioms.push_back(rule_ptr);
+    }
+    if (rules.size() <= rule.id) {
+        rules.resize(rule.id + 1);
+        rules[rule.id] = rule_ptr;
     }
 
 //    std::cerr << "added rule " << rule << std::endl;
