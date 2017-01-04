@@ -564,6 +564,55 @@ public:
 //
 //    }
 
+    std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge_id(
+            const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
+            const unsigned n_epochs, const unsigned n_nonts, const unsigned split_merge_cycles, const double merge_threshold
+    ) {
+        auto nont_idx_f = [](const unsigned nont) -> unsigned { return nont; };
+
+        std::cerr << "building normalization groups" << std::endl;
+
+        std::vector<std::vector<unsigned>> normalization_groups;
+        for (unsigned rule_idx = 0; rule_idx < rule_to_nonterminals.size(); ++rule_idx) {
+            if (rule_to_nonterminals[rule_idx].size() > 0) {
+                if (normalization_groups.size() <= rule_to_nonterminals[rule_idx][0]) {
+                    normalization_groups.resize(rule_to_nonterminals[rule_idx][0] + 1);
+                }
+                normalization_groups[rule_to_nonterminals[rule_idx][0]].push_back(rule_idx);
+            }
+        }
+        if (debug) {
+            unsigned i = 0;
+            for (auto rtn : rule_to_nonterminals) {
+                std::cerr << i << ": ";
+                unsigned j = 0;
+                for (auto n : rtn) {
+                    if (j == 1) {
+                        std::cerr << "-> ";
+                    }
+                    std::cerr << n << " ";
+                    ++j;
+                }
+                std::cerr << ";" << std::endl;
+                ++i;
+            }
+            for (unsigned i = 0; i < normalization_groups.size(); ++i) {
+                std::cerr << i << " : { ";
+                for (auto n : normalization_groups[i]) {
+                    std::cerr << n << " ";
+                }
+                std::cerr << "} " ;
+            }
+            std::cerr << std::endl;
+        }
+
+        std::cerr << "starting split merge training" << std::endl;
+        std::cerr << "# nonts: " << n_nonts << std::endl;
+
+        return split_merge(rule_weights, rule_to_nonterminals, normalization_groups, n_epochs, nont_idx_f,
+                           split_merge_cycles, n_nonts, merge_threshold);
+    };
+
     std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge(
             const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
             const unsigned n_epochs, const std::map<Nonterminal, unsigned> &nont_idx, const unsigned split_merge_cycles, const double merge_threshold

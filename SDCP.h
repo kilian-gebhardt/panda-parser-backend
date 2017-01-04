@@ -217,7 +217,8 @@ public:
                 }
             }
         }
-        return std::make_pair<bool, Terminal>(false, nullptr);
+        Terminal terminal;
+        return std::pair<bool, Terminal>(false, terminal);
     }
 
     Rule() {}

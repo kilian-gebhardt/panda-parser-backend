@@ -48,7 +48,31 @@ bool pairwise_different(const std::vector<T> & vec){
     return true;
 }
 
+template<typename Accum1, typename Val>
+std::vector<Val> dot_product(const Accum1 point_product, const std::vector<Val> & arg1, const std::vector<Val> &arg2) {
+    assert(arg1.size() == arg2.size());
+    std::vector<Val> result;
+    for (unsigned i = 0; i < arg1.size(); ++i) {
+        result.push_back(point_product(arg1[i], arg2[i]));
+    }
+    return result;
+};
 
+template<typename Accum1, typename Val>
+std::vector<Val> scalar_product(const Accum1 point_scalar, const std::vector<Val> &goal, const Val scalar) {
+    std::vector<Val> result;
+    for (auto i = goal.begin(); i != goal.end(); ++i) {
+        result.push_back(point_scalar(*i, scalar));
+    }
+    return result;
+};
+
+template<typename Accum, typename Val>
+Val reduce(const Accum accum, const std::vector<Val> & vec, Val init, const unsigned start = 0) {
+    for (auto i = vec.begin() + start; i != vec.end(); ++i)
+        init = accum(init, *i);
+    return init;
+};
 
 
 #endif //STERMPARSER_UTIL_H
