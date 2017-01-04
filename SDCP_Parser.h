@@ -385,7 +385,14 @@ private:
 
     void match_rule( std::shared_ptr<Rule<Nonterminal, Terminal>> rule_ptr
                    , std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & transport
-                   , const std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & items) {
+                   , const std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & items
+                   , std::vector<std::pair<Position,Position>> & inherited
+                   , std::vector<std::pair<Position,Position>> & synthesized
+                    , std::vector<Position> & lcfrs_terminals
+    ) {
+        synthesized.clear();
+        inherited.clear();
+        lcfrs_terminals.clear();
         const Rule<Nonterminal, Terminal> & rule = *rule_ptr;
         if (debug) {
             std::cerr << "match: ";
@@ -400,9 +407,9 @@ private:
         }
 
 
-        std::vector<std::pair<Position,Position>> inherited, synthesized;
+//        std::vector<std::pair<Position,Position>> inherited, synthesized;
         inherited.resize(sDCP.irank.at(rule.lhn));
-        std::vector<Position> lcfrs_terminals;
+//        std::vector<Position> lcfrs_terminals;
         int mem = 0;
         int arg = 1;
         for (auto attributes : rule.inside_attributes){
@@ -534,6 +541,11 @@ public:
         std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> candidates;
         std::vector<int> selection;
 
+        std::vector<std::pair<Position,Position>> inherited, synthesized;
+        std::vector<Position> lcfrs_terminals;
+
+        int j;
+
         while (! agenda.empty()) {
             auto item_ = agenda.front();
             agenda.pop();
@@ -549,12 +561,12 @@ public:
             for (const auto & p : sDCP.get_nont_corner(item_->nonterminal)) { //} nont_corner[item_->nonterminal]) {
                 Rule<Nonterminal, Terminal> & rule = *(p.first);
                 const int & j_ = p.second;
-                int j = 0;
+                j = 0;
                 selection.resize(rule.rhs.size(), 0);
 
                 while (0 <= j) {
                     if (j == rule.rhs.size()) {
-                        match_rule(p.first, transport, candidates);
+                        match_rule(p.first, transport, candidates, inherited, synthesized, lcfrs_terminals);
                         j --;
                         continue;
                     }
