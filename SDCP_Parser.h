@@ -47,7 +47,7 @@ bool operator<(const ParseItem<Nonterminal, Position>& lhs, const ParseItem<Nont
             return true;
         if (lhs.spans_inh[i] > rhs.spans_inh[i])
             return false;
-        i++;
+        ++i;
     }
     i = 0;
     while (i < lhs.spans_syn.size()) {
@@ -55,7 +55,7 @@ bool operator<(const ParseItem<Nonterminal, Position>& lhs, const ParseItem<Nont
             return true;
         if (lhs.spans_syn[i] > rhs.spans_syn[i])
             return false;
-        i++;
+        ++i;
     }
     i = 0;
     while (i < lhs.spans_lcfrs.size()) {
@@ -63,7 +63,7 @@ bool operator<(const ParseItem<Nonterminal, Position>& lhs, const ParseItem<Nont
             return true;
         if (lhs.spans_lcfrs[i] > rhs.spans_lcfrs[i])
             return false;
-        i++;
+        ++i;
     }
     return false;
 }
@@ -354,14 +354,14 @@ private:
 
             if (obj.type() == typeid(Term<Terminal>)) {
                 Term<Terminal> &term = boost::get<Term<Terminal>>(obj);
-                steps++;
+                ++steps;
                 Position child;
                 if (term.children.size() > 0) {
                     if (find_start(term.children, child, level + 1, inherited, synthesized, items)) {
                         pos = input.get_parent(child);
                         while (steps > 0) {
                             pos = input.get_previous(pos);
-                            steps--;
+                            --steps;
                         }
                         return true;
                     }
@@ -388,11 +388,13 @@ private:
                    , const std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> & items
                    , std::vector<std::pair<Position,Position>> & inherited
                    , std::vector<std::pair<Position,Position>> & synthesized
-                    , std::vector<Position> & lcfrs_terminals
+                   , std::vector<std::pair<int, int>> & spans_lcfrs
+                   , std::vector<Position> & lcfrs_terminals
     ) {
         synthesized.clear();
         inherited.clear();
         lcfrs_terminals.clear();
+        spans_lcfrs.clear();
         const Rule<Nonterminal, Terminal> & rule = *rule_ptr;
         if (debug) {
             std::cerr << "match: ";
@@ -434,10 +436,10 @@ private:
 //                                  << std::endl;
 //                        return;
 //                    }
-                    arg++;
+                    ++arg;
                 }
             }
-            mem++;
+            ++mem;
         }
         // now check compatibility of lhs synthesized attributes
         arg = 1;
@@ -449,11 +451,11 @@ private:
             if (!match_sterm_rec(sterm, start, true, goal, inherited, synthesized, items, lcfrs_terminals))
                 return;
             synthesized.push_back(std::make_pair(start, goal));
-            arg++;
+            ++arg;
         }
 
         // finally, check lcfrs component
-        std::vector<std::pair<int, int>> spans_lcfrs;
+        // std::vector<std::pair<int, int>> spans_lcfrs;
         if (parse_lcfrs && !match_lcfrs(rule, lcfrs_terminals, items, spans_lcfrs))
             return;
 
@@ -554,6 +556,7 @@ public:
         std::vector<int> selection;
 
         std::vector<std::pair<Position,Position>> inherited, synthesized;
+        std::vector<std::pair<int,int>> spans_lcfrs;
         std::vector<Position> lcfrs_terminals;
 
         int j;
@@ -578,20 +581,20 @@ public:
 
                 while (0 <= j) {
                     if (j == rule.rhs.size()) {
-                        match_rule(p.first, transport, candidates, inherited, synthesized, lcfrs_terminals);
-                        j --;
+                        match_rule(p.first, transport, candidates, inherited, synthesized, spans_lcfrs, lcfrs_terminals);
+                        --j;
                         continue;
                     }
                     if (j == j_) {
                         if (selection[j]) {
                             selection[j] = 0;
-                            j--;
+                            --j;
                             candidates.pop_back();
                         }
                         else {
                             candidates.push_back(item_);
-                            selection[j]++;
-                            j++;
+                            ++selection[j];
+                            ++j;
                         }
                         continue;
                     }
@@ -600,8 +603,8 @@ public:
                             candidates.push_back(chart[rule.rhs[j]][selection[j]]);
                         else
                             candidates[j] = chart[rule.rhs[j]][selection[j]];
-                        selection[j]++;
-                        j++;
+                        ++selection[j];
+                        ++j;
                         continue;
                     }
                     else {
@@ -609,7 +612,7 @@ public:
                             candidates.pop_back();
                             selection[j] = 0;
                         }
-                        j--;
+                        --j;
                         continue;
                     }
                 }
