@@ -101,7 +101,7 @@ private:
         bool var_flag = false;
         Variable * var = nullptr;
         for (TermOrVariable<Terminal> obj : sterm) {
-            try {
+            if (obj.type() == typeid(Term<Terminal>)) {
                 Term<Terminal> term = boost::get<Term<Terminal>>(obj);
 
                 if (var_flag) {
@@ -131,7 +131,7 @@ private:
                     lcfrs_terminals[term.order] = position;
                 }
 
-            } catch (boost::bad_get&) {
+            } else {
                 assert (!var_flag);
                 Variable & var_ = boost::get<Variable>(obj);
                 var = &var_;
@@ -157,7 +157,7 @@ private:
             span_start = -1;
             bool begin = true;
             for (const auto & obj : argument) {
-                try {
+                if (obj.type() == typeid(Variable)) {
                     const Variable & var = boost::get<Variable>(obj);
 
                     assert (0 < var.member && var.member <= items.size());
@@ -174,7 +174,7 @@ private:
                     }
                     else
                         return false;
-                } catch (boost::bad_get&) {
+                } else {
                     const Terminal & term = boost::get<Terminal>(obj);
 
                     assert (i < lcfrs_terminals.size());
@@ -282,8 +282,9 @@ private:
             , std::vector<Position> & lcfrs_terminals){
         bool lhn_var = false;
         Variable var(0,0);
+
         for (TermOrVariable<Terminal> obj : sterm) {
-            try {
+            if (obj.type() == typeid(Term<Terminal>)) {
                 Term<Terminal> &term = boost::get<Term<Terminal>>(obj);
                 if (lhn_var) {
                     // TODO greedy matching is incomplete / requires normal form
@@ -310,7 +311,7 @@ private:
                     lcfrs_terminals[term.order] = pos;
                 }
 
-            } catch (boost::bad_get&) {
+            } else {
                 Variable & var_ = boost::get<Variable>(obj);
                 if (var_.member > 0) {
                     if (lhn_var) {
@@ -351,7 +352,7 @@ private:
         int steps = 0;
         for (TermOrVariable<Terminal> obj : sterm) {
 
-            try {
+            if (obj.type() == typeid(Term<Terminal>)) {
                 Term<Terminal> &term = boost::get<Term<Terminal>>(obj);
                 steps++;
                 Position child;
@@ -365,7 +366,7 @@ private:
                         return true;
                     }
                 }
-            } catch (boost::bad_get&)  {
+            } else {
                 Variable var = boost::get<Variable>(obj);
                 if (var.member > 0) {
                     pos = items[var.member - 1]->spans_syn[var.argument - 1].first;

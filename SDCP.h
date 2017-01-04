@@ -461,13 +461,12 @@ std::ostream &operator<<(std::ostream &os, SDCP<Nonterminal, Terminal> & sdcp) {
 template <typename Terminal>
 void countVariableRecursive(int idx, int & counter, STerm<Terminal> sterm) {
     for (TermOrVariable<Terminal> obj : sterm) {
-        try {
+        if (obj.type() == typeid(Variable)) {
             Variable v = boost::get<Variable>(obj);
             if (v.member == idx)
                 counter++;
             // std::cout << v.member << " " << v.argument << std::endl;
-        }
-        catch (boost::bad_get &) {
+        } else {
             Term<Terminal> t = boost::get<Term<Terminal>>(obj);
             countVariableRecursive(idx, counter, t.children);
         }
@@ -510,12 +509,11 @@ int Rule<Nonterminal, Terminal>::fanout(int nont_idx) const {
     int counter = 0;
     for (auto arg : word_function) {
         for (auto obj : arg) {
-            try {
+            if (obj.type() == typeid(Variable)) {
                 Variable v = boost::get<Variable>(obj);
                 if (v.member == nont_idx)
                     counter++;
             }
-            catch (boost::bad_get &) {}
         }
     }
     return counter;
