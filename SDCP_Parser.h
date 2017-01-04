@@ -247,7 +247,7 @@ private:
 
                     std::shared_ptr<ParseItem<Nonterminal, Position>> item = std::make_shared<ParseItem<Nonterminal, Position>>();
                     item->nonterminal = rule->lhn;
-                    for (int j = 1; j <= rule->irank(0); ++j) {
+                    for (int j = 1; j <= sDCP.irank.at(rule->lhn); ++j) {
                         auto p = var_assignment.at(Variable(0, j));
                         item->spans_inh.emplace_back(p);
                     }
@@ -400,7 +400,7 @@ private:
 
 
         std::vector<std::pair<Position,Position>> inherited, synthesized;
-        inherited.resize(rule.irank(0));
+        inherited.resize(sDCP.irank.at(rule.lhn));
         std::vector<Position> lcfrs_terminals;
         int mem = 0;
         int arg = 1;
