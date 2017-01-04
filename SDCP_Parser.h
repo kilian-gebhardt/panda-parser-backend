@@ -457,28 +457,34 @@ private:
         if (parse_lcfrs && !match_lcfrs(rule, lcfrs_terminals, items, spans_lcfrs))
             return;
 
-        auto new_item = std::make_shared<ParseItem<Nonterminal, Position>>();
-        new_item->nonterminal = rule.lhn;
-        new_item->spans_inh = inherited;
-        new_item->spans_syn = synthesized;
-        new_item->spans_lcfrs = spans_lcfrs;
-
         if (no_parallel) {
-            if (   !pairwise_different(new_item->spans_syn)
-                   || !pairwise_different(new_item->spans_inh)
-                   || !pairwise_different(new_item->spans_lcfrs)) {
-                if (debug)
+            if (   !pairwise_different(inherited)
+                   || !pairwise_different(synthesized)
+                   || !pairwise_different(spans_lcfrs)) {
+                if (debug) {
+                    auto new_item = std::make_shared<ParseItem<Nonterminal, Position>>();
+                    new_item->nonterminal = rule.lhn;
+                    new_item->spans_inh = inherited;
+                    new_item->spans_syn = synthesized;
+                    new_item->spans_lcfrs = spans_lcfrs;
                     std::cerr << "skipped (no parallel) " << *new_item << std::endl;
+                }
                 return;
             }
         }
 
         if (inh_strict_successor) {
-            for (const auto & s1 : new_item->spans_inh) {
-                for (const auto & s2 : new_item->spans_syn) {
+            for (const auto & s1 : inherited) {
+                for (const auto & s2 : synthesized) {
                     if (s1 == s2) {
-                        if (debug)
+                        if (debug) {
+                            auto new_item = std::make_shared<ParseItem<Nonterminal, Position>>();
+                            new_item->nonterminal = rule.lhn;
+                            new_item->spans_inh = inherited;
+                            new_item->spans_syn = synthesized;
+                            new_item->spans_lcfrs = spans_lcfrs;
                             std::cerr << "skipped (inherent strict successor) " << *new_item << std::endl;
+                        }
                         return;
                     }
                 }
