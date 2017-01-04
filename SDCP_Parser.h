@@ -491,6 +491,12 @@ private:
             }
         }
 
+        auto new_item = std::make_shared<ParseItem<Nonterminal, Position>>();
+        new_item->nonterminal = rule.lhn;
+        new_item->spans_inh.swap(inherited);
+        new_item->spans_syn.swap(synthesized);
+        new_item->spans_lcfrs.swap(spans_lcfrs);
+
         trace[*new_item].push_back( std::make_pair(rule_ptr, items));
 
         if (debug)
