@@ -704,115 +704,17 @@ public:
         // each split/merge cycle
         std::vector<unsigned> nont_dimensions = std::vector<unsigned>(n_nonts, 1);
         std::vector<std::vector<double>> rule_weights_la;
-        for (const double & rule_weight : rule_weights) {
+        for (const double &rule_weight : rule_weights) {
             // TODO log
             rule_weights_la.emplace_back(std::vector<double>(1, log(rule_weight)));
         }
+
         std::vector<double> root_weights = {root};
 
-
-        std::vector<std::vector<double>> rule_weights_splitted;
-        std::vector<double> root_weights_splitted;
-        std::vector<std::vector<double>> rule_weights_merged;
-
         for (unsigned cycle = 0; cycle < split_merge_cycles; ++cycle) {
-            std::vector<unsigned> split_dimensions;
-
-            if (debug) std::cerr << "prepare split" << std::endl;
-
-            for (const unsigned dim : nont_dimensions)
-                split_dimensions.push_back(dim * 2);
-            // splitting
-            for (unsigned i = 0; i < rule_weights_la.size(); ++i) {
-                const std::vector<double> &rule_weight = rule_weights_la[i];
-                std::vector<unsigned> dimensions;
-                for (auto nont : rule_to_nonterminals[i]) {
-                    dimensions.push_back(split_dimensions[nont]);
-                }
-                const std::vector<double> split_probabilities = split_rule(rule_weight, dimensions);
-                rule_weights_splitted.push_back(split_probabilities);
-            }
-
-            const double root_split = rand_split();
-            root_weights_splitted = {prod(log(root_split), root), prod(log(1 - root_split), root)};
-
-            rule_weights_la.clear();
-
-            std::cerr << "em training after " << cycle + 1 << ". split" << std::endl;
-
-            // em training
-            do_em_training_la(rule_weights_splitted, root_weights_splitted, normalization_groups, n_epochs, split_dimensions,
-                              rule_to_nonterminals, nont_idx, zero, one, leaf, prod, sum, division);
-
-            for (auto rule_weights_ : rule_weights_splitted) {
-                for (auto rule_weight : rule_weights_) {
-                    if (rule_weight > sum(one, epsilon)) {
-                        std::cerr << "bad rule weight: " << rule_weight << std::endl;
-                    }
-                    assert(rule_weight <= sum(one, epsilon));
-                }
-            }
-
-            // determine merges
-            const auto merge_info = merge_prepare(rule_weights_splitted, root_weights_splitted, split_dimensions,
-                                                  rule_to_nonterminals, nont_idx, leaf, zero, one, sum, prod, division,
-                                                  difference, log(merge_threshold));
-
-
-            // nonterminal -> new_la -> contributing old_las
-            const std::vector<std::vector<std::vector<unsigned>>> & merge_selection = std::get<0>(merge_info);
-            const std::vector<unsigned> & new_nont_dimensions = std::get<1>(merge_info);
-            const std::vector<std::vector<double>> merge_factors = std::get<2>(merge_info);
-
-            if (debug) {
-                std::cerr << "merge factors ";
-                for (auto factors : merge_factors) {
-                    std::cerr << "{ ";
-                    for (auto factor : factors) {
-                        std::cerr << factor << " ";
-                    }
-                    std::cerr << " } ";
-                }
-                std::cerr << std::endl;
-            }
-
-            // merging
-            std::vector<std::vector<double>> rule_weights_merged;
-            for (unsigned i = 0; i < rule_weights_splitted.size(); ++i) {
-                std::vector<unsigned> old_dimensions;
-                std::vector<unsigned> new_dimensions;
-                //new_dimensions.reserve(rule_to_nonterminals[i].size());
-                std::vector<std::vector<std::vector<unsigned>>> merges;
-                //merges.reserve(rule_to_nonterminals[i].size());
-                const std::vector<double> & lhn_merge_factors = merge_factors[rule_to_nonterminals[i][0]];
-                for (auto nont : rule_to_nonterminals[i]) {
-                    old_dimensions.push_back(split_dimensions[nont]);
-                    new_dimensions.push_back(merge_selection[nont].size());
-                    merges.push_back(merge_selection[nont]);
-                }
-                rule_weights_merged.push_back(
-                        merge_rule(rule_weights_splitted[i], old_dimensions, new_dimensions, merges,
-                                   lhn_merge_factors, sum, prod, zero));
-            }
-
-            rule_weights_splitted.clear();
-
-            // em training
-            do_em_training_la(rule_weights_merged, root_weights, normalization_groups, n_epochs, new_nont_dimensions,
-                              rule_to_nonterminals, nont_idx, zero, one, leaf, prod, sum, division);
-
-            for (auto rule_weights_ : rule_weights_merged) {
-                for (auto rule_weight : rule_weights_) {
-                    if (rule_weight > sum(one, epsilon)) {
-                        std::cerr << "bad rule weight: " << rule_weight << std::endl;
-                    }
-                    assert(rule_weight <= sum(one, epsilon));
-                }
-            }
-
-            // create valid state after split/merge cycle
-            nont_dimensions = new_nont_dimensions;
-            rule_weights_la = rule_weights_merged;
+            split_merge_cycle(root, one, leaf, zero, sum, difference, prod, division, cycle, n_epochs, epsilon
+                    , merge_threshold, rule_to_nonterminals, normalization_groups, nont_idx, nont_dimensions
+                    , rule_weights_la, root_weights);
         }
 
         // undo log conversion
@@ -823,6 +725,119 @@ public:
         }
 
         return std::make_pair(nont_dimensions, rule_weights_la);
+
+    }
+
+    template<typename Val, typename Accum1, typename Accum2, typename Accum3, typename Accum4, typename NontToIdx>
+    void split_merge_cycle(const Val root, const Val one, const Val leaf, const Val zero, const Accum1 sum,
+                           const Accum2 difference, const Accum3 prod, const Accum4 division,
+                           const unsigned cycle, const unsigned n_epochs, double epsilon, double merge_threshold,
+                           const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
+                           const std::vector<std::vector<unsigned>> &normalization_groups, NontToIdx nont_idx,
+                           std::vector<unsigned> & nont_dimensions, std::vector<std::vector<Val>> & rule_weights_la,
+                           std::vector<Val> & root_weights) {
+
+        std::vector<std::vector<double>> rule_weights_splitted;
+        std::vector<double> root_weights_splitted;
+        std::vector<std::vector<double>> rule_weights_merged;
+
+
+        std::vector<unsigned> split_dimensions;
+
+        if (debug) std::cerr << "prepare split" << std::endl;
+
+        for (const unsigned dim : nont_dimensions)
+            split_dimensions.push_back(dim * 2);
+        // splitting
+        for (unsigned i = 0; i < rule_weights_la.size(); ++i) {
+            const std::vector<double> &rule_weight = rule_weights_la[i];
+            std::vector<unsigned> dimensions;
+            for (auto nont : rule_to_nonterminals[i]) {
+                dimensions.push_back(split_dimensions[nont]);
+            }
+            const std::vector<double> split_probabilities = split_rule(rule_weight, dimensions);
+            rule_weights_splitted.push_back(split_probabilities);
+        }
+
+        const double root_split = rand_split();
+        root_weights_splitted = {prod(log(root_split), root), prod(log(1 - root_split), root)};
+
+        rule_weights_la.clear();
+
+        std::cerr << "em training after " << cycle + 1 << ". split" << std::endl;
+
+        // em training
+        do_em_training_la(rule_weights_splitted, root_weights_splitted, normalization_groups, n_epochs, split_dimensions,
+                          rule_to_nonterminals, nont_idx, zero, one, leaf, prod, sum, division);
+
+        for (auto rule_weights_ : rule_weights_splitted) {
+            for (auto rule_weight : rule_weights_) {
+                if (rule_weight > sum(one, epsilon)) {
+                    std::cerr << "bad rule weight: " << rule_weight << std::endl;
+                }
+                assert(rule_weight <= sum(one, epsilon));
+            }
+        }
+
+        // determine merges
+        const auto merge_info = merge_prepare(rule_weights_splitted, root_weights_splitted, split_dimensions,
+                                              rule_to_nonterminals, nont_idx, leaf, zero, one, sum, prod, division,
+                                              difference, log(merge_threshold));
+
+
+        // nonterminal -> new_la -> contributing old_las
+        const std::vector<std::vector<std::vector<unsigned>>> & merge_selection = std::get<0>(merge_info);
+        const std::vector<unsigned> & new_nont_dimensions = std::get<1>(merge_info);
+        const std::vector<std::vector<double>> merge_factors = std::get<2>(merge_info);
+
+        if (debug) {
+            std::cerr << "merge factors ";
+            for (auto factors : merge_factors) {
+                std::cerr << "{ ";
+                for (auto factor : factors) {
+                    std::cerr << factor << " ";
+                }
+                std::cerr << " } ";
+            }
+            std::cerr << std::endl;
+        }
+
+        // merging
+        for (unsigned i = 0; i < rule_weights_splitted.size(); ++i) {
+            std::vector<unsigned> old_dimensions;
+            std::vector<unsigned> new_dimensions;
+            //new_dimensions.reserve(rule_to_nonterminals[i].size());
+            std::vector<std::vector<std::vector<unsigned>>> merges;
+            //merges.reserve(rule_to_nonterminals[i].size());
+            const std::vector<double> & lhn_merge_factors = merge_factors[rule_to_nonterminals[i][0]];
+            for (auto nont : rule_to_nonterminals[i]) {
+                old_dimensions.push_back(split_dimensions[nont]);
+                new_dimensions.push_back(merge_selection[nont].size());
+                merges.push_back(merge_selection[nont]);
+            }
+            rule_weights_merged.push_back(
+                    merge_rule(rule_weights_splitted[i], old_dimensions, new_dimensions, merges,
+                               lhn_merge_factors, sum, prod, zero));
+        }
+
+        rule_weights_splitted.clear();
+
+        // em training
+        do_em_training_la(rule_weights_merged, root_weights, normalization_groups, n_epochs, new_nont_dimensions,
+                          rule_to_nonterminals, nont_idx, zero, one, leaf, prod, sum, division);
+
+        for (auto rule_weights_ : rule_weights_merged) {
+            for (auto rule_weight : rule_weights_) {
+                if (rule_weight > sum(one, epsilon)) {
+                    std::cerr << "bad rule weight: " << rule_weight << std::endl;
+                }
+                assert(rule_weight <= sum(one, epsilon));
+            }
+        }
+
+        // create valid state after split/merge cycle
+        nont_dimensions = new_nont_dimensions;
+        rule_weights_la = rule_weights_merged;
     }
 
     template<typename Val, typename Accum, typename Accum2, typename NontToIdx>
