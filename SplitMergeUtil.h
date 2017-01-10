@@ -36,7 +36,8 @@ unsigned indexation (const std::vector<unsigned> & positions, const std::vector<
     return index;
 }
 
-double weight(const std::vector<double> & weights, const std::vector<unsigned> & positions, const std::vector<unsigned> & dimensions) {
+template<typename Val>
+Val weight(const std::vector<Val> & weights, const std::vector<unsigned> & positions, const std::vector<unsigned> & dimensions) {
     unsigned index = indexation(positions, dimensions);
     assert (index < weights.size());
     return weights[index];
@@ -56,18 +57,17 @@ double rand_split() {
 //        return 0.45;
 }
 
-void fill_split(const std::vector<double> & old_weights, std::vector<double> & new_weights, const std::vector<unsigned> & dimensions
+template<typename Val>
+void fill_split(const std::vector<Val> & old_weights, std::vector<Val> & new_weights, const std::vector<unsigned> & dimensions
         , std::vector<unsigned> & selection, const unsigned dim) {
     if (dimensions.size() == dim) {
         unsigned origin_index = indexation(selection, dimensions, true);
         unsigned index = indexation(selection, dimensions);
-        // TODO log likelihoods
         assert (origin_index < old_weights.size());
         assert (index < new_weights.size());
-        double split_weight = old_weights[origin_index] + log(rand_split());
+        Val split_weight = old_weights[origin_index] * Val::to(rand_split());
         new_weights[index] = split_weight;
-    }
-    else {
+    } else {
         selection.push_back(0);
         for (unsigned i = 0; i < dimensions[dim]; i = i + 2) {
             selection[dim] = i;
@@ -88,24 +88,22 @@ unsigned calc_size(const std::vector<unsigned> & dims) {
     return size;
 }
 
-
-std::vector<double> split_rule(const std::vector<double> & weights, const std::vector<unsigned> & dimensions) {
+template<typename Val>
+std::vector<Val> split_rule(const std::vector<Val> & weights, const std::vector<unsigned> & dimensions) {
     unsigned new_size = calc_size(dimensions);
-    std::vector<double> splits = std::vector<double>(new_size, 0);
+    std::vector<Val> splits = std::vector<Val>(new_size, Val::one());
     std::vector<unsigned> selection;
     fill_split(weights, splits, dimensions, selection, 0);
     return splits;
 }
 
-template <typename Accum1, typename Accum2>
-void accumulate_probabilites(const std::vector<double>::iterator goal_value
-                              , const std::vector<double> & split_weights
+template <typename Val>
+void accumulate_probabilites(const typename std::vector<Val>::iterator goal_value
+                              , const std::vector<Val> & split_weights
         , const std::vector<unsigned> & old_dimensions
         , std::vector<unsigned> & selection, const unsigned dim
         , const std::vector<std::vector<unsigned>> & merges
-        , const std::vector<double> & lhn_merge_weights
-        , const Accum1 & sum
-        , const Accum2 & prod) {
+        , const std::vector<Val> & lhn_merge_weights) {
     assert(dim == selection.size());
     if (dim == old_dimensions.size()) {
         /*
@@ -113,24 +111,24 @@ void accumulate_probabilites(const std::vector<double>::iterator goal_value
         for (auto i : selection) {
             std::cerr << i <<" : ";
         }*/
-        const auto val = prod(weight(split_weights, selection, old_dimensions), lhn_merge_weights[selection[0]]);
+        const auto val = (weight(split_weights, selection, old_dimensions) * lhn_merge_weights[selection[0]]);
         // std::cerr << val << std::endl;
-        *goal_value = sum(*goal_value, val);
+        *goal_value = (*goal_value) + (val);
     }
     else {
         assert(merges[dim].size() > 0);
         for (auto value : merges[dim]) {
             selection.push_back(value);
-            accumulate_probabilites(goal_value, split_weights, old_dimensions, selection, dim+1, merges, lhn_merge_weights, sum, prod);
+            accumulate_probabilites(goal_value, split_weights, old_dimensions, selection, dim+1, merges, lhn_merge_weights);
             selection.pop_back();
         }
     }
 }
 
-template <typename Accum1, typename Accum2>
-void fill_merge(const std::vector<double> & split_weights, std::vector<double> & merged_weights, const std::vector<unsigned> & old_dimensions
+template <typename Val>
+void fill_merge(const std::vector<Val> & split_weights, std::vector<Val> & merged_weights, const std::vector<unsigned> & old_dimensions
         , const std::vector<unsigned> & new_dimensions, std::vector<unsigned> & selection, const unsigned dim,
-                const std::vector<std::vector<std::vector<unsigned>>> & merges, const std::vector<double> & lhn_merge_weights, const Accum1 & sum, const Accum2 & prod
+                const std::vector<std::vector<std::vector<unsigned>>> & merges, const std::vector<double> & lhn_merge_weights
 ) {
     assert(dim == selection.size());
     if (new_dimensions.size() == dim) {
@@ -141,33 +139,30 @@ void fill_merge(const std::vector<double> & split_weights, std::vector<double> &
         for (unsigned i = 0; i < selection.size(); ++i) {
             the_merges.push_back(merges[i][selection[i]]);
         }
-        /*
-        std::cerr << "merge   la: ";
-        for (auto i : selection) {
-            std::cerr << i <<" : ";
-        }
-        std::cerr << std::endl;*/
-        accumulate_probabilites(goal_value, split_weights, old_dimensions, witnesses, 0, the_merges, lhn_merge_weights, sum, prod);
+
+//        std::cerr << "merge   la: ";
+//        for (auto i : selection) {
+//            std::cerr << i <<" : ";
+//        }
+//        std::cerr << std::endl;
+        accumulate_probabilites(goal_value, split_weights, old_dimensions, witnesses, 0, the_merges, lhn_merge_weights);
     }
     else {
         assert(new_dimensions[dim] > 0);
         for (unsigned i = 0; i < new_dimensions[dim]; ++i){
             selection.push_back(i);
-            fill_merge(split_weights, merged_weights, old_dimensions, new_dimensions, selection, dim + 1, merges, lhn_merge_weights, sum, prod);
+            fill_merge(split_weights, merged_weights, old_dimensions, new_dimensions, selection, dim + 1, merges, lhn_merge_weights);
             selection.pop_back();
         }
     }
 }
 
-template <typename Accum1, typename Accum2>
-std::vector<double> merge_rule(  const std::vector<double> & split_weights
+template <typename Val>
+std::vector<Val> merge_rule(  const std::vector<Val> & split_weights
                     , const std::vector<unsigned> & old_dimensions
                     , const std::vector<unsigned> & new_dimensions
                     , const std::vector<std::vector<std::vector<unsigned>>> & merges
-                    , const std::vector<double> & lhn_merge_factors
-                    , const Accum1 & sum
-                    , const Accum2 & prod
-                    , const double zero
+                    , const std::vector<Val> & lhn_merge_factors
                     ) {
     unsigned new_size = calc_size(new_dimensions);
     /*
@@ -181,9 +176,9 @@ std::vector<double> merge_rule(  const std::vector<double> & split_weights
         std::cerr << mf << " ";
     }
     std::cerr << std::endl;*/
-    std::vector<double> merged_weights = std::vector<double>(new_size, zero);
+    std::vector<Val> merged_weights = std::vector<Val>(new_size, Val::zero());
     std::vector<unsigned> selection;
-    fill_merge(split_weights, merged_weights, old_dimensions, new_dimensions, selection, 0, merges, lhn_merge_factors, sum, prod);
+    fill_merge(split_weights, merged_weights, old_dimensions, new_dimensions, selection, 0, merges, lhn_merge_factors);
 
     /*std::cerr << "mw: ";
     for (auto mw : merged_weights) {
@@ -212,27 +207,26 @@ unsigned subdim_from(const std::vector<std::vector<T>> & dims, const unsigned st
     return dim;
 }
 
-template <typename Accum1, typename Accum2>
-std::vector<double> compute_inside_weights(const std::vector<double> & rule_weight_tensor
-        , const std::vector<std::vector<double>> & nont_weight_vectors
-        , const std::vector<unsigned> & dim_rule, const double zero, const double one
-        , const Accum1 sum , Accum2 prod) {
-    std::vector<double> result = std::vector<double>(dim_rule[0], zero);
-        std::vector<double>::const_iterator next_la_weight = rule_weight_tensor.begin();
+template <typename Val>
+std::vector<Val> compute_inside_weights(const std::vector<Val> & rule_weight_tensor
+        , const std::vector<std::vector<Val>> & nont_weight_vectors
+        , const std::vector<unsigned> & dim_rule) {
+    std::vector<Val> result = std::vector<Val>(dim_rule[0], Val::zero());
+        typename std::vector<Val>::const_iterator next_la_weight = rule_weight_tensor.begin();
         for (unsigned lhs = 0; lhs < dim_rule[0]; ++ lhs) {
             const unsigned sd = subdim(dim_rule);
             assert(next_la_weight == rule_weight_tensor.begin() + lhs * sd);
-            double & target = result[lhs];
+            Val & target = result[lhs];
 
             unsigned rhs = 0;
             std::vector<unsigned> selection = std::vector<unsigned>(dim_rule.size() - 1, 0);
-            std::vector<double> factors;
+            std::vector<Val> factors;
             factors.reserve(dim_rule.size() - 1);
             while (rhs >= 0) {
                 if (rhs == dim_rule.size() - 1) {
                     assert(next_la_weight != rule_weight_tensor.end());
-                    const double val = prod(*next_la_weight, rhs > 0 ? factors[rhs - 1] : one);
-                    target = sum(target, val);
+                    const Val val = (*next_la_weight) * (rhs > 0 ? factors[rhs - 1] : Val::one());
+                    target = target + val;
                     ++next_la_weight;
                     if (rhs == 0)
                         break;
@@ -244,13 +238,13 @@ std::vector<double> compute_inside_weights(const std::vector<double> & rule_weig
                         rhs--;
                 } else {
                     if (rhs > 0)
-                        factors[rhs] = prod(factors[rhs-1], nont_weight_vectors[rhs][selection[rhs]]);
+                        factors[rhs] = (factors[rhs-1]) * (nont_weight_vectors[rhs][selection[rhs]]);
                     else
                         factors[rhs] = nont_weight_vectors[rhs][selection[rhs]];
                     ++selection[rhs];
                     // if a factor is zero already, then we can abort early
                     // but we have to increase next_la_weight accordingly
-                    if (factors[rhs] == zero) {
+                    if (factors[rhs] == Val::zero()) {
                         unsigned skip = subdim_from(nont_weight_vectors, rhs+1);
                         next_la_weight += skip;
                     } else {
@@ -264,15 +258,14 @@ std::vector<double> compute_inside_weights(const std::vector<double> & rule_weig
 }
 
 
-template <typename Accum1, typename Accum2>
-std::vector<double> compute_rule_frequency(const std::vector<double> & rule_weight_tensor
-        , const std::vector<double> & lhs_outside_weights
-        , const std::vector<std::vector<double>> & rhs_inside_weights
-        , const std::vector<unsigned> & dim_rule, const double zero, const double one
-        , const Accum1 sum , Accum2 prod) {
-    std::vector<double> result = std::vector<double>(calc_size(dim_rule), zero);
-    std::vector<double>::const_iterator next_la_weight = rule_weight_tensor.begin();
-    std::vector<double>::iterator target = result.begin();
+template <typename Val>
+std::vector<Val> compute_rule_frequency(const std::vector<Val> & rule_weight_tensor
+        , const std::vector<Val> & lhs_outside_weights
+        , const std::vector<std::vector<Val>> & rhs_inside_weights
+        , const std::vector<unsigned> & dim_rule) {
+    std::vector<Val> result = std::vector<Val>(calc_size(dim_rule), Val::zero());
+    typename std::vector<Val>::const_iterator next_la_weight = rule_weight_tensor.begin();
+    typename std::vector<Val>::iterator target = result.begin();
     for (unsigned lhs = 0; lhs < dim_rule[0]; ++ lhs) {
         const unsigned sd = subdim(dim_rule);
         assert(next_la_weight == rule_weight_tensor.begin() + lhs * sd);
@@ -280,12 +273,12 @@ std::vector<double> compute_rule_frequency(const std::vector<double> & rule_weig
 
         unsigned rhs = 0;
         std::vector<unsigned> selection = std::vector<unsigned>(dim_rule.size() - 1, 0);
-        std::vector<double> factors = std::vector<double>(dim_rule.size() - 1);
+        std::vector<Val> factors = std::vector<Val>(dim_rule.size() - 1);
         while (rhs >= 0) {
             if (rhs == dim_rule.size() - 1) {
                 assert (target != result.end());
                 assert (next_la_weight != rule_weight_tensor.end());
-                const double val = prod(lhs_outside_weights[lhs], prod(*next_la_weight, rhs > 0 ? factors[rhs - 1] : one));
+                const Val val = (lhs_outside_weights[lhs]) * ((*next_la_weight) * (rhs > 0 ? factors[rhs - 1] : Val::one()));
                 *target = val;
                 ++next_la_weight;
                 ++target;
@@ -299,13 +292,13 @@ std::vector<double> compute_rule_frequency(const std::vector<double> & rule_weig
                 rhs--;
             } else {
                 if (rhs > 0)
-                    factors[rhs] = prod(factors[rhs-1], rhs_inside_weights[rhs][selection[rhs]]);
+                    factors[rhs] = (factors[rhs-1]) * (rhs_inside_weights[rhs][selection[rhs]]);
                 else
                     factors[rhs] = rhs_inside_weights[rhs][selection[rhs]];
                 ++selection[rhs];
                 // if a factor is zero already, then we can abort early
                 // but we have to increase next_la_weight/ target accordingly
-                if (factors[rhs] == zero) {
+                if (factors[rhs] == Val::zero()) {
                     const unsigned skip = subdim_from(rhs_inside_weights, rhs+1);
                     next_la_weight += skip;
                     target += skip;
@@ -321,36 +314,36 @@ std::vector<double> compute_rule_frequency(const std::vector<double> & rule_weig
 }
 
 
-template <typename Accum1, typename Accum2>
-std::vector<double> compute_outside_weights(const std::vector<double> & rule_weight_tensor
-        , const std::vector<double> & lhn_outside_weight_vector
-        , const std::vector<std::vector<double>> & inside_weight_vectors
-        , const std::vector<unsigned> & dim_rule, const double zero, const double one
-        , const Accum1 sum , Accum2 prod, const unsigned target_pos) {
+template <typename Val>
+std::vector<Val> compute_outside_weights(const std::vector<Val> & rule_weight_tensor
+        , const std::vector<Val> & lhn_outside_weight_vector
+        , const std::vector<std::vector<Val>> & inside_weight_vectors
+        , const std::vector<unsigned> & dim_rule
+        , const unsigned target_pos) {
 
-    std::vector<double> result = std::vector<double>(dim_rule[target_pos + 1], zero);
+    std::vector<Val> result = std::vector<Val>(dim_rule[target_pos + 1], Val::zero());
 
-    std::vector<double>::const_iterator next_la_weight = rule_weight_tensor.begin();
+    typename std::vector<Val>::const_iterator next_la_weight = rule_weight_tensor.begin();
     unsigned steps = 0;
     for (unsigned lhs = 0; lhs < dim_rule[0]; ++lhs) {
         const unsigned sd = subdim(dim_rule);
         assert(next_la_weight == rule_weight_tensor.begin() + lhs * sd);
 
         // we can skip rules with zero probability
-        if (lhn_outside_weight_vector[lhs] == zero) {
+        if (lhn_outside_weight_vector[lhs] == Val::zero()) {
             next_la_weight += sd;
             continue;
         }
 
         unsigned rhs = 0;
         std::vector<unsigned> selection = std::vector<unsigned>(dim_rule.size() - 1, 0);
-        std::vector<double> factors = std::vector<double>(dim_rule.size() -1, one);
+        std::vector<Val> factors = std::vector<Val>(dim_rule.size() -1, Val::one());
         while (true) {
             if (rhs == dim_rule.size() - 1) {
                 assert (next_la_weight != rule_weight_tensor.end());
-                double val = prod(*next_la_weight, (rhs > 0) ? factors[rhs - 1] : one);
-                val = prod(val, lhn_outside_weight_vector[lhs]);
-                result[selection[target_pos] - 1] = sum(result[selection[target_pos] - 1], val);
+                Val val = (*next_la_weight) * ((rhs > 0) ? factors[rhs - 1] : Val::one());
+                val *= lhn_outside_weight_vector[lhs];
+                result[selection[target_pos] - 1] = result[selection[target_pos] - 1] + val;
                 ++next_la_weight;
                 ++steps;
                 if (rhs == 0)
@@ -363,13 +356,13 @@ std::vector<double> compute_outside_weights(const std::vector<double> & rule_wei
                 rhs--;
             } else {
                 if (rhs > 0)
-                    factors[rhs] = prod(factors[rhs-1], inside_weight_vectors[rhs][selection[rhs]]);
+                    factors[rhs] = (factors[rhs-1]) * inside_weight_vectors[rhs][selection[rhs]];
                 else
                     factors[rhs] = inside_weight_vectors[rhs][selection[rhs]];
                 ++selection[rhs];
                 // if a factor is zero already, then we can abort early
                 // but we have to increase next_la_weight/ target accordingly
-                if (factors[rhs] == zero) {
+                if (factors[rhs] == Val::zero()) {
                     const unsigned skip = subdim_from(inside_weight_vectors, rhs+1);
                     next_la_weight += skip;
                 } else {

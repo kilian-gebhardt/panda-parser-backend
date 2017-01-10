@@ -306,11 +306,11 @@ int main() {
 
     std::cerr << "Trace manager: " << std::endl;
 
-    TraceManager<std::string, std::string, int> manager;
+    TraceManager<std::string, std::string, int> manager(true);
     manager.add_trace_entry(parser.get_trace(), *parser.goal, 0);
 
-    auto my_rule_weights = std::vector<int>({1, 1, 1, 1, 1, 1, 1, 1, 1});
-    auto pair = manager.io_weights(my_rule_weights, 1, 1, 0, [] (int x, int y) -> int { return x + y; }, [] (int x, int y) -> int { return x * y; }, 0);
+    auto my_rule_weights = std::vector<Double>({1, 1, 1, 1, 1, 1, 1, 1, 1});
+    auto pair = manager.io_weights(my_rule_weights, 0);
     for (const auto & item : manager.get_order(0)) {
         std::cerr << "T: " << item << " " << pair.first[item] << " " << pair.second[item] << std::endl;
     }
@@ -319,7 +319,7 @@ int main() {
 
     auto my_rule_weights2 = std::vector<double>({1, 1, 1, 1, 0.5, 0.5, 1, 1, 1});
 
-    auto vec_new = manager.do_em_training(my_rule_weights2, my_rule_groups, 10);
+    auto vec_new = manager.do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
 
     for (unsigned i = 0; i < vec_new.size(); ++i) {
         std::cerr << vec_new[i] << " ";
@@ -359,7 +359,7 @@ int main() {
         }
     }
 
-    manager.split_merge(vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5);
+    manager.split_merge<Double>(vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5);
 
     return 0;
 }
