@@ -198,6 +198,25 @@ std::ostream &operator<<(std::ostream &os, const Double &x){
     return os;
 }
 
+template <typename Nonterminal>
+class GrammarInfo {
+public:
+    typename std::function<unsigned(Nonterminal)> nont_idx;
+    std::vector<std::vector<unsigned>> normalization_groups;
+    std::vector<std::vector<unsigned>> rule_to_nonterminals;
+
+    GrammarInfo() {}
+    GrammarInfo(
+              const std::function<unsigned(Nonterminal)> nont_idx
+            , const std::vector<std::vector<unsigned>> normalization_groups
+            , const std::vector<std::vector<unsigned>> rule_to_nonterminals
+            )
+            : nont_idx(nont_idx)
+            , normalization_groups(normalization_groups)
+            , rule_to_nonterminals(rule_to_nonterminals
+            ) {}
+};
+
 
 
 template <typename Nonterminal, typename Terminal, typename Position>
@@ -575,13 +594,14 @@ public:
         return result;
     }
 
-    template<typename Val>
-    std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge_id(
-            const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
-            const unsigned n_epochs, const unsigned n_nonts, const unsigned split_merge_cycles, const double merge_threshold
-    ) {
-        auto nont_idx_f = [](const unsigned nont) -> unsigned { return nont; };
 
+    GrammarInfo<unsigned> grammar_info_id(const std::vector<std::vector<unsigned>> &rule_to_nonterminals) {
+        auto nont_idx_f = [](const unsigned nont) -> unsigned { return nont; };
+        return grammar_info(rule_to_nonterminals, nont_idx_f);
+    }
+
+    template<typename NontIdx>
+    GrammarInfo<Nonterminal> grammar_info(const std::vector<std::vector<unsigned>> &rule_to_nonterminals, NontIdx nont_idx_f) {
         std::cerr << "building normalization groups" << std::endl;
 
         std::vector<std::vector<unsigned>> normalization_groups;
@@ -617,6 +637,21 @@ public:
             }
             std::cerr << std::endl;
         }
+        return GrammarInfo<Nonterminal>(nont_idx_f, normalization_groups, rule_to_nonterminals);
+    };
+
+
+    template<typename Val>
+    std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge_id(
+            const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
+            const unsigned n_epochs, const unsigned n_nonts, const unsigned split_merge_cycles, const double merge_threshold
+    ) {
+
+        GrammarInfo<unsigned> grammarInfo = grammar_info_id(rule_to_nonterminals);
+        const auto normalization_groups = grammarInfo.normalization_groups;
+        const auto nont_idx_f = grammarInfo.nont_idx;
+
+
 
         std::cerr << "starting split merge training" << std::endl;
         std::cerr << "# nonts: " << n_nonts << std::endl;
@@ -630,43 +665,9 @@ public:
             const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
             const unsigned n_epochs, const std::map<Nonterminal, unsigned> &nont_idx, const unsigned split_merge_cycles, const double merge_threshold
     ) {
-        auto nont_idx_f = [&](const Nonterminal nont) -> unsigned { return nont_idx.at(nont); };
-
-        std::cerr << "building normalization groups" << std::endl;
-
-        std::vector<std::vector<unsigned>> normalization_groups;
-        for (unsigned rule_idx = 0; rule_idx < rule_to_nonterminals.size(); ++rule_idx) {
-            if (rule_to_nonterminals[rule_idx].size() > 0) {
-                if (normalization_groups.size() <= rule_to_nonterminals[rule_idx][0]) {
-                    normalization_groups.resize(rule_to_nonterminals[rule_idx][0] + 1);
-                }
-                normalization_groups[rule_to_nonterminals[rule_idx][0]].push_back(rule_idx);
-            }
-        }
-        if (debug) {
-            unsigned i = 0;
-            for (auto rtn : rule_to_nonterminals) {
-                std::cerr << i << ": ";
-                unsigned j = 0;
-                for (auto n : rtn) {
-                    if (j == 1) {
-                        std::cerr << "-> ";
-                    }
-                    std::cerr << n << " ";
-                    ++j;
-                }
-                std::cerr << ";" << std::endl;
-                ++i;
-            }
-            for (unsigned i = 0; i < normalization_groups.size(); ++i) {
-                std::cerr << i << " : { ";
-                for (auto n : normalization_groups[i]) {
-                    std::cerr << n << " ";
-                }
-                std::cerr << "} " ;
-            }
-            std::cerr << std::endl;
-        }
+        auto nont_idx_f = [&](const Nonterminal nont) -> unsigned { return nont_idx.at(nont);};
+        GrammarInfo<Nonterminal> grammarInfo = grammar_info(rule_to_nonterminals, nont_idx_f);
+        const std::vector<std::vector<unsigned>> & normalization_groups = grammarInfo.normalization_groups;
 
         std::cerr << "starting split merge training" << std::endl;
         std::cerr << "# nonts: " << nont_idx.size() << std::endl;
@@ -689,10 +690,7 @@ public:
         // rule weights for latent annotated rules before and after
         // each split/merge cycle
         std::vector<unsigned> nont_dimensions = std::vector<unsigned>(n_nonts, 1);
-        std::vector<std::vector< Val >> rule_weights_la;
-        for (const double &rule_weight : rule_weights) {
-            rule_weights_la.emplace_back(std::vector<Val>(1, Val::to(rule_weight)));
-        }
+        std::vector<std::vector<Val>> rule_weights_la = init_weights_la<Val>(rule_weights);
 
         std::vector<Val> root_weights = {Val::one()};
 
@@ -702,7 +700,61 @@ public:
                     , rule_weights_la, root_weights);
         }
 
-        // undo log conversion
+        std::vector<std::vector<double>> rule_weights_la_unlog = valToDouble(rule_weights_la);
+
+        return std::make_pair(nont_dimensions, rule_weights_la_unlog);
+
+    }
+
+    template<typename Val>
+    std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> run_split_merge_cycle(
+            const GrammarInfo<Nonterminal> & grammar_Info,
+            std::vector<unsigned> nont_dimensions,
+            const std::vector<std::vector<double>> &rule_weights_la,
+            const unsigned n_epochs,
+            const unsigned n_nonts, const double merge_threshold,
+            const unsigned cycle
+    ) {
+        const double epsilon = 0.0001;
+        auto rule_weights_val = doubleToVal<Val>(rule_weights_la);
+        std::vector<Val> root_weights = {Val::one()};
+        split_merge_cycle(cycle, n_epochs, epsilon, merge_threshold, grammar_Info.rule_to_nonterminals, grammar_Info.normalization_groups, grammar_Info.nont_idx, nont_dimensions, rule_weights_val, root_weights);
+        auto rule_weights_la_after = valToDouble(rule_weights_val);
+
+        return std::make_pair(nont_dimensions, rule_weights_la_after);
+    };
+
+    std::vector<std::vector<double>> lift_doubles(const std::vector<double> &rule_weights) const {
+        std::vector<std::vector< double >> rule_weights_la;
+        for (const double &rule_weight : rule_weights) {
+            rule_weights_la.emplace_back(std::vector<double>(1, rule_weight));
+        }
+        return rule_weights_la;
+    }
+
+    template<typename Val>
+    std::vector<std::vector<Val>> init_weights_la(const std::vector<double> &rule_weights) const {
+        std::vector<std::vector< Val >> rule_weights_la;
+        for (const double &rule_weight : rule_weights) {
+            rule_weights_la.emplace_back(std::vector<Val>(1, Val::to(rule_weight)));
+        }
+        return rule_weights_la;
+    }
+
+    template<typename Val>
+    std::vector<std::vector<Val>> doubleToVal(const std::vector<std::vector<double>> &rule_weights_double) const {
+        std::vector<std::vector<Val>> rule_weights_val;
+        for (const auto & weights : rule_weights_double) {
+            rule_weights_val.push_back(std::vector<Val>());
+            for (const double & weight : weights) {
+                rule_weights_val.back().push_back(Val::to(weight));
+            }
+        }
+        return rule_weights_val;
+    }
+
+    template<typename Val>
+    std::vector<std::vector<double>> valToDouble(const std::vector<std::vector<Val>> &rule_weights_la) const {
         std::vector<std::vector<double>> rule_weights_la_unlog;
         for (const auto & weights : rule_weights_la) {
             rule_weights_la_unlog.push_back(std::vector<double>());
@@ -710,9 +762,7 @@ public:
                 rule_weights_la_unlog.back().push_back(weight.from());
             }
         }
-
-        return std::make_pair(nont_dimensions, rule_weights_la_unlog);
-
+        return rule_weights_la_unlog;
     }
 
     template<typename Val, typename NontToIdx>
