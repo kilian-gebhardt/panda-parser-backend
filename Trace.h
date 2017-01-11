@@ -613,6 +613,7 @@ public:
                 normalization_groups[rule_to_nonterminals[rule_idx][0]].push_back(rule_idx);
             }
         }
+
         if (debug) {
             unsigned i = 0;
             for (auto rtn : rule_to_nonterminals) {
@@ -776,13 +777,13 @@ public:
         std::vector<Val> root_weights_splitted;
         std::vector<std::vector<Val>> rule_weights_merged;
 
-
         std::vector<unsigned> split_dimensions;
 
         if (debug) std::cerr << "prepare split" << std::endl;
 
         for (const unsigned dim : nont_dimensions)
             split_dimensions.push_back(dim * 2);
+
         // splitting
         for (unsigned i = 0; i < rule_weights_la.size(); ++i) {
             const std::vector<Val> &rule_weight = rule_weights_la[i];
@@ -903,8 +904,9 @@ public:
                 for (const auto & dep_item : witness.second) {
                     nont_vectors.push_back(inside_weights.at(*dep_item));
                 }
-                inside_weight = dot_product(std::plus<Val>(), inside_weight, compute_inside_weights(rules[witness.first->id], nont_vectors,
-                                                                       rule_dim));
+                inside_weight = zipWith<Val>(std::plus<Val>(), inside_weight,
+                                        compute_inside_weights(rules[witness.first->id], nont_vectors,
+                                                               rule_dim));
             }
         }
 
@@ -917,7 +919,7 @@ public:
             std::vector<Val> & outside_weight = outside_weights[item];
 
             if (item == goals[i])
-                outside_weight = dot_product(std::plus<Val>(), outside_weight, root);
+                outside_weight = zipWith<Val>(std::plus<Val>(), outside_weight, root);
 
             for (int k = topological_order.size() - 1; k > j; --k){
                 const ParseItem<Nonterminal, Position> & parent = topological_order[k];
@@ -951,7 +953,7 @@ public:
                             , item_pos);
 
                     std::transform(outside_weight.begin(), outside_weight.end(), new_weights.begin(), outside_weight.begin(), std::plus<Val>());
-//                  outside_weight = dot_product( std::plus<Val>()
+//                  outside_weight = zipWith<Val>( std::plus<Val>()
 //                               , outside_weight
 //                               , new_weights);
                 }
@@ -1043,11 +1045,17 @@ public:
                 }
 //
 
-                root_counts = dot_product(std::plus<Val>(), root_counts, dot_product(std::multiplies<Val>(), tr_io_weight.first.at(goals[trace_id]), tr_io_weight.second.at(goals[trace_id])));
+                root_counts = zipWith<Val>(std::plus<Val>(), root_counts,
+                                      zipWith<Val>(std::multiplies<Val>(), tr_io_weight.first.at(goals[trace_id]),
+                                              tr_io_weight.second.at(goals[trace_id])));
 
 
                 const auto instance_root_weights = tr_io_weight.first.at(goals[trace_id]);
-                const Val instance_root_weight = reduce(std::plus<Val>(), dot_product(std::multiplies<Val>(), instance_root_weights, the_root_weights), Val::zero());
+                const Val instance_root_weight = reduce(std::plus<Val>(),
+                                                        zipWith<Val>(std::multiplies<Val>(), instance_root_weights,
+                                                                the_root_weights), Val::zero());
+                // const auto tmpxyz = zipWith<Val>(std::multiplies<Val>(), instance_root_weights, the_root_weights);
+                // const Val instance_root_weight = std::accumulate(tmpxyz.begin(), tmpxyz.end(), Val::zero(), std::plus<Val>());
                 if (debug)
                     std::cerr << "instance root weight: " << instance_root_weight << std::endl;
 
@@ -1067,7 +1075,7 @@ public:
 
                         std::vector<Val> rule_val;
                         rule_val = compute_rule_frequency(rule_weights[rule_id], lhn_outside_weights, nont_weight_vectors, rule_dimensions[rule_id]);
-//                        rule_val = scalar_product(std::divides<Val>(), rule_val, instance_root_weight);
+//                        rule_val = zipWithConstant<Val>(std::divides<Val>(), rule_val, instance_root_weight);
                         std::for_each(rule_val.begin(), rule_val.end(), [&](Val& x) {x /= instance_root_weight;});
 
                         if (debug) {
@@ -1076,7 +1084,7 @@ public:
                                 std::cerr << val << " ";
                             std::cerr << " }" << std::endl;
                         }
-                        rule_counts[rule_id] = dot_product(std::plus<Val>(), rule_counts[rule_id], rule_val);
+                        rule_counts[rule_id] = zipWith<Val>(std::plus<Val>(), rule_counts[rule_id], rule_val);
                     }
                 }
             }
@@ -1226,7 +1234,7 @@ public:
 
                 if (nonterminal_count.count(item.nonterminal)) {
                     std::pair<std::vector<Val>, unsigned> &entry = nonterminal_count.at(item.nonterminal);
-                    entry.first = dot_product(std::plus<Val>(), entry.first, outside_weight);
+                    entry.first = zipWith<Val>(std::plus<Val>(), entry.first, outside_weight);
                     ++entry.second;
                 } else {
                     nonterminal_count[item.nonterminal] = std::make_pair(outside_weight, 1);
@@ -1235,8 +1243,8 @@ public:
 
             for (const auto pair : nonterminal_count) {
                 std::vector<Val> & gow = global_nont_outside_weights[nont_idx(pair.first)];
-                gow = dot_product(std::plus<Val>(), gow,
-                                  scalar_product(std::divides<Val>(), pair.second.first, (Val) pair.second.second));
+                gow = zipWith<Val>(std::plus<Val>(), gow,
+                              zipWithConstant<Val>(std::divides<Val>(), pair.second.first, (Val) pair.second.second));
             }
         }
 

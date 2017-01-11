@@ -48,21 +48,21 @@ bool pairwise_different(const std::vector<T> & vec){
     return true;
 }
 
-template<typename Accum1, typename Val>
-std::vector<Val> dot_product(const Accum1 point_product, const std::vector<Val> & arg1, const std::vector<Val> &arg2) {
+template<typename T3, typename T1, typename T2, typename Accum>
+std::vector<T3> zipWith(const Accum op, const std::vector<T1> &arg1, const std::vector<T2> &arg2) {
     assert(arg1.size() == arg2.size());
-    std::vector<Val> result;
+    std::vector<T3> result;
     for (unsigned i = 0; i < arg1.size(); ++i) {
-        result.push_back(point_product(arg1[i], arg2[i]));
+        result.push_back(op(arg1[i], arg2[i]));
     }
     return result;
 };
 
-template<typename Accum1, typename Val>
-std::vector<Val> scalar_product(const Accum1 point_scalar, const std::vector<Val> &goal, const Val scalar) {
-    std::vector<Val> result;
-    for (auto i = goal.begin(); i != goal.end(); ++i) {
-        result.push_back(point_scalar(*i, scalar));
+template<typename T3, typename T1, typename T2, typename Accum>
+std::vector<T3> zipWithConstant(const Accum op, const std::vector<T1> &arg1, const T2 c) {
+    std::vector<T3> result;
+    for (auto i = arg1.begin(); i != arg1.end(); ++i) {
+        result.push_back(op(*i, c));
     }
     return result;
 };
