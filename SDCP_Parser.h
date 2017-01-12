@@ -17,6 +17,12 @@
 #include <set>
 #include "util.h"
 #include <boost/functional/hash.hpp>
+#include <unordered_map>
+
+template <typename T1, typename T2>
+using MAPTYPE = typename std::unordered_map<T1, T2>;
+
+
 
 template <typename Nonterminal, typename Position>
 class ParseItem {
@@ -539,7 +545,7 @@ private:
     }
 public:
     std::queue<std::shared_ptr<ParseItem<Nonterminal, Position>>> agenda;
-    std::map<ParseItem<Nonterminal, Position>, std::vector<std::pair<std::shared_ptr<Rule<Nonterminal, Terminal>>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>> >>>> trace;
+    MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<std::pair<std::shared_ptr<Rule<Nonterminal, Terminal>>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>> >>>> trace;
     std::map<Nonterminal, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>>> chart;
 
     SDCP<Nonterminal, Terminal> sDCP;
@@ -676,7 +682,7 @@ public:
         if (this->goal) {
             if (debug)
                 std::cerr << "goal: " << *(this->goal) << std::endl;
-            std::map<ParseItem<Nonterminal, Position>, std::vector<std::pair<std::shared_ptr<Rule<Nonterminal, Terminal>>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>> >>>> trace_;
+            MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<std::pair<std::shared_ptr<Rule<Nonterminal, Terminal>>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>> >>>> trace_;
 
             reachable.insert(*(this->goal));
             add_recursively(reachable, *(this->goal));
@@ -767,7 +773,7 @@ public:
         return result;
     }
 
-    const std::map<
+    const MAPTYPE<
             ParseItem<Nonterminal, Position>
             , std::vector<
                     std::pair<

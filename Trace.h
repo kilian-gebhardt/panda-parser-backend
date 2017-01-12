@@ -17,12 +17,6 @@
 #include <cmath>
 #include <boost/operators.hpp>
 #include <functional>
-#include <unordered_map>
-
-
-template <typename T1, typename T2>
-using MAPTYPE = typename std::unordered_map<T1, T2>;
-
 
 class Chance {
     std::default_random_engine generator;
@@ -228,13 +222,12 @@ template <typename Nonterminal, typename Terminal, typename Position>
 class TraceManager {
 private:
     std::vector<
-            std::map<
+            MAPTYPE<
                       ParseItem<Nonterminal, Position>
                     , std::vector<
                             std::pair<
                                       std::shared_ptr<Rule<Nonterminal, Terminal>>
-                                    , std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>
-                                    >
+                                    , std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>>
                             >
                     >
             >
@@ -248,7 +241,7 @@ private:
 
 
     // empty default values
-    const std::map<
+    const MAPTYPE<
     ParseItem<Nonterminal, Position>
     , std::vector<
             std::pair<
@@ -272,7 +265,7 @@ public:
     }
 
     void add_trace_entry(
-            const std::map<
+            const MAPTYPE<
                 ParseItem<Nonterminal, Position>
                 , std::vector<
                         std::pair<
@@ -330,7 +323,7 @@ public:
 
     }
 
-    const std::map<
+    const MAPTYPE<
             ParseItem<Nonterminal, Position>
             , std::vector<
                     std::pair<
@@ -367,7 +360,7 @@ public:
                                 , std::vector<std::pair<Position, Position>>
                         >>>> the_items;
         unsigned counter = 0;
-        std::map<ParseItem<Nonterminal, Position>, unsigned> item_map;
+        MAPTYPE<ParseItem<Nonterminal, Position>, unsigned> item_map;
 
         for (const auto entry : traces.at(trace_id)) {
             const ParseItem<Nonterminal, Position> item = entry.first;
@@ -429,7 +422,7 @@ public:
             parse_items.push_back(parse_item);
         }
 
-        std::map<
+        MAPTYPE<
                 ParseItem<Nonterminal, Position>
                 , std::vector<
                         std::pair<
