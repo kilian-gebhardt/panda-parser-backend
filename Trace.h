@@ -233,6 +233,20 @@ private:
             >
     > traces;
     std::vector<
+            MAPTYPE<
+                    ParseItem<Nonterminal, Position>
+                    , std::vector<
+                            std::tuple<
+                                      std::shared_ptr<Rule<Nonterminal, Terminal>>
+                                    , std::shared_ptr<std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>>>
+                                    , std::shared_ptr<ParseItem<Nonterminal, Position>>
+                                    , unsigned
+                                    >
+                            >
+                    >
+            > traces_reverse;
+
+    std::vector<
             std::vector<
                 ParseItem<Nonterminal, Position>
             >
@@ -321,6 +335,32 @@ public:
             topological_orders[i] = topological_order;
         }
 
+        // compute outgoing hyperedges for each item
+        if (traces_reverse.size() <= i)
+            traces_reverse.resize(i + 1);
+        MAPTYPE<ParseItem<Nonterminal, Position>
+                , std::vector<
+                        std::tuple<
+                                std::shared_ptr<Rule<Nonterminal, Terminal>>
+                                , std::shared_ptr<std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>>>
+                                , std::shared_ptr<ParseItem<Nonterminal, Position>>
+                                , unsigned
+                        >
+                >
+        > & trace_reverse = traces_reverse[i];
+        trace_reverse.clear();
+        for (auto entry: trace) {
+            auto parent_ptr = std::make_shared<ParseItem<Nonterminal, Position>>(entry.first);
+            for (auto &witness : entry.second) {
+                auto rule = witness.first;
+                auto witness_ptr = std::make_shared<std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>>>(
+                        witness.second);
+                for (unsigned i = 0; i < witness.second.size(); ++i) {
+                    auto &item = witness.second[i];
+                    trace_reverse[*item].push_back(std::make_tuple(rule, witness_ptr, parent_ptr, i));
+                }
+            }
+        }
     }
 
     const MAPTYPE<
@@ -480,19 +520,19 @@ public:
             Val val = Val::zero();
             if (item == goals[i])
                 val = val + Val::one();
-            for (int k = topological_order.size() - 1; k > j; --k){
-                const ParseItem<Nonterminal, Position> & parent = topological_order[k];
-                for (const auto & witness : traces[i].at(parent)) {
-                    Val val_witness = outside_weights.at(parent) * rules[witness.first->id];
-                    bool item_found = false;
-                    for (const auto & rhs_item : witness.second) {
-                        if (*rhs_item == item)
-                            item_found = true;
-                        else
-                            val_witness = val_witness * inside_weights.at(*rhs_item);
+            if (traces_reverse[i].count(item)) {
+                for (const auto &witness : traces_reverse[i].at(item)) {
+                    const auto &rule = *(std::get<0>(witness));
+                    const auto &siblings = *(std::get<1>(witness));
+                    const auto &parent = *(std::get<2>(witness));
+                    const unsigned position = std::get<3>(witness);
+                    Val val_witness = outside_weights.at(parent);
+                    val_witness *= rules[rule.id];
+                    for (unsigned sib_position = 0; sib_position < siblings.size(); ++sib_position) {
+                        if (sib_position != position)
+                            val_witness *= inside_weights.at(*(siblings[sib_position]));
                     }
-                    if (item_found)
-                        val = val + val_witness;
+                    val += val_witness;
                 }
             }
             outside_weights[item] = val;
@@ -910,7 +950,6 @@ public:
 
         // TODO implement for general case (== no topological order) solution by gauss jordan
         MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<Val>> outside_weights;
-        std::vector<Val> empty = std::vector<Val>(0,0);
         for (int j = topological_order.size() - 1; j >= 0; --j) {
             const ParseItem<Nonterminal, Position> & item = topological_order[j];
             outside_weights[item] = std::vector<Val>(nont_dimensions[nont_idx(item.nonterminal)], Val::zero());
@@ -919,41 +958,39 @@ public:
             if (item == goals[i])
                 outside_weight = zipWith<Val>(std::plus<Val>(), outside_weight, root);
 
-            for (int k = topological_order.size() - 1; k > j; --k){
-                const ParseItem<Nonterminal, Position> & parent = topological_order[k];
+            if (traces_reverse[i].count(item)) {
+                for (const auto &witness : traces_reverse[i].at(item)) {
+                    const auto &rule = *(std::get<0>(witness));
+                    const auto &siblings = *(std::get<1>(witness));
+                    const auto &parent = *(std::get<2>(witness));
+                    const unsigned position = std::get<3>(witness);
 
-                for (const auto & witness : traces[i].at(parent)) {
-                    bool item_found = false;
                     std::vector<std::vector<Val>> relevant_inside_weights;
                     std::vector<unsigned> rule_dim;
                     rule_dim.push_back(nont_dimensions[nont_idx(parent.nonterminal)]);
 
-                    unsigned item_pos = 0;
-                    for (const auto & rhs_item : witness.second) {
+                    for (unsigned sib_position = 0; sib_position < siblings.size(); ++sib_position) {
+                        const auto & rhs_item = siblings[sib_position];
+
                         rule_dim.push_back(nont_dimensions[nont_idx(rhs_item->nonterminal)]);
-                        if (*rhs_item == item) {
-                            item_found = true;
+                        if (sib_position == position)
                             relevant_inside_weights.push_back(std::vector<Val>(rule_dim.back(), Val::one()));
-                            continue;
-                        } else if (!item_found)
-                            ++item_pos;
-                        relevant_inside_weights.push_back(inside_weights[*rhs_item]);
+                        else
+                            relevant_inside_weights.push_back(inside_weights[*rhs_item]);
                     }
-                    if (!item_found)
-                        continue;
 
                     const std::vector<Val> new_weights
                             = compute_outside_weights(
-                              rules[witness.first->id]
-                            , outside_weights[parent]
-                            , relevant_inside_weights
-                            , rule_dim
-                            , item_pos);
+                                    rules[rule.id]
+                                    , outside_weights[parent]
+                                    , relevant_inside_weights
+                                    , rule_dim
+                                    , position);
 
                     std::transform(outside_weight.begin(), outside_weight.end(), new_weights.begin(), outside_weight.begin(), std::plus<Val>());
-//                  outside_weight = zipWith<Val>( std::plus<Val>()
-//                               , outside_weight
-//                               , new_weights);
+                    //                  outside_weight = zipWith<Val>( std::plus<Val>()
+                    //                               , outside_weight
+                    //                               , new_weights);
                 }
             }
         }
