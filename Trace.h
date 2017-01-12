@@ -17,6 +17,11 @@
 #include <cmath>
 #include <boost/operators.hpp>
 #include <functional>
+#include <unordered_map>
+
+
+template <typename T1, typename T2>
+using MAPTYPE = typename std::unordered_map<T1, T2>;
 
 
 class Chance {
@@ -448,15 +453,15 @@ public:
     }
 
     template<typename Val>
-    std::pair<std::map<ParseItem<Nonterminal, Position>, Val>,
-              std::map<ParseItem<Nonterminal, Position>, Val>>
+    std::pair<MAPTYPE<ParseItem<Nonterminal, Position>, Val>,
+              MAPTYPE<ParseItem<Nonterminal, Position>, Val>>
             io_weights(const std::vector<Val> & rules, const unsigned i) const {
         // TODO implement for general case (== no topological order) approximation of inside weights
         assert (topological_orders.size() > i && topological_orders[i].size() > 0);
 
         const auto & topological_order = topological_orders[i];
 
-        std::map<ParseItem<Nonterminal, Position>, Val> inside_weights;
+        MAPTYPE<ParseItem<Nonterminal, Position>, Val> inside_weights;
 
         for (const auto & item : topological_order) {
             inside_weights[item] = Val::zero();
@@ -476,7 +481,7 @@ public:
         }
 
         // TODO implement for general case (== no topological order) solution by gauss jordan
-        std::map<ParseItem<Nonterminal, Position>, Val> outside_weights;
+        MAPTYPE<ParseItem<Nonterminal, Position>, Val> outside_weights;
         for (int j = topological_order.size() - 1; j >= 0; --j) {
             const ParseItem<Nonterminal, Position> & item = topological_order[j];
             Val val = Val::zero();
@@ -876,8 +881,8 @@ public:
     }
 
     template<typename Val, typename NontToIdx>
-    std::pair<std::map<ParseItem < Nonterminal, Position>, std::vector<Val>>,
-    std::map<ParseItem < Nonterminal, Position>, std::vector<Val>>>
+    std::pair<MAPTYPE<ParseItem < Nonterminal, Position>, std::vector<Val>>,
+    MAPTYPE<ParseItem < Nonterminal, Position>, std::vector<Val>>>
     io_weights_la(const std::vector<std::vector<Val>> &rules, const std::vector<unsigned> &nont_dimensions,
                   const std::vector<std::vector<unsigned>> rule_id_to_nont_ids, const NontToIdx nont_idx,
                   const std::vector<Val> & root,
@@ -890,7 +895,7 @@ public:
         const auto & topological_order = topological_orders[i];
 
         // computation of inside weights
-        std::map<ParseItem<Nonterminal, Position>, std::vector<Val>> inside_weights;
+        MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<Val>> inside_weights;
         for (const auto & item : topological_order) {
             inside_weights[item] = std::vector<Val>(nont_dimensions[nont_idx(item.nonterminal)], Val::zero());
             std::vector<Val> & inside_weight = inside_weights[item];
@@ -911,7 +916,7 @@ public:
         }
 
         // TODO implement for general case (== no topological order) solution by gauss jordan
-        std::map<ParseItem<Nonterminal, Position>, std::vector<Val>> outside_weights;
+        MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<Val>> outside_weights;
         std::vector<Val> empty = std::vector<Val>(0,0);
         for (int j = topological_order.size() - 1; j >= 0; --j) {
             const ParseItem<Nonterminal, Position> & item = topological_order[j];

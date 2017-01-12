@@ -16,6 +16,7 @@
 #include <assert.h>
 #include <set>
 #include "util.h"
+#include <boost/functional/hash.hpp>
 
 template <typename Nonterminal, typename Position>
 class ParseItem {
@@ -66,6 +67,23 @@ bool operator<(const ParseItem<Nonterminal, Position>& lhs, const ParseItem<Nont
         ++i;
     }
     return false;
+}
+
+namespace std {
+    template<typename Nonterminal, typename Position>
+    struct hash<ParseItem<Nonterminal, Position>> {
+    //    typedef ParseItem<Nonterminal, Position>> argument_type;
+    //    typedef std::size_t result_type;
+
+        size_t operator()(ParseItem<Nonterminal, Position> const &item) const {
+            size_t seed = 0;
+            boost::hash_combine(seed, item.nonterminal);
+            boost::hash_combine(seed, item.spans_inh);
+            boost::hash_combine(seed, item.spans_syn);
+            boost::hash_combine(seed, item.spans_lcfrs);
+            return seed;
+        }
+    };
 }
 
 
