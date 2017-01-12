@@ -1023,7 +1023,7 @@ public:
             }
 
             std::vector<Val> root_counts = std::vector<Val>(nont_dimensions[nont_idx(goals[0].nonterminal)], Val::zero());
-
+            Val corpus_likelihood = Val::one();
 
             for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
                 auto trace = traces[trace_id];
@@ -1045,10 +1045,10 @@ public:
                 }
 //
 
-                root_counts = zipWith<Val>(std::plus<Val>(), root_counts,
-                                      zipWith<Val>(std::multiplies<Val>(), tr_io_weight.first.at(goals[trace_id]),
-                                              tr_io_weight.second.at(goals[trace_id])));
-
+                auto trace_root_weights = zipWith<Val>(std::multiplies<Val>(), tr_io_weight.first.at(goals[trace_id]),
+                                                       tr_io_weight.second.at(goals[trace_id]));
+                root_counts = zipWith<Val>(std::plus<Val>(), root_counts, trace_root_weights);
+                corpus_likelihood *= (reduce(std::plus<Val>(), trace_root_weights, Val::zero()));
 
                 const auto instance_root_weights = tr_io_weight.first.at(goals[trace_id]);
                 const Val instance_root_weight = reduce(std::plus<Val>(),
@@ -1148,14 +1148,19 @@ public:
             if (debug) std::cerr << std::endl;
 
             // maximize root weights:
-            const Val likelihood = std::accumulate(root_counts.begin(), root_counts.end(), Val::zero(), std::plus<Val>());
-            std::cerr << "corpus prob. sum " << likelihood.from() << std::endl;
+            const Val corpus_prob_sum = std::accumulate(root_counts.begin(), root_counts.end(), Val::zero(), std::plus<Val>());
+            std::cerr << "corpus prob. sum " << corpus_prob_sum.from();
+            std::cerr << " corpus likelihood " << corpus_likelihood;
+            for (auto root_weight : the_root_weights) {
+                std::cerr << " " << root_weight << " ";
+            }
+            std::cerr << std::endl;
             const unsigned len = the_root_weights.size();
             the_root_weights.clear();
             if (debug) std::cerr << "single root weights: ";
             for (const auto weight : root_counts) {
-                if (debug) std::cerr << weight.from() << "/" << (weight / likelihood).from() << " ";
-                the_root_weights.push_back(weight / likelihood);
+                if (debug) std::cerr << weight.from() << "/" << (weight / corpus_prob_sum).from() << " ";
+                the_root_weights.push_back(weight / corpus_prob_sum);
             }
             assert(len == the_root_weights.size());
             std::cerr << std::endl;
