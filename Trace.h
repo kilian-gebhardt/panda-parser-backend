@@ -1257,40 +1257,36 @@ public:
         // with which the probabality mass is shared between merged latent states
 
         // this is prepared with computing globally averaged outside weights
-        std::vector<std::vector<Val>> global_nont_outside_weights;
+        std::vector<std::vector<Val>> merge_weights_partial;
         for (auto dim : nont_dimensions) {
-            global_nont_outside_weights.emplace_back(std::vector<Val>(dim, Val::zero()));
+            merge_weights_partial.emplace_back(std::vector<Val>(dim, Val::zero()));
         }
 
-        // computing out(A_x) for every A ∈ N and x ∈ X_A
+        // computing in(A_x) * out(A_x) for every A ∈ N and x ∈ X_A
         for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
-            std::map<Nonterminal, std::pair<std::vector<Val>, unsigned>> nonterminal_count;
             const auto io_weight = io_weights_la(rule_weights, nont_dimensions, rule_ids_to_nont_ids, nont_idx, root_weights, trace_id);
 
             for (const auto & pair : traces[trace_id]) {
                 const ParseItem<Nonterminal, Position> & item = pair.first;
 
+                const std::vector<Val> & inside_weight = io_weight.second.at(item);
                 const std::vector<Val> & outside_weight = io_weight.second.at(item);
 
-                if (nonterminal_count.count(item.nonterminal)) {
-                    std::pair<std::vector<Val>, unsigned> &entry = nonterminal_count.at(item.nonterminal);
-                    entry.first = zipWith<Val>(std::plus<Val>(), entry.first, outside_weight);
-                    ++entry.second;
-                } else {
-                    nonterminal_count[item.nonterminal] = std::make_pair(outside_weight, 1);
-                }
+                const auto vals = zipWith<Val>(std::multiplies<Val>(), inside_weight, outside_weight);
+                // denominator cancels out later
+                // const auto denominator = reduce<Val>(std::plus<Val>(), vals, Val::zero());
+                auto & target =  merge_weights_partial[nont_idx(item.nonterminal)];
+
+                // denominator cancels out later
+                //target = zipWith<Val>(std::plus<Val>(), target, zipWithConstant<Val>(std::divides<Val>(), vals, denominator));
+                target = zipWith<Val>(std::plus<Val>(), target, vals);
             }
 
-            for (const auto pair : nonterminal_count) {
-                std::vector<Val> & gow = global_nont_outside_weights[nont_idx(pair.first)];
-                gow = zipWith<Val>(std::plus<Val>(), gow,
-                              zipWithConstant<Val>(std::divides<Val>(), pair.second.first, (Val) pair.second.second));
-            }
         }
 
         // finally we compute the fractions
         std::vector<std::vector<Val>> p;
-        for (auto las_weights : global_nont_outside_weights) {
+        for (auto las_weights : merge_weights_partial) {
             p.emplace_back(std::vector<Val>());
             for (unsigned i = 0; i < las_weights.size(); i = i + 2) {
                 const Val combined_weight = las_weights[i] + las_weights[i+1];
@@ -1315,7 +1311,7 @@ public:
                 for (unsigned dim : boost::irange((unsigned) 0, nont_dimensions[nont_idx(item.nonterminal)])) {
                     const Val in = io_weight.first.at(item)[dim];
                     const Val out = io_weight.second.at(item)[dim];
-                    denominator = denominator + (in * out);
+                    denominator += (in * out);
                     assert(! isnan(denominator.get_Value()));
                 }
 
@@ -1341,7 +1337,7 @@ public:
 
                     Val & delta = merge_delta[nont][dim / 2];
 
-                    delta = delta * Q;
+                    delta *= Q;
 
                     if (isnan(delta.get_Value())) {
                         Val nominator = denominator;
