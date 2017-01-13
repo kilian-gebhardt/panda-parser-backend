@@ -666,7 +666,7 @@ public:
         }
     }
 
-    void add_recursively(std::set<ParseItem<Nonterminal, Position>> & reachable, ParseItem<Nonterminal, Position>& start) const {
+    void add_recursively(std::unordered_set<ParseItem<Nonterminal, Position>> & reachable, ParseItem<Nonterminal, Position>& start) const {
         for (const auto & list : trace.at(start)) {
             for (std::shared_ptr<ParseItem<Nonterminal, Position>> item : list.second) {
                 if (! reachable.count(*item)) {
@@ -678,7 +678,7 @@ public:
     }
 
     void reachability_simplification() {
-        std::set<ParseItem<Nonterminal, Position>> reachable;
+        std::unordered_set<ParseItem<Nonterminal, Position>> reachable;
         if (this->goal) {
             if (debug)
                 std::cerr << "goal: " << *(this->goal) << std::endl;

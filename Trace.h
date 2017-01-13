@@ -267,7 +267,7 @@ private:
     const std::vector<ParseItem<Nonterminal, Position>> empty_order;
 
     // auxiliary structures
-    std::set<ParseItem<Nonterminal, Position>> inserted_items;
+    std::unordered_set<ParseItem<Nonterminal, Position>> inserted_items;
 
     const bool debug = false;
 
