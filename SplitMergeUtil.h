@@ -130,7 +130,7 @@ void accumulate_probabilites(const typename std::vector<Val>::iterator goal_valu
 template <typename Val>
 void fill_merge(const std::vector<Val> & split_weights, std::vector<Val> & merged_weights, const std::vector<unsigned> & old_dimensions
         , const std::vector<unsigned> & new_dimensions, std::vector<unsigned> & selection, const unsigned dim,
-                const std::vector<std::vector<std::vector<unsigned>>> & merges, const std::vector<double> & lhn_merge_weights
+                const std::vector<std::vector<std::vector<unsigned>>> & merges, const std::vector<Val> & lhn_merge_weights
 ) {
     assert(dim == selection.size());
     if (new_dimensions.size() == dim) {
