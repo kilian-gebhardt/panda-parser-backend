@@ -10,11 +10,13 @@
 #include <iostream>
 #include "util.h"
 
+/*
 #ifdef NDEBUG
 # define NDEBUG_DISABLED
 # undef NDEBUG
 #endif
 #include <cassert>
+*/
 
 // new representation
 unsigned indexation (const std::vector<unsigned> & positions, const std::vector<unsigned> & dimensions, bool half=false) {
