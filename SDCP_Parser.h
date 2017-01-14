@@ -18,6 +18,7 @@
 #include "util.h"
 #include <boost/functional/hash.hpp>
 #include <unordered_map>
+#include <unordered_set>
 
 template <typename T1, typename T2>
 using MAPTYPE = typename std::unordered_map<T1, T2>;
