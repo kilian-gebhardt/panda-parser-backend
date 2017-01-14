@@ -104,7 +104,7 @@ void accumulate_probabilites(const typename std::vector<Val>::iterator goal_valu
                               , const std::vector<Val> & split_weights
         , const std::vector<unsigned> & old_dimensions
         , std::vector<unsigned> & selection, const unsigned dim
-        , const std::vector<std::vector<unsigned>> & merges
+        , const std::vector<std::reference_wrapper<const std::vector<unsigned>>> & merges
         , const std::vector<Val> & lhn_merge_weights) {
     assert(dim == selection.size());
     if (dim == old_dimensions.size()) {
@@ -118,8 +118,8 @@ void accumulate_probabilites(const typename std::vector<Val>::iterator goal_valu
         *goal_value = (*goal_value) + (val);
     }
     else {
-        assert(merges[dim].size() > 0);
-        for (auto value : merges[dim]) {
+        assert(merges.at(dim).get().size() > 0);
+        for (auto value : merges[dim].get()) {
             selection.push_back(value);
             accumulate_probabilites(goal_value, split_weights, old_dimensions, selection, dim+1, merges, lhn_merge_weights);
             selection.pop_back();
@@ -127,6 +127,7 @@ void accumulate_probabilites(const typename std::vector<Val>::iterator goal_valu
     }
 }
 
+/*
 template <typename Val>
 void fill_merge(const std::vector<Val> & split_weights, std::vector<Val> & merged_weights, const std::vector<unsigned> & old_dimensions
         , const std::vector<unsigned> & new_dimensions, std::vector<unsigned> & selection, const unsigned dim,
@@ -158,6 +159,52 @@ void fill_merge(const std::vector<Val> & split_weights, std::vector<Val> & merge
         }
     }
 }
+*/
+
+
+template <typename Val>
+void fill_merge2(const std::vector<Val> & split_weights, std::vector<Val> & merged_weights, const std::vector<unsigned> & old_dimensions
+        , const std::vector<unsigned> & new_dimensions, std::vector<unsigned> & selection, const unsigned dim_,
+                const std::vector<std::vector<std::vector<unsigned>>> & merges, const std::vector<Val> & lhn_merge_weights
+) {
+    unsigned dim = 0;
+    selection = std::vector<unsigned>(new_dimensions.size(), 0);
+    while (true) {
+        if (dim == new_dimensions.size()) {
+            unsigned index = indexation(selection, new_dimensions);
+            typename std::vector<Val>::iterator goal_value = merged_weights.begin() + index;
+            assert (goal_value < merged_weights.end());
+            std::vector<unsigned> witnesses;
+            std::vector<std::reference_wrapper<const std::vector<unsigned>>> the_merges;
+            for (unsigned i = 0; i < selection.size(); ++i) {
+                the_merges.push_back(
+                        (std::reference_wrapper<const std::vector<unsigned int>> &&) merges[i][selection[i]]);
+            }
+
+            /*
+            std::cerr << "merge   la: ";
+            for (auto i : selection) {
+                std::cerr << i <<" : ";
+            }
+            std::cerr << std::endl;
+            */
+            accumulate_probabilites(goal_value, split_weights, old_dimensions, witnesses, 0, the_merges, lhn_merge_weights);
+            if (dim == 0)
+                break;
+            dim--;
+            selection[dim]++;
+        } else if (selection[dim] == new_dimensions[dim]) {
+            selection[dim] = 0;
+            if (dim == 0)
+                break;
+            dim--;
+            selection[dim]++;
+        } else {
+            ++dim;
+        }
+    }
+    selection.clear();
+}
 
 template <typename Val>
 std::vector<Val> merge_rule(  const std::vector<Val> & split_weights
@@ -180,7 +227,7 @@ std::vector<Val> merge_rule(  const std::vector<Val> & split_weights
     std::cerr << std::endl;*/
     std::vector<Val> merged_weights = std::vector<Val>(new_size, Val::zero());
     std::vector<unsigned> selection;
-    fill_merge(split_weights, merged_weights, old_dimensions, new_dimensions, selection, 0, merges, lhn_merge_factors);
+    fill_merge2(split_weights, merged_weights, old_dimensions, new_dimensions, selection, 0, merges, lhn_merge_factors);
 
     /*std::cerr << "mw: ";
     for (auto mw : merged_weights) {
