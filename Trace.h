@@ -1301,18 +1301,50 @@ public:
             merge_delta.push_back(std::vector<Val>(dim / 2, Val::one()));
         }
 
+        std::vector<Val> prefixes;
+        std::vector<Val> postfixes;
         for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
             const auto io_weight = io_weights_la(rule_weights, nont_dimensions, rule_ids_to_nont_ids, nont_idx, root_weights, trace_id);
             for (const auto & pair : traces[trace_id]) {
                 const ParseItem<Nonterminal, Position> &item = pair.first;
 
                 // compute Q( item )
+//                Val denominator = Val::zero();
+//                for (unsigned dim : boost::irange((unsigned) 0, nont_dimensions[nont_idx(item.nonterminal)])) {
+//                    const Val in = io_weight.first.at(item)[dim];
+//                    const Val out = io_weight.second.at(item)[dim];
+//                    denominator += (in * out);
+//                    assert(! isnan(denominator.get_Value()));
+//                }
+                const auto nont_dim = nont_dimensions[nont_idx(item.nonterminal)];
+                prefixes.resize(nont_dim / 2, Val::zero());
+                postfixes.resize(nont_dim / 2, Val::zero());
                 Val denominator = Val::zero();
-                for (unsigned dim : boost::irange((unsigned) 0, nont_dimensions[nont_idx(item.nonterminal)])) {
-                    const Val in = io_weight.first.at(item)[dim];
-                    const Val out = io_weight.second.at(item)[dim];
-                    denominator += (in * out);
-                    assert(! isnan(denominator.get_Value()));
+                {
+                    const unsigned dim = nont_dim - 2;
+                    const Val in1 = io_weight.first.at(item)[dim];
+                    const Val in2 = io_weight.first.at(item)[dim + 1];
+                    const Val out1 = io_weight.second.at(item)[dim];
+                    const Val out2 = io_weight.second.at(item)[dim + 1];
+                    denominator += in1 * out1 + in2 * out2;
+                }
+                for (unsigned dim = 0; dim < nont_dim - 2; dim = dim + 2) {
+                    {
+                        const Val in1 = io_weight.first.at(item)[dim];
+                        const Val in2 = io_weight.first.at(item)[dim + 1];
+                        const Val out1 = io_weight.second.at(item)[dim];
+                        const Val out2 = io_weight.second.at(item)[dim + 1];
+                        prefixes[dim / 2 + 1] = prefixes[dim / 2] + in1 * out1 + in2 * out2;
+                        denominator += in1 * out1 + in2 * out2;
+                    }
+                    {
+                        const unsigned dim_ = nont_dim - dim - 2;
+                        const Val in1 = io_weight.first.at(item)[nont_dim - dim_];
+                        const Val in2 = io_weight.first.at(item)[nont_dim - dim_ + 1];
+                        const Val out1 = io_weight.second.at(item)[nont_dim - dim_];
+                        const Val out2 = io_weight.second.at(item)[nont_dim - dim_ + 1];
+                        postfixes[(nont_dim - dim) / 2 - 2] = postfixes[(nont_dim - dim)/ 2] + in1 * out1 + in2 * out2;
+                    }
                 }
 
                 // in of some item can be zero in certain LA-dimensions
@@ -1333,26 +1365,34 @@ public:
                     const Val out_merged = out1 + out2;
                     const Val in_merged = (p1 * in1) + (p2 * in2);
 
-                    const Val Q = Val::add_subtract2_divide(denominator, in_merged * out_merged, in1 * out1, in2 * out2, denominator);
+//                    const Val Q = Val::add_subtract2_divide(denominator, in_merged * out_merged, in1 * out1, in2 * out2, denominator);
+                    const Val Q = (prefixes[dim / 2] + postfixes[dim / 2] + in_merged * out_merged) / denominator;
+
+                    if (isnan(Q.get_Value())) {
+                        std::cerr << "bad fraction " << Q << " where" << std::endl;
+                        std::cerr << "prefix  " << prefixes[dim/2] << std::endl;
+                        std::cerr << "postfix " << postfixes[dim/2] << std::endl;
+                        std::cerr << "merged  " << in_merged * out_merged << std::endl;
+                        std::cerr << "denom   " << denominator << std::endl;
+
+//                        Val nominator = denominator;
+//                        nominator = nominator + (in_merged * out_merged);
+//                        nominator = nominator - (in1 * out1);
+//                        nominator = nominator - (in2 * out2);
+//                        // const Val Q2 = nominator / denominator;
+//                        std::cerr << "bad fraction " << nominator << " / " << denominator << " = " << Q << std::endl;
+//                        std::cerr << "prod(in_merged, out_merged) = " << in_merged * out_merged << std::endl;
+//                        std::cerr << "prod(in1, out1) = " << in1 * out1 << std::endl;
+//                        std::cerr << "prod(in2, out2) = " << in2 * out2 << std::endl;
+                        assert(!isnan(Q.get_Value()));
+                    }
 
                     Val & delta = merge_delta[nont][dim / 2];
 
                     delta *= Q;
-
-                    if (isnan(delta.get_Value())) {
-                        Val nominator = denominator;
-                        nominator = nominator + (in_merged * out_merged);
-                        nominator = nominator - (in1 * out1);
-                        nominator = nominator - (in2 * out2);
-                        // const Val Q2 = nominator / denominator;
-                        std::cerr << "bad fraction " << nominator << " / " << denominator << " = " << Q << std::endl;
-                        std::cerr << "prod(in_merged, out_merged) = " << in_merged * out_merged << std::endl;
-                        std::cerr << "prod(in1, out1) = " << in1 * out1 << std::endl;
-                        std::cerr << "prod(in2, out2) = " << in2 * out2 << std::endl;
-                        assert(!isnan(delta.get_Value()));
-                    }
-
                 }
+                prefixes.clear();
+                postfixes.clear();
             }
         }
 
