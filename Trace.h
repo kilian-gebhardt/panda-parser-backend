@@ -681,7 +681,7 @@ public:
     template<typename Val>
     std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge_id(
             const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
-            const unsigned n_epochs, const unsigned n_nonts, const unsigned split_merge_cycles, const double merge_threshold
+            const unsigned n_epochs, const unsigned n_nonts, const unsigned split_merge_cycles, const double merge_threshold, const double merge_percentage=-1.0
     ) {
 
         GrammarInfo<unsigned> grammarInfo = grammar_info_id(rule_to_nonterminals);
@@ -694,13 +694,13 @@ public:
         std::cerr << "# nonts: " << n_nonts << std::endl;
 
         return split_merge<Val>(rule_weights, rule_to_nonterminals, normalization_groups, n_epochs, nont_idx_f,
-                           split_merge_cycles, n_nonts, merge_threshold);
+                           split_merge_cycles, n_nonts, merge_threshold, merge_percentage);
     };
 
     template<typename Val>
     std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge(
             const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
-            const unsigned n_epochs, const std::map<Nonterminal, unsigned> &nont_idx, const unsigned split_merge_cycles, const double merge_threshold
+            const unsigned n_epochs, const std::map<Nonterminal, unsigned> &nont_idx, const unsigned split_merge_cycles, const double merge_threshold, const double merge_percentage=-1.0
     ) {
         auto nont_idx_f = [&](const Nonterminal nont) -> unsigned { return nont_idx.at(nont);};
         GrammarInfo<Nonterminal> grammarInfo = grammar_info(rule_to_nonterminals, nont_idx_f);
@@ -710,14 +710,14 @@ public:
         std::cerr << "# nonts: " << nont_idx.size() << std::endl;
 
         return split_merge<Val>(rule_weights, rule_to_nonterminals, normalization_groups, n_epochs, nont_idx_f,
-                           split_merge_cycles, nont_idx.size(), merge_threshold);
+                           split_merge_cycles, nont_idx.size(), merge_threshold, merge_percentage);
     };
 
     template<typename Val, typename NontToIdx>
     std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge(
             const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
             const std::vector<std::vector<unsigned>> &normalization_groups, const unsigned n_epochs,
-            const NontToIdx nont_idx, const unsigned split_merge_cycles, const unsigned n_nonts, const double merge_threshold
+            const NontToIdx nont_idx, const unsigned split_merge_cycles, const unsigned n_nonts, const double merge_threshold, const double merge_percentage=-1.0
     ) {
 
         const double epsilon = 0.0001;
@@ -733,7 +733,7 @@ public:
 
         for (unsigned cycle = 0; cycle < split_merge_cycles; ++cycle) {
             split_merge_cycle(cycle, n_epochs, epsilon
-                    , merge_threshold, rule_to_nonterminals, normalization_groups, nont_idx, nont_dimensions
+                    , merge_threshold, merge_percentage, rule_to_nonterminals, normalization_groups, nont_idx, nont_dimensions
                     , rule_weights_la, root_weights);
         }
 
@@ -749,13 +749,13 @@ public:
             std::vector<unsigned> nont_dimensions,
             const std::vector<std::vector<double>> &rule_weights_la,
             const unsigned n_epochs,
-            const unsigned n_nonts, const double merge_threshold,
+            const unsigned n_nonts, const double merge_threshold, const double merge_percentage,
             const unsigned cycle
     ) {
         const double epsilon = 0.0001;
         auto rule_weights_val = doubleToVal<Val>(rule_weights_la);
         std::vector<Val> root_weights = {Val::one()};
-        split_merge_cycle(cycle, n_epochs, epsilon, merge_threshold, grammar_Info.rule_to_nonterminals, grammar_Info.normalization_groups, grammar_Info.nont_idx, nont_dimensions, rule_weights_val, root_weights);
+        split_merge_cycle(cycle, n_epochs, epsilon, merge_threshold, merge_percentage, grammar_Info.rule_to_nonterminals, grammar_Info.normalization_groups, grammar_Info.nont_idx, nont_dimensions, rule_weights_val, root_weights);
         auto rule_weights_la_after = valToDouble(rule_weights_val);
 
         return std::make_pair(nont_dimensions, rule_weights_la_after);
@@ -803,7 +803,7 @@ public:
     }
 
     template<typename Val, typename NontToIdx>
-    void split_merge_cycle(const unsigned cycle, const unsigned n_epochs, double epsilon, double merge_threshold,
+    void split_merge_cycle(const unsigned cycle, const unsigned n_epochs, double epsilon, double merge_threshold, double merge_percentage,
                            const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
                            const std::vector<std::vector<unsigned>> &normalization_groups, NontToIdx nont_idx,
                            std::vector<unsigned> & nont_dimensions, std::vector<std::vector<Val>> & rule_weights_la,
@@ -853,7 +853,7 @@ public:
 
         // determine merges
         const auto merge_info = merge_prepare(rule_weights_splitted, root_weights_splitted, split_dimensions,
-                                              rule_to_nonterminals, nont_idx, Val::to(merge_threshold));
+                                              rule_to_nonterminals, nont_idx, Val::to(merge_threshold), merge_percentage);
 
 
         // nonterminal -> new_la -> contributing old_las
@@ -1250,7 +1250,8 @@ public:
             , const std::vector<unsigned> & nont_dimensions
             , const std::vector<std::vector<unsigned>> & rule_ids_to_nont_ids
                        , const NontToIdx nont_idx
-                       , const Val merge_threshold
+                       , const Val merge_threshold_
+                       , const double merge_percent = -1.0
             ) {
 
 
@@ -1402,10 +1403,29 @@ public:
             }
         }
 
+        std::vector<Val> ordered_merge_weights;
+        Val threshold = Val::zero();
+        if (merge_percent < 0.0 || merge_percent) {
+            // order merges according to likelihood_loss
+            for (auto delta : merge_delta) {
+                ordered_merge_weights.insert(std::end(ordered_merge_weights), std::begin(delta), std::end(delta));
+            }
+            std::sort(std::begin(ordered_merge_weights), std::end(ordered_merge_weights), std::greater_equal<Val>());
+            unsigned index = (unsigned) merge_percent / 100.0 * ordered_merge_weights.size();
+            if (index > ordered_merge_weights.size())
+                index = ordered_merge_weights.size() - 1;
+            threshold = ordered_merge_weights[index];
+
+            if (debug) std::cerr << "index for ordered merges " << index << " / " << ordered_merge_weights.size() << std::endl;
+        }
+
+        const Val merge_threshold = merge_percent < 0.0 || merge_percent > 100.0 ? merge_threshold : threshold;
         // evaluate Δ and build merge table accordingly
         std::vector<std::vector<std::vector<unsigned>>> merge_selection;
         std::vector<unsigned> new_nont_dimensions;
         unsigned nont = 0;
+        unsigned merges = 0;
+        unsigned splits = 0;
 
         if (debug) std::cerr << "merge deltas: ";
         for (auto delta : merge_delta) {
@@ -1413,15 +1433,19 @@ public:
             merge_selection.push_back(std::vector<std::vector<unsigned>>());
             for (unsigned dim = 0; dim < nont_dimensions[nont] / 2; ++dim) {
                 if (debug) std::cerr << delta[dim].from() << " ";
-                if (delta[dim] >= merge_threshold
+                if (delta[dim] >= merge_threshold - Val::to(0.00001)
+                    // always merge if Δ >= 1
+                    || delta[dim] >= Val::one() - Val::to(0.00001)
                     // always merge initial symbol
                     || nont_idx(goals[0].nonterminal) == nont) {
                     merge_selection.back().push_back(std::vector<unsigned>());
                     merge_selection.back().back().push_back(dim * 2);
                     merge_selection.back().back().push_back(dim * 2 + 1);
+                    ++merges;
                 } else {
                     merge_selection.back().push_back(std::vector<unsigned>(1, dim * 2 ));
                     merge_selection.back().push_back(std::vector<unsigned>(1, dim * 2 + 1));
+                    ++splits;
                 }
             }
             if (debug) std::cerr << " } ";
@@ -1430,6 +1454,7 @@ public:
         }
         if (debug) std::cerr << std::endl;
 
+        std::cerr << "Merging " << merges << " of " << merges + splits << " splits. Merge threshold is " << merge_threshold << std::endl;
 
         return std::make_tuple(merge_selection, new_nont_dimensions, p);
     }
