@@ -1290,8 +1290,13 @@ public:
             p.emplace_back(std::vector<Val>());
             for (unsigned i = 0; i < las_weights.size(); i = i + 2) {
                 const Val combined_weight = las_weights[i] + las_weights[i+1];
-                p.back().push_back( las_weights[i]   / combined_weight);
-                p.back().push_back( las_weights[i+1] / combined_weight);
+                if (combined_weight != Val::zero()) {
+                    p.back().push_back(las_weights[i] / combined_weight);
+                    p.back().push_back(las_weights[i + 1] / combined_weight);
+                } else {
+                    p.back().push_back(Val::to(0.5));
+                    p.back().push_back(Val::to(0.5));
+                }
             }
         }
 
