@@ -927,13 +927,13 @@ public:
 
         // computation of inside weights
         MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<Val>> inside_weights;
+        std::vector<unsigned> rule_dim;
+        std::vector<std::vector<Val>> nont_vectors;
         for (const auto & item : topological_order) {
             inside_weights[item] = std::vector<Val>(nont_dimensions[nont_idx(item.nonterminal)], Val::zero());
             std::vector<Val> & inside_weight = inside_weights[item];
             for (const auto & witness : traces[i].at(item)) {
-                std::vector<std::vector<Val>> nont_vectors;
                 // nont_vectors.reserve(witness.second.size());
-                std::vector<unsigned> rule_dim;
                 for (auto nont : rule_id_to_nont_ids[witness.first->id]) {
                     rule_dim.push_back(nont_dimensions[nont]);
                 }
@@ -943,11 +943,14 @@ public:
                 inside_weight = zipWith<Val>(std::plus<Val>(), inside_weight,
                                         compute_inside_weights(rules[witness.first->id], nont_vectors,
                                                                rule_dim));
+                rule_dim.clear();
+                nont_vectors.clear();
             }
         }
 
         // TODO implement for general case (== no topological order) solution by gauss jordan
         MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<Val>> outside_weights;
+        std::vector<std::vector<Val>> relevant_inside_weights;
         for (int j = topological_order.size() - 1; j >= 0; --j) {
             const ParseItem<Nonterminal, Position> & item = topological_order[j];
             outside_weights[item] = std::vector<Val>(nont_dimensions[nont_idx(item.nonterminal)], Val::zero());
@@ -963,8 +966,6 @@ public:
                     const auto &parent = *(std::get<2>(witness));
                     const unsigned position = std::get<3>(witness);
 
-                    std::vector<std::vector<Val>> relevant_inside_weights;
-                    std::vector<unsigned> rule_dim;
                     rule_dim.push_back(nont_dimensions[nont_idx(parent.nonterminal)]);
 
                     for (unsigned sib_position = 0; sib_position < siblings.size(); ++sib_position) {
@@ -989,6 +990,8 @@ public:
                     //                  outside_weight = zipWith<Val>( std::plus<Val>()
                     //                               , outside_weight
                     //                               , new_weights);
+                    rule_dim.clear();
+                    relevant_inside_weights.clear();
                 }
             }
         }
