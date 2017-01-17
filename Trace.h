@@ -394,12 +394,11 @@ public:
                 std::vector<std::vector<std::pair<unsigned, std::vector<unsigned>>>>
                     , unsigned
             >> serialize(unsigned trace_id) {
-            std::vector<std::pair<Nonterminal
+        std::vector<std::pair<Nonterminal
                 , std::pair<std::vector<std::pair<Position, Position>>
                         , std::pair<std::vector<std::pair<Position, Position>>
                                 , std::vector<std::pair<Position, Position>>
                         >>>> the_items;
-        unsigned counter = 0;
         MAPTYPE<ParseItem<Nonterminal, Position>, unsigned> item_map;
 
         for (const auto entry : traces.at(trace_id)) {
@@ -413,7 +412,6 @@ public:
 
         for (const auto entry : traces.at(trace_id)) {
             const ParseItem<Nonterminal, Position> item = entry.first;
-            unsigned lhs_id = item_map.at(item);
             std::vector<std::pair<unsigned, std::vector<unsigned>>> the_witnesses;
             for (auto witness : entry.second) {
                 unsigned rule_id = witness.first->id;
