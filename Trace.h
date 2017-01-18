@@ -1207,7 +1207,7 @@ public:
                 for (auto group : normalization_groups) {
                     std::vector<Val> dim_weights = std::vector<Val>(nont_dimensions[i], Val::zero());
                     for (auto rule_id : group) {
-                        unsigned size = rule_weights[rule_id].size();
+                        const unsigned size = rule_weights[rule_id].size();
                         for (unsigned weight_id = 0; weight_id < size; ++weight_id) {
                             const unsigned index = weight_id / (size / nont_dimensions[i]);
                             dim_weights[index] = dim_weights[index] + rule_weights[rule_id][weight_id];
@@ -1264,6 +1264,7 @@ public:
             merge_weights_partial.emplace_back(std::vector<Val>(dim, Val::zero()));
         }
 
+        std::cerr << "Estimating relative frequency of annotated nonterminals." << std::endl;
         // computing in(A_x) * out(A_x) for every A ∈ N and x ∈ X_A
         for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
             const auto io_weight = io_weights_la(rule_weights, nont_dimensions, rule_ids_to_nont_ids, nont_idx, root_weights, trace_id);
@@ -1286,6 +1287,7 @@ public:
 
         }
 
+        std::cerr << "Computing merge factors." << std::endl;
         // finally we compute the fractions
         std::vector<std::vector<Val>> p;
         for (auto las_weights : merge_weights_partial) {
@@ -1302,6 +1304,7 @@ public:
             }
         }
 
+        std::cerr << "Computing likelihood deltas of merges." << std::endl;
         // now we approximate the likelihood Δ of merging two latent states
         std::vector<std::vector<Val>> merge_delta;
         for (auto dim : nont_dimensions) {
@@ -1403,23 +1406,32 @@ public:
             }
         }
 
+        const bool merge_perc = merge_percent >= 0.0 && merge_percent <= 100.0;
+
+        std::cerr << "Selecting merges ";
+        if (merge_perc)
+            std::cerr << "best " << merge_percent << " % " ;
+        else
+            std::cerr << "above threshold " << merge_threshold_;
+        std::cerr << std::endl;
         std::vector<Val> ordered_merge_weights;
         Val threshold = Val::zero();
-        if (merge_percent < 0.0 || merge_percent) {
+        if (merge_perc) {
             // order merges according to likelihood_loss
-            for (auto delta : merge_delta) {
+            for (const auto & delta : merge_delta) {
                 ordered_merge_weights.insert(std::end(ordered_merge_weights), std::begin(delta), std::end(delta));
             }
-            std::sort(std::begin(ordered_merge_weights), std::end(ordered_merge_weights), std::greater_equal<Val>());
+            std::sort(std::begin(ordered_merge_weights), std::end(ordered_merge_weights), std::greater<Val>());
             unsigned index = (unsigned) merge_percent / 100.0 * ordered_merge_weights.size();
             if (index > ordered_merge_weights.size())
                 index = ordered_merge_weights.size() - 1;
-            threshold = ordered_merge_weights[index];
 
-            if (debug) std::cerr << "index for ordered merges " << index << " / " << ordered_merge_weights.size() << std::endl;
+            if (true || debug) std::cerr << "index for ordered merges " << index << " / " << ordered_merge_weights.size() << std::endl;
+
+            threshold = ordered_merge_weights[index];
         }
 
-        const Val merge_threshold = merge_percent < 0.0 || merge_percent > 100.0 ? merge_threshold : threshold;
+        const Val merge_threshold = ! merge_perc ? merge_threshold_ : threshold;
         // evaluate Δ and build merge table accordingly
         std::vector<std::vector<std::vector<unsigned>>> merge_selection;
         std::vector<unsigned> new_nont_dimensions;
@@ -1428,7 +1440,7 @@ public:
         unsigned splits = 0;
 
         if (debug) std::cerr << "merge deltas: ";
-        for (auto delta : merge_delta) {
+        for (const auto & delta : merge_delta) {
             if (debug) std::cerr << " { ";
             merge_selection.push_back(std::vector<std::vector<unsigned>>());
             for (unsigned dim = 0; dim < nont_dimensions[nont] / 2; ++dim) {
