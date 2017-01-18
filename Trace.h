@@ -940,9 +940,17 @@ public:
                 for (const auto & dep_item : witness.second) {
                     nont_vectors.push_back(inside_weights.at(*dep_item));
                 }
-                inside_weight = zipWith<Val>(std::plus<Val>(), inside_weight,
-                                        compute_inside_weights(rules[witness.first->id], nont_vectors,
-                                                               rule_dim));
+//                inside_weight = zipWith<Val>(std::plus<Val>(), inside_weight,
+//                                        compute_inside_weights(rules[witness.first->id], nont_vectors,
+//                                                               rule_dim));
+                std::transform(
+                          std::begin(inside_weight)
+                        , std::end(inside_weight)
+                        , std::begin(compute_inside_weights(rules[witness.first->id], nont_vectors, rule_dim))
+                        , std::begin(inside_weight)
+                        , std::plus<Val>()
+                        );
+
                 rule_dim.clear();
                 nont_vectors.clear();
             }
@@ -957,7 +965,13 @@ public:
             std::vector<Val> & outside_weight = outside_weights[item];
 
             if (item == goals[i])
-                outside_weight = zipWith<Val>(std::plus<Val>(), outside_weight, root);
+//                outside_weight = zipWith<Val>(std::plus<Val>(), outside_weight, root);
+                std::transform(
+                          std::begin(outside_weight)
+                        , std::end(outside_weight)
+                        , std::begin(root)
+                        , std::begin(outside_weight)
+                        , std::plus<Val>());
 
             if (traces_reverse[i].count(item)) {
                 for (const auto &witness : traces_reverse[i].at(item)) {
@@ -1081,9 +1095,15 @@ public:
                 }
 //
 
-                auto trace_root_weights = zipWith<Val>(std::multiplies<Val>(), tr_io_weight.first.at(goals[trace_id]),
+                const auto trace_root_weights = zipWith<Val>(std::multiplies<Val>(), tr_io_weight.first.at(goals[trace_id]),
                                                        tr_io_weight.second.at(goals[trace_id]));
-                root_counts = zipWith<Val>(std::plus<Val>(), root_counts, trace_root_weights);
+//                root_counts = zipWith<Val>(std::plus<Val>(), root_counts, trace_root_weights);
+                std::transform(
+                          std::begin(root_counts)
+                        , std::end(root_counts)
+                        , std::begin(trace_root_weights)
+                        , std::begin(root_counts)
+                        , std::plus<Val>());
                 corpus_likelihood *= (reduce(std::plus<Val>(), trace_root_weights, Val::zero()));
 
                 const auto instance_root_weights = tr_io_weight.first.at(goals[trace_id]);
@@ -1120,7 +1140,14 @@ public:
                                 std::cerr << val << " ";
                             std::cerr << " }" << std::endl;
                         }
-                        rule_counts[rule_id] = zipWith<Val>(std::plus<Val>(), rule_counts[rule_id], rule_val);
+//                        rule_counts[rule_id] = zipWith<Val>(std::plus<Val>(), rule_counts[rule_id], rule_val);
+                        std::transform(
+                                  std::begin(rule_counts[rule_id])
+                                , std::end(rule_counts[rule_id])
+                                , std::begin(rule_val)
+                                , std::begin(rule_counts[rule_id])
+                                , std::plus<Val>()
+                                );
                     }
                 }
             }
@@ -1282,7 +1309,8 @@ public:
 
                 // denominator cancels out later
                 //target = zipWith<Val>(std::plus<Val>(), target, zipWithConstant<Val>(std::divides<Val>(), vals, denominator));
-                target = zipWith<Val>(std::plus<Val>(), target, vals);
+//                target = zipWith<Val>(std::plus<Val>(), target, vals);
+                std::transform(std::begin(target), std::end(target), std::begin(vals), std::begin(target), std::plus<Val>());
             }
 
         }
