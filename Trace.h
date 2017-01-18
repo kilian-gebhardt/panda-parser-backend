@@ -27,11 +27,11 @@ public:
     }
 };
 
+const double minus_infinity = -std::numeric_limits<double>::infinity();
 
 class LogDouble : boost::operators<LogDouble> {
 private:
     double x;
-    const double minus_infinity = -std::numeric_limits<double>::infinity();
 public:
     const double & get_Value() const {
         return x;
@@ -78,12 +78,12 @@ public:
             return *this;
         };
 
-    LogDouble operator*=(const LogDouble& y_){
+    LogDouble& operator*=(const LogDouble& y_){
         x = x + y_.get_Value();
         return *this;
     }
 
-    LogDouble operator/=(const LogDouble& y_) {
+    LogDouble& operator/=(const LogDouble& y_) {
         x = x - y_.get_Value();
         return *this;
     }
