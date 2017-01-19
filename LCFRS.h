@@ -115,22 +115,18 @@ namespace LCFR {
     class LCFRS {
     private:
         std::string name;
-        std::vector<Rule<Nonterminal, Terminal>> rules;
+        std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>> rules;
     public:
         LCFRS() {};
 
         LCFRS(std::string gr) : name(gr) {};
 
-        std::vector<Rule<Nonterminal, Terminal>> get_rules() const {
+        const std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>>& get_rules() const {
             return rules;
         }
 
-        void add_rule(Rule<Nonterminal, Terminal> &r) {
-            rules.emplace_back(r);
-        }
-
         void add_rule(Rule<Nonterminal, Terminal> &&r) {
-            rules.emplace_back(std::move(r));
+            rules.emplace_back(std::make_shared<Rule<Nonterminal,Terminal>>(r));
         }
 
         template <typename Nonterminal1, typename Terminal1>
@@ -142,7 +138,7 @@ namespace LCFR {
     std::ostream& operator <<(std::ostream& o, const LCFRS<Nonterminal, Terminal>& grammar) {
         o << "Grammar: " << grammar.name << std::endl;
         for (auto r : grammar.get_rules()) {
-            o << "    " << r << std::endl;
+            o << "    " << *r << std::endl;
         }
         return o;
     }
