@@ -13,33 +13,35 @@ namespace LCFR {
 
     class Variable {
     private:
-        int index, arg;
+        unsigned long index, arg;
     public:
-        Variable(int ind, int arg) : index{ind}, arg{arg} {};
+        Variable(unsigned long ind, unsigned long arg) : index{ind}, arg{arg} {};
 
-        int get_index() const {
+        unsigned long get_index() const {
             return index;
         }
 
-        int get_arg() const {
+        unsigned long get_arg() const {
             return arg;
         };
+
+        bool operator ==(const Variable& v) const{
+            return(v.index == index && v.arg == arg);
+        }
 
         template <typename Nonterminal1, typename Terminal1>
         friend std::ostream& operator <<(std::ostream &, const Variable&);
     };
 
     std::ostream& operator <<(std::ostream& o, const Variable& v) {
-        int i{v.get_index()};
-        int a{v.get_arg()};
-        o << "x<" << i << "," << a << ">";
+        o << "x<" << v.get_index() << "," << v.get_arg() << ">";
         return o;
     }
 
 
 
     template<typename Terminal>
-    using TerminalOrVariable = typename boost::variant<Variable, Terminal>;
+    using TerminalOrVariable = typename boost::variant<Terminal, Variable>;
 
 
     template<typename Nonterminal, typename Terminal>
@@ -133,7 +135,6 @@ namespace LCFR {
         friend std::ostream& operator <<(std::ostream &, const LCFRS<Nonterminal1, Terminal1> &);
     };
 
-        // Output for LCFRS
     template <typename Nonterminal, typename Terminal>
     std::ostream& operator <<(std::ostream& o, const LCFRS<Nonterminal, Terminal>& grammar) {
         o << "Grammar: " << grammar.name << std::endl;
