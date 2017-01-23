@@ -117,14 +117,19 @@ namespace LCFR {
     class LCFRS {
     private:
         std::string name;
+        Nonterminal initial_nont;
         std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>> rules;
     public:
-        LCFRS() {};
+        LCFRS(Nonterminal initial): initial_nont(initial) {};
 
-        LCFRS(std::string gr) : name(gr) {};
+        LCFRS(Nonterminal initial, std::string gr) : initial_nont(initial), name(gr) {};
 
         const std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>>& get_rules() const {
             return rules;
+        }
+
+        const Nonterminal get_initial_nont(){
+            return initial_nont;
         }
 
         void add_rule(Rule<Nonterminal, Terminal> &&r) {
