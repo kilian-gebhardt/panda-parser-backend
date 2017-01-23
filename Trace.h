@@ -39,6 +39,8 @@ public:
 
     LogDouble() : x(minus_infinity) {} ;
 
+    LogDouble(LogDouble&& o) : x(std::move(o.x)) {}
+    LogDouble(LogDouble & o) : x(o.get_Value()) {}
     LogDouble(const double x) : x(x) {};
     bool operator<(const LogDouble& y) const {
         return x < y.get_Value();
@@ -49,6 +51,10 @@ public:
         return *this;
     }
 
+    LogDouble& operator= (LogDouble && y) {
+        x = std::move(y.x);
+        return *this;
+    }
     bool operator==(const LogDouble & y) const {
         return x == y.get_Value();
     }
@@ -1107,11 +1113,16 @@ public:
                 corpus_likelihood *= (reduce(std::plus<Val>(), trace_root_weights, Val::zero()));
 
                 const auto instance_root_weights = tr_io_weight.first.at(goals[trace_id]);
-                const Val instance_root_weight = reduce(std::plus<Val>(),
-                                                        zipWith<Val>(std::multiplies<Val>(), instance_root_weights,
-                                                                the_root_weights), Val::zero());
-                // const auto tmpxyz = zipWith<Val>(std::multiplies<Val>(), instance_root_weights, the_root_weights);
-                // const Val instance_root_weight = std::accumulate(tmpxyz.begin(), tmpxyz.end(), Val::zero(), std::plus<Val>());
+//                const Val instance_root_weight = reduce(std::plus<Val>(),
+//                                                        zipWith<Val>(std::multiplies<Val>(), instance_root_weights,
+//                                                                the_root_weights), Val::zero());
+                const auto tmp_result = zipWith<Val>(std::multiplies<Val>(), instance_root_weights, the_root_weights);
+                const Val instance_root_weight
+                        = std::accumulate(
+                                  std::make_move_iterator(std::begin(tmp_result))
+                                , std::make_move_iterator(std::end(tmp_result))
+                                , Val::zero()
+                                , std::plus<Val>());
                 if (debug)
                     std::cerr << "instance root weight: " << instance_root_weight << std::endl;
 
@@ -1166,32 +1177,48 @@ public:
 
             // maximization
             for (const std::vector<unsigned> & group : normalization_groups) {
-                const unsigned group_dim = rule_dimensions[group[0]][0];
-                std::vector<Val> group_counts = std::vector<Val>(group_dim, Val::zero());
-                for (auto member : group) {
-                    const unsigned block_size = subdim(rule_dimensions[member]);
-                    // reduce([] (const unsigned x, const unsigned y) -> unsigned {return x * y;}, rule_dimensions[member], (unsigned) 1, (unsigned) 1);
-                    for (unsigned dim : boost::irange((unsigned) 0, group_dim)) {
-                        const typename std::vector<Val>::iterator block_start = rule_counts[member].begin() + block_size * dim;
+                const unsigned lhs_dim = rule_dimensions[group[0]][0];
+                std::vector<Val> lhs_counts = std::vector<Val>(lhs_dim, Val::zero());
+                for (const auto rule : group) {
+                    const unsigned block_size = subdim(rule_dimensions[rule]);
+                    // reduce([] (const unsigned x, const unsigned y) -> unsigned {return x * y;}, rule_dimensions[rule], (unsigned) 1, (unsigned) 1);
+                    for (unsigned lhs : boost::irange((unsigned) 0, lhs_dim)) {
+                        const typename std::vector<Val>::iterator block_start = rule_counts[rule].begin() + block_size * lhs;
                         for (auto it = block_start; it != block_start + block_size; ++it) {
-                            group_counts[dim] += (*it);
+                            lhs_counts[lhs] += (*it);
                         }
                     }
                 }
                 if (debug) {
                     std::cerr << " { ";
-                    for (auto count : group_counts) {
+                    for (auto count : lhs_counts) {
                         std::cerr << count << " ";
                     }
                     std::cerr << " } ";
                 }
-                for (auto member : group) {
-                    const unsigned block_size = subdim(rule_dimensions[member]);
-                    for (unsigned dim : boost::irange((unsigned) 0, group_dim)) {
-                        if (group_counts[dim] > Val::zero()) {
-                            const unsigned block_start = block_size * dim;
+                for (const auto rule : group) {
+                    const unsigned block_size = subdim(rule_dimensions[rule]);
+                    for (unsigned lhs : boost::irange((unsigned) 0, lhs_dim)) {
+                        if (lhs_counts[lhs] > Val::zero()) {
+                            const unsigned block_start = block_size * lhs;
                             for (unsigned offset = block_start; offset < block_start + block_size; ++offset) {
-                                *(rule_weights[member].begin() + offset) = (*(rule_counts[member].begin() + offset)) / group_counts[dim];
+                                *(rule_weights[rule].begin() + offset) = (*(rule_counts[rule].begin() + offset)) / lhs_counts[lhs];
+                                if ((true || debug) && *(rule_weights[rule].begin() + offset) > Val::one()) {
+                                    std::cerr << "rule " << rule << " has prob. > 1: "
+                                                          << *(rule_weights[rule].begin() + offset)
+                                                          << " count: " << (*(rule_counts[rule].begin() + offset))
+                                                          << " norm_count " <<  lhs_counts[lhs] << std::endl;
+                                }
+                            }
+                        } else {
+                            if (true || debug) {
+                                const unsigned block_start = block_size * lhs;
+                                for (unsigned offset = block_start; offset < block_start + block_size; ++offset) {
+                                    if (rule_weights[rule][offset] > Val::one()) {
+                                        std::cerr << "invalid rule weight " << rule_weights[rule][offset]
+                                                    << " with 0 normalization " << lhs_counts[lhs] << std::endl;
+                                    }
+                                }
                             }
                         }
                     }
@@ -1310,7 +1337,7 @@ public:
                 // denominator cancels out later
                 //target = zipWith<Val>(std::plus<Val>(), target, zipWithConstant<Val>(std::divides<Val>(), vals, denominator));
 //                target = zipWith<Val>(std::plus<Val>(), target, vals);
-                std::transform(std::begin(target), std::end(target), std::begin(vals), std::begin(target), std::plus<Val>());
+                std::transform(std::begin(target), std::end(target), std::make_move_iterator(std::begin(vals)), std::begin(target), std::plus<Val>());
             }
 
         }
