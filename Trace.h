@@ -17,6 +17,8 @@
 #include <cmath>
 #include <boost/operators.hpp>
 #include <functional>
+#include <eigen3/unsupported/Eigen/CXX11/Tensor>
+#include "EigenUtil.h"
 
 class Chance {
     std::default_random_engine generator;
@@ -227,6 +229,12 @@ public:
 template <typename Nonterminal, typename Terminal, typename Position>
 class TraceManager {
 private:
+    double * storage;
+
+    double * get_region(unsigned size) {
+        return storage;
+    }
+
     std::vector<
             MAPTYPE<
                       ParseItem<Nonterminal, Position>
@@ -845,8 +853,35 @@ public:
         std::cerr << "em training after " << cycle + 1 << ". split" << std::endl;
 
         // em training
-        do_em_training_la(rule_weights_splitted, root_weights_splitted, normalization_groups, n_epochs, split_dimensions,
+
+        // conversion
+        std::vector<double *> rule_weights_ptrs;
+        for(auto rule_weight : rule_weights_splitted) {
+            double * rule_weight_ptr = get_region(rule_weight.size());
+            for (unsigned i = 0; i < rule_weight.size(); ++i) {
+                rule_weight_ptr[i] = rule_weight[i].from();
+            }
+            rule_weights_ptrs.push_back(rule_weight_ptr);
+        }
+        double * root_weights_ptrs = get_region(root_weights_splitted.size());
+        for (unsigned i = 0; i < root_weights_splitted.size(); ++i) {
+            root_weights_ptrs[i] = root_weights_splitted[i].from();
+        }
+
+        do_em_training_la(rule_weights_ptrs, root_weights_ptrs, normalization_groups, n_epochs, split_dimensions,
                           rule_to_nonterminals, nont_idx);
+
+        // undo conversion
+        for(unsigned j = 0; j < rule_weights_splitted.size(); ++j) {
+            auto & rule_weight = rule_weights_splitted[j];
+            for (unsigned i = 0; i < rule_weight.size(); ++i) {
+                rule_weight[i] = Val::to(rule_weights_ptrs[j][i]);
+            }
+        }
+        for (unsigned i = 0; i < root_weights_splitted.size(); ++i) {
+            root_weights_splitted[i] = Val::to(root_weights_ptrs[i]);
+        }
+
 
         for (auto rule_weights_ : rule_weights_splitted) {
             for (auto rule_weight : rule_weights_) {
@@ -900,8 +935,34 @@ public:
         rule_weights_splitted.clear();
 
         // em training
-        do_em_training_la(rule_weights_merged, root_weights, normalization_groups, n_epochs, new_nont_dimensions,
+
+        // conversion
+        std::vector<double *> rule_weights_merged_ptrs;
+        for(auto rule_weight : rule_weights_merged) {
+            double * rule_weight_ptr = get_region(rule_weight.size());
+            for (unsigned i = 0; i < rule_weight.size(); ++i) {
+                rule_weight_ptr[i] = rule_weight[i].from();
+            }
+            rule_weights_merged_ptrs.push_back(rule_weight_ptr);
+        }
+        double * root_weights_merged_ptrs = get_region(root_weights_splitted.size());
+        for (unsigned i = 0; i < root_weights.size(); ++i) {
+            root_weights_merged_ptrs[i] = root_weights[i].from();
+        }
+
+        do_em_training_la(rule_weights_merged_ptrs, root_weights_merged_ptrs, normalization_groups, n_epochs, new_nont_dimensions,
                           rule_to_nonterminals, nont_idx);
+
+        // undo conversion
+        for(unsigned j = 0; j < rule_weights_merged.size(); ++j) {
+            auto & rule_weight = rule_weights_merged[j];
+            for (unsigned i = 0; i < rule_weight.size(); ++i) {
+                rule_weight[i] = Val::to(rule_weights_merged_ptrs[j][i]);
+            }
+        }
+        for (unsigned i = 0; i < root_weights_splitted.size(); ++i) {
+            root_weights[i] = Val::to(root_weights_merged_ptrs[i]);
+        }
 
         for (auto rule_weights_ : rule_weights_merged) {
             for (auto rule_weight : rule_weights_) {
@@ -917,13 +978,12 @@ public:
         rule_weights_la = rule_weights_merged;
     }
 
-    template<typename Val, typename NontToIdx>
-    std::pair<MAPTYPE<ParseItem < Nonterminal, Position>, std::vector<Val>>,
-    MAPTYPE<ParseItem < Nonterminal, Position>, std::vector<Val>>>
-    io_weights_la(const std::vector<std::vector<Val>> &rules, const std::vector<unsigned> &nont_dimensions,
+    template<typename NontToIdx>
+    std::pair<MAPTYPE<ParseItem < Nonterminal, Position>, double *>,
+    MAPTYPE<ParseItem < Nonterminal, Position>, double *>>
+    io_weights_la(const std::vector<double*> &rules, double* root, const std::vector<unsigned> &nont_dimensions,
                   const std::vector<std::vector<unsigned>> rule_id_to_nont_ids, const NontToIdx nont_idx,
-                  const std::vector<Val> & root,
-                  const unsigned i) const {
+                  const unsigned i) {
 
 
         // TODO implement for general case (== no topological order) approximation of inside weights
@@ -932,131 +992,162 @@ public:
         const auto & topological_order = topological_orders[i];
 
         // computation of inside weights
-        MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<Val>> inside_weights;
-        std::vector<unsigned> rule_dim;
-        std::vector<std::vector<Val>> nont_vectors;
-        for (const auto & item : topological_order) {
-            inside_weights[item] = std::vector<Val>(nont_dimensions[nont_idx(item.nonterminal)], Val::zero());
-            std::vector<Val> & inside_weight = inside_weights[item];
-            for (const auto & witness : traces[i].at(item)) {
-                // nont_vectors.reserve(witness.second.size());
-                for (auto nont : rule_id_to_nont_ids[witness.first->id]) {
-                    rule_dim.push_back(nont_dimensions[nont]);
-                }
-                for (const auto & dep_item : witness.second) {
-                    nont_vectors.push_back(inside_weights.at(*dep_item));
-                }
-//                inside_weight = zipWith<Val>(std::plus<Val>(), inside_weight,
-//                                        compute_inside_weights(rules[witness.first->id], nont_vectors,
-//                                                               rule_dim));
-                std::transform(
-                          std::begin(inside_weight)
-                        , std::end(inside_weight)
-                        , std::begin(compute_inside_weights(rules[witness.first->id], nont_vectors, rule_dim))
-                        , std::begin(inside_weight)
-                        , std::plus<Val>()
-                        );
+        MAPTYPE<ParseItem < Nonterminal, Position>, double *> inside_weights;
 
-                rule_dim.clear();
-                nont_vectors.clear();
+        std::vector<Eigen::TensorMap<Eigen::Tensor<double, 1>>> rhs_weights;
+        for (const auto & item : topological_order) {
+            double * const item_weights = get_region(nont_dimensions[nont_idx(item.nonterminal)]);
+            inside_weights[item] = item_weights;
+
+            Eigen::TensorMap<Eigen::Tensor<double, 1>> inside_weight (item_weights, nont_dimensions[nont_idx(item.nonterminal)]);
+            inside_weight.setConstant(0.0);
+
+            for (const auto & witness : traces[i].at(item)) {
+                switch (witness.second.size() + 1) {
+                    case 1:
+                        inside_weight_step<1>(rule_id_to_nont_ids, inside_weights, rhs_weights, inside_weight, witness, rules, nont_dimensions);
+                        break;
+                    case 2:
+                        inside_weight_step<2>(rule_id_to_nont_ids, inside_weights, rhs_weights, inside_weight, witness, rules, nont_dimensions);
+                        break;
+                    case 3:
+                        inside_weight_step<3>(rule_id_to_nont_ids, inside_weights, rhs_weights, inside_weight, witness, rules, nont_dimensions);
+                        break;
+                    case 4:
+                        inside_weight_step<4>(rule_id_to_nont_ids, inside_weights, rhs_weights, inside_weight, witness, rules, nont_dimensions);
+                        break;
+                    default:
+                        std::cerr<< "Rules with more than 3 RHS nonterminals are not implemented." << std::endl;
+                        abort();
+                }
+                rhs_weights.clear();
             }
         }
 
         // TODO implement for general case (== no topological order) solution by gauss jordan
-        MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<Val>> outside_weights;
-        std::vector<std::vector<Val>> relevant_inside_weights;
-        for (int j = topological_order.size() - 1; j >= 0; --j) {
-            const ParseItem<Nonterminal, Position> & item = topological_order[j];
-            outside_weights[item] = std::vector<Val>(nont_dimensions[nont_idx(item.nonterminal)], Val::zero());
-            std::vector<Val> & outside_weight = outside_weights[item];
+        MAPTYPE<ParseItem < Nonterminal, Position>, double *> outside_weights;
+        std::vector<Eigen::TensorMap<Eigen::Tensor<double, 1>>> relevant_inside_weights;
+        for (auto i_ptr = topological_order.rbegin();  i_ptr != topological_order.rend(); ++i_ptr) {
+            const ParseItem<Nonterminal, Position> & item = *i_ptr;
+
+            double * const item_weight = get_region(nont_dimensions[nont_idx(item.nonterminal)]);
+            outside_weights[item] = item_weight;
+
+            Eigen::TensorMap<Eigen::Tensor<double, 1>> outside_weight(item_weight, nont_dimensions[nont_idx(item.nonterminal)]);
+            outside_weight.setZero();
 
             if (item == goals[i])
-//                outside_weight = zipWith<Val>(std::plus<Val>(), outside_weight, root);
-                std::transform(
-                          std::begin(outside_weight)
-                        , std::end(outside_weight)
-                        , std::begin(root)
-                        , std::begin(outside_weight)
-                        , std::plus<Val>());
+                outside_weight += Eigen::TensorMap<Eigen::Tensor<double, 1>>(root, nont_dimensions[nont_idx(item.nonterminal)]);
 
             if (traces_reverse[i].count(item)) {
                 for (const auto &witness : traces_reverse[i].at(item)) {
-                    const auto &rule = *(std::get<0>(witness));
-                    const auto &siblings = *(std::get<1>(witness));
-                    const auto &parent = *(std::get<2>(witness));
-                    const unsigned position = std::get<3>(witness);
-
-                    rule_dim.push_back(nont_dimensions[nont_idx(parent.nonterminal)]);
-
-                    for (unsigned sib_position = 0; sib_position < siblings.size(); ++sib_position) {
-                        const auto & rhs_item = siblings[sib_position];
-
-                        rule_dim.push_back(nont_dimensions[nont_idx(rhs_item->nonterminal)]);
-                        if (sib_position == position)
-                            relevant_inside_weights.push_back(std::vector<Val>(rule_dim.back(), Val::one()));
-                        else
-                            relevant_inside_weights.push_back(inside_weights[*rhs_item]);
+                    switch (std::get<1>(witness)->size() + 1) {
+                        case 1:
+                            outside_weight_step<1>(rules, nont_dimensions, nont_idx, inside_weights, outside_weights, relevant_inside_weights, outside_weight, witness);
+                            break;
+                        case 2:
+                            outside_weight_step<2>(rules, nont_dimensions, nont_idx, inside_weights, outside_weights, relevant_inside_weights, outside_weight, witness);
+                            break;
+                        case 3:
+                            outside_weight_step<3>(rules, nont_dimensions, nont_idx, inside_weights, outside_weights, relevant_inside_weights, outside_weight, witness);
+                            break;
+                        case 4:
+                            outside_weight_step<4>(rules, nont_dimensions, nont_idx, inside_weights, outside_weights, relevant_inside_weights, outside_weight, witness);
+                            break;
+                        default:
+                            std::cerr<< "Rules with more than 3 RHS nonterminals are not implemented." << std::endl;
+                            abort();
                     }
-
-                    const std::vector<Val> new_weights
-                            = compute_outside_weights(
-                                    rules[rule.id]
-                                    , outside_weights[parent]
-                                    , relevant_inside_weights
-                                    , rule_dim
-                                    , position);
-
-                    std::transform(outside_weight.begin(), outside_weight.end(), new_weights.begin(), outside_weight.begin(), std::plus<Val>());
-                    //                  outside_weight = zipWith<Val>( std::plus<Val>()
-                    //                               , outside_weight
-                    //                               , new_weights);
-                    rule_dim.clear();
-                    relevant_inside_weights.clear();
                 }
             }
         }
-
         return std::make_pair(inside_weights, outside_weights);
     }
 
+    template<int rule_rank, typename NontToIdx, typename Witness>
+    void outside_weight_step(const std::vector<double *> &rules, const std::vector<unsigned int> &nont_dimensions,
+                             const NontToIdx nont_idx, const MAPTYPE<ParseItem < Nonterminal, Position>, double *> & inside_weights,
+                            MAPTYPE<ParseItem<Nonterminal, Position>, double *> & outside_weights,
+                            std::vector<Eigen::TensorMap<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>, 0, Eigen::MakePointer>> &
+                            relevant_inside_weights,
+                            Eigen::TensorMap<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>, 0, Eigen::MakePointer> &
+                            outside_weight, Witness witness) const {
+        const auto &rule = *(std::get<0>(witness));
+        const auto &siblings = *(std::get<1>(witness));
+        const auto &parent = *(std::get<2>(witness));
+        const unsigned position = std::get<3>(witness);
 
-    template <typename NontToIdx, typename Val>
+        Eigen::array<int, rule_rank> rule_dim;
+
+        rule_dim[0] = nont_dimensions[nont_idx(parent.nonterminal)];
+
+        for (unsigned sib_position = 0; sib_position < siblings.size(); ++sib_position) {
+                        const auto & rhs_item = siblings[sib_position];
+
+                        rule_dim[sib_position + 1] = nont_dimensions[nont_idx(rhs_item->nonterminal)];
+                        if (sib_position == position) {
+                            Eigen::Tensor<double, 1> ones (rule_dim[sib_position + 1]);
+                            ones.setConstant(1.0);
+                            relevant_inside_weights.push_back(ones);
+                        } else {
+                            double *ptr = inside_weights.at(*rhs_item);
+                            Eigen::TensorMap<Eigen::Tensor<double, 1>> rhs_weight(ptr, rule_dim[sib_position]);
+                            relevant_inside_weights.push_back(rhs_weight);
+                        }
+                    }
+
+        auto parent_weight = Eigen::TensorMap<Eigen::Tensor<double, 1>>(outside_weights.at(parent), rule_dim[0]);
+        auto rule_weight = Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>(rules[rule.id], rule_dim);
+        outside_weight += parent_weight * rule_probs(rule_weight, relevant_inside_weights);
+
+        relevant_inside_weights.clear();
+    }
+
+    template<int rule_rank, typename Witness>
+    void inside_weight_step(const std::vector<std::vector<unsigned int>> &rule_id_to_nont_ids,
+                            const MAPTYPE<ParseItem<Nonterminal, Position>, double *> & inside_weights,
+                                std::vector<Eigen::TensorMap<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>, 0, Eigen::MakePointer>> &
+                                rhs_weights,
+                                Eigen::TensorMap<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>, 0, Eigen::MakePointer> &
+                                inside_weight, Witness witness, const std::vector<double *> &rules,
+                            const std::vector<unsigned int> &nont_dimensions) const {
+        Eigen::array<int, rule_rank> rule_dim;
+        unsigned nont_pos = 0;
+        for (auto nont : rule_id_to_nont_ids[witness.first->id]) {
+                    rule_dim[nont_pos] = nont_dimensions[nont];
+                    ++nont_pos;
+                }
+
+        Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> rule_weight(rules[witness.first->id], rule_dim);
+
+        nont_pos = 1;
+        for (const auto & dep_item : witness.second) {
+                    double * ptr = inside_weights.at(*dep_item);
+                    Eigen::TensorMap<Eigen::Tensor<double, 1>> rhs_weight(ptr, rule_dim[nont_pos]);
+                    rhs_weights.push_back(rhs_weight);
+                    ++nont_pos;
+                }
+
+        inside_weight += rule_probs(rule_weight, rhs_weights);
+    }
+
+
+    template <typename NontToIdx>
     void do_em_training_la(
-            std::vector<std::vector<Val>> & rule_weights
-            , std::vector<Val> & the_root_weights
+            std::vector<double*> & rule_weights
+            , double* const the_root_weights
             , const std::vector<std::vector<unsigned>> & normalization_groups
             , const unsigned n_epochs
             , const std::vector<unsigned> & nont_dimensions
             , const std::vector<std::vector<unsigned>> & rule_to_nont_ids
             , const NontToIdx nont_idx
-//            , const Val zero, const Val one, const Val leaf, const Accum1 prod, const Accum2 sum, const Accum3 division
     ){
 
         unsigned epoch = 0;
 
-        std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
-        if (debug) {
-            for (unsigned i = 0; i < rule_weights.size(); ++i) {
-                std::cerr << i << " { ";
-                for (Val elem : rule_weights[i])
-                    std::cerr << elem.from() << " ";
-                std::cerr << " } , ";
-            }
-        }
-        std::cerr << std::endl;
-        if (debug) {
-            bool first = true;
-            std::cerr << "Root weights { ";
-            for (auto weight : the_root_weights) {
-                if (!first)
-                    std::cerr << " , ";
-                first = false;
-                std::cerr << weight.from();
-            }
-            std::cerr << " } " << std::endl;
-        }
+        const unsigned root_dimension = nont_dimensions[nont_idx(goals[0].nonterminal)];
 
-        std::vector<std::vector<Val>> rule_counts;
+        std::vector<double*> rule_counts;
         std::vector<std::vector<unsigned>> rule_dimensions;
         for (auto nont_ids : rule_to_nont_ids) {
             unsigned size = 1;
@@ -1068,6 +1159,8 @@ public:
             rule_dimensions.push_back(rule_dimension);
         }
 
+        Eigen::TensorMap<Eigen::Tensor<double, 1>> root_probability (the_root_weights, root_dimension);
+
         while (epoch < n_epochs) {
 
             // expectation
@@ -1075,221 +1168,106 @@ public:
 
             // initialize rule counts
             for (const auto & dims : rule_dimensions) {
-                rule_counts.push_back(std::vector<Val>(calc_size(dims), Val::zero()));
+                unsigned size = calc_size(dims);
+                double * ptr = get_region(size);
+                // TODO region does not need to be reallocated
+                // on the other hand, setZero() in one go?!
+                Eigen::TensorMap<Eigen::Tensor<double, 1>> rule_count (ptr, size);
+                rule_count.setZero();
+                rule_counts.push_back(ptr);
             }
 
-            std::vector<Val> root_counts = std::vector<Val>(nont_dimensions[nont_idx(goals[0].nonterminal)], Val::zero());
-            Val corpus_likelihood = Val::one();
+            double* root_count_ptr = get_region(root_dimension);
+            Eigen::TensorMap<Eigen::Tensor<double, 1>> root_count (root_count_ptr, root_dimension);
+            root_count.setZero();
+
+            Eigen::Tensor<double, 0> corpus_likelihood;
+            corpus_likelihood.setConstant(1);
 
             for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
                 auto trace = traces[trace_id];
                 if (trace.size() == 0)
                     continue;
 
-                const auto tr_io_weight = io_weights_la(rule_weights, nont_dimensions, rule_to_nont_ids, nont_idx, the_root_weights, trace_id);
-                if (debug) {
-                    for (const auto &item : get_order(trace_id)) {
-                        std::cerr << "T: " << item << " (idx: " << nont_idx(item.nonterminal) << " )" << std::endl  ;
+                auto tr_io_weight = io_weights_la(rule_weights, the_root_weights, nont_dimensions, rule_to_nont_ids, nont_idx, trace_id);
 
-                        for (unsigned offset = 0; offset < nont_dimensions[nont_idx(item.nonterminal)]; ++offset) {
-                            std::cerr << "    " << tr_io_weight.first.at(item)[offset] << " "
-                                      << tr_io_weight.second.at(item)[offset] << std::endl;
+                double * const root_inside_weight_ptr =  tr_io_weight.first.at(goals[trace_id]);
 
-                        }
-                    }
-                    std::cerr << std::endl;
-                }
-//
+                Eigen::TensorMap<Eigen::Tensor<double, 1>> root_inside_weight (root_inside_weight_ptr, root_dimension);
+                Eigen::Tensor<double, 1> trace_root_probability = root_inside_weight * root_probability;
+                root_count += trace_root_probability;
+                corpus_likelihood += trace_root_probability.sum().log();
 
-                const auto trace_root_weights = zipWith<Val>(std::multiplies<Val>(), tr_io_weight.first.at(goals[trace_id]),
-                                                       tr_io_weight.second.at(goals[trace_id]));
-//                root_counts = zipWith<Val>(std::plus<Val>(), root_counts, trace_root_weights);
-                std::transform(
-                          std::begin(root_counts)
-                        , std::end(root_counts)
-                        , std::begin(trace_root_weights)
-                        , std::begin(root_counts)
-                        , std::plus<Val>());
-                corpus_likelihood *= (reduce(std::plus<Val>(), trace_root_weights, Val::zero()));
-
-                const auto instance_root_weights = tr_io_weight.first.at(goals[trace_id]);
-//                const Val instance_root_weight = reduce(std::plus<Val>(),
-//                                                        zipWith<Val>(std::multiplies<Val>(), instance_root_weights,
-//                                                                the_root_weights), Val::zero());
-                const auto tmp_result = zipWith<Val>(std::multiplies<Val>(), instance_root_weights, the_root_weights);
-                const Val instance_root_weight
-                        = std::accumulate(
-                                  std::make_move_iterator(std::begin(tmp_result))
-                                , std::make_move_iterator(std::end(tmp_result))
-                                , Val::zero()
-                                , std::plus<Val>());
                 if (debug)
-                    std::cerr << "instance root weight: " << instance_root_weight << std::endl;
+                    std::cerr << "instance root probability: " << trace_root_probability << std::endl;
 
                 for (auto & pair : trace) {
-                    const std::vector<Val> & lhn_outside_weights = tr_io_weight.second.at(pair.first);
+                    double * const lhn_outside_ptr = tr_io_weight.second.at(pair.first);
+                    const unsigned lhn_dimension = nont_dimensions[nont_idx(pair.first.nonterminal)];
+                    const Eigen::TensorMap<Eigen::Tensor<double, 1>> lhn_outside_weight (lhn_outside_ptr, lhn_dimension);
+
                     if (debug) {
                         std::cerr << pair.first << std::endl;
                     }
                     for (const auto & witness : pair.second) {
                         const int rule_id = witness.first->id;
+                        const unsigned rule_dim = rule_dimensions[rule_id].size();
 
-                        std::vector<std::vector<Val>> nont_weight_vectors;
-                        nont_weight_vectors.reserve(witness.second.size());
-                        for (const auto & rhs_item : witness.second) {
-                            nont_weight_vectors.push_back(tr_io_weight.first.at(*rhs_item));
+                        switch (rule_dim) {
+                            case 1:
+                                foo<1>(rule_dimensions, rule_id, rule_weights, witness, nont_dimensions, lhn_outside_weight, trace_root_probability, nont_idx, tr_io_weight, rule_counts);
+                                break;
+                            case 2:
+                                foo<2>(rule_dimensions, rule_id, rule_weights, witness, nont_dimensions, lhn_outside_weight, trace_root_probability, nont_idx, tr_io_weight, rule_counts);
+                                break;
+                            case 3:
+                                foo<3>(rule_dimensions, rule_id, rule_weights, witness, nont_dimensions, lhn_outside_weight, trace_root_probability, nont_idx, tr_io_weight, rule_counts);
+                                break;
+                            case 4:
+                                foo<4>(rule_dimensions, rule_id, rule_weights, witness, nont_dimensions, lhn_outside_weight, trace_root_probability, nont_idx, tr_io_weight, rule_counts);
+                                break;
+                            default:
+                                std::cerr << "Rules with RHS > " << 4 << " are not implemented." << std::endl;
+                                abort();
                         }
-
-                        std::vector<Val> rule_val;
-                        rule_val = compute_rule_frequency(rule_weights[rule_id], lhn_outside_weights, nont_weight_vectors, rule_dimensions[rule_id]);
-//                        rule_val = zipWithConstant<Val>(std::divides<Val>(), rule_val, instance_root_weight);
-                        std::for_each(rule_val.begin(), rule_val.end(), [&](Val& x) {x /= instance_root_weight;});
-
-                        if (debug) {
-                            std::cerr << rule_id << ": {";
-                            for (auto val : rule_val)
-                                std::cerr << val << " ";
-                            std::cerr << " }" << std::endl;
-                        }
-//                        rule_counts[rule_id] = zipWith<Val>(std::plus<Val>(), rule_counts[rule_id], rule_val);
-                        std::transform(
-                                  std::begin(rule_counts[rule_id])
-                                , std::end(rule_counts[rule_id])
-                                , std::begin(rule_val)
-                                , std::begin(rule_counts[rule_id])
-                                , std::plus<Val>()
-                                );
                     }
-                }
-            }
-
-            if (debug) {
-                unsigned i = 0;
-                for (auto rule : rule_counts) {
-                    std::cerr << i << ": { ";
-                    for (auto count : rule) {
-                        std::cerr << count << " ";
-                    }
-                    std::cerr<<" } " << std::endl;
-                    ++i;
                 }
             }
 
             // maximization
             for (const std::vector<unsigned> & group : normalization_groups) {
                 const unsigned lhs_dim = rule_dimensions[group[0]][0];
-                std::vector<Val> lhs_counts = std::vector<Val>(lhs_dim, Val::zero());
-                for (const auto rule : group) {
-                    const unsigned block_size = subdim(rule_dimensions[rule]);
-                    // reduce([] (const unsigned x, const unsigned y) -> unsigned {return x * y;}, rule_dimensions[rule], (unsigned) 1, (unsigned) 1);
-                    for (unsigned lhs : boost::irange((unsigned) 0, lhs_dim)) {
-                        const typename std::vector<Val>::iterator block_start = rule_counts[rule].begin() + block_size * lhs;
-                        for (auto it = block_start; it != block_start + block_size; ++it) {
-                            lhs_counts[lhs] += (*it);
-                        }
-                    }
-                }
-                if (debug) {
-                    std::cerr << " { ";
-                    for (auto count : lhs_counts) {
-                        std::cerr << count << " ";
-                    }
-                    std::cerr << " } ";
-                }
-                for (const auto rule : group) {
-                    const unsigned block_size = subdim(rule_dimensions[rule]);
-                    for (unsigned lhs : boost::irange((unsigned) 0, lhs_dim)) {
-                        if (lhs_counts[lhs] > Val::zero()) {
-                            const unsigned block_start = block_size * lhs;
-                            for (unsigned offset = block_start; offset < block_start + block_size; ++offset) {
-                                *(rule_weights[rule].begin() + offset) = (*(rule_counts[rule].begin() + offset)) / lhs_counts[lhs];
-                                if ((true || debug) && *(rule_weights[rule].begin() + offset) > Val::one()) {
-                                    std::cerr << "rule " << rule << " has prob. > 1: "
-                                                          << *(rule_weights[rule].begin() + offset)
-                                                          << " count: " << (*(rule_counts[rule].begin() + offset))
-                                                          << " norm_count " <<  lhs_counts[lhs] << std::endl;
-                                }
-                            }
-                        } else {
-                            if (true || debug) {
-                                const unsigned block_start = block_size * lhs;
-                                for (unsigned offset = block_start; offset < block_start + block_size; ++offset) {
-                                    if (rule_weights[rule][offset] > Val::one()) {
-                                        std::cerr << "invalid rule weight " << rule_weights[rule][offset]
-                                                    << " with 0 normalization " << lhs_counts[lhs] << std::endl;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                switch (lhs_dim) {
+                    case 1:
+                        maximization<1>(rule_dimensions, group, rule_counts, rule_weights);
+                    case 2:
+                        maximization<2>(rule_dimensions, group, rule_counts, rule_weights);
+                    case 3:
+                        maximization<3>(rule_dimensions, group, rule_counts, rule_weights);
+                    case 4:
+                        maximization<4>(rule_dimensions, group, rule_counts, rule_weights);
+                    default:
+                        std::cerr << "Rules with RHS > " << 4 << " are not implemented." << std::endl;
+                        abort();
                 }
             }
             if (debug) std::cerr << std::endl;
 
             epoch++;
             std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
-            if (debug)
-                for (unsigned i = 0; i < rule_weights.size(); ++i) {
-                    std::cerr << i << " { ";
-                    for (Val elem : rule_weights[i])
-                        std::cerr << elem.from() << " ";
-                    std::cerr << " } , ";
-                }
-            if (debug) std::cerr << std::endl;
+
 
             // maximize root weights:
-            const Val corpus_prob_sum = std::accumulate(root_counts.begin(), root_counts.end(), Val::zero(), std::plus<Val>());
-            std::cerr << "corpus prob. sum " << corpus_prob_sum.from();
+            auto corpus_prob_sum = root_count.sum();
+
+            // output likelihood information based on old probability assignment
+            std::cerr << "corpus prob. sum " << corpus_prob_sum;
             std::cerr << " corpus likelihood " << corpus_likelihood;
-            for (auto root_weight : the_root_weights) {
-                std::cerr << " " << root_weight << " ";
-            }
-            std::cerr << std::endl;
-            const unsigned len = the_root_weights.size();
-            the_root_weights.clear();
-            if (debug) std::cerr << "single root weights: ";
-            for (const auto weight : root_counts) {
-                if (debug) std::cerr << weight.from() << "/" << (weight / corpus_prob_sum).from() << " ";
-                the_root_weights.push_back(weight / corpus_prob_sum);
-            }
-            assert(len == the_root_weights.size());
-            std::cerr << std::endl;
+            std::cerr << " root weights: " << root_probability << std::endl;
 
-            if (debug) {
-                std::cerr << "Nont sums: ";
-                unsigned i = 0;
-                for (auto group : normalization_groups) {
-                    std::vector<Val> dim_weights = std::vector<Val>(nont_dimensions[i], Val::zero());
-                    for (auto rule_id : group) {
-                        const unsigned size = rule_weights[rule_id].size();
-                        for (unsigned weight_id = 0; weight_id < size; ++weight_id) {
-                            const unsigned index = weight_id / (size / nont_dimensions[i]);
-                            dim_weights[index] = dim_weights[index] + rule_weights[rule_id][weight_id];
-                        }
-                    }
-                    std::cerr << " { ";
-                    for (auto weight_sum : dim_weights) {
-                        std::cerr << weight_sum.from() << " ";
-                    }
-                    std::cerr << " } ";
-                    ++i;
-                }
-                std::cerr << std::endl;
-            }
-            if (debug) {
-                bool first = true;
-                std::cerr << "Root weights { ";
-                for (auto weight : the_root_weights) {
-                    if (!first)
-                        std::cerr << " , ";
-                    first = false;
-                    std::cerr << weight.from();
-                }
-                std::cerr << " } " << std::endl;
-            }
+            // compute new root weights
+            root_probability = root_count / corpus_prob_sum;
 
-            rule_counts.clear();
-            root_counts.clear();
         }
 
     }
