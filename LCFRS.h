@@ -7,6 +7,7 @@
 
 #include <vector>
 #include <boost/variant.hpp>
+#include "LCFRS_util.h"
 
 
 namespace LCFR {
@@ -85,32 +86,30 @@ namespace LCFR {
             return rhs;
         }
 
-        template <typename Nonterminal1, typename Terminal1>
-        friend std::ostream& operator <<(std::ostream &, const Rule<Nonterminal1, Terminal1> &);
+        friend std::ostream& operator <<(std::ostream& o, const Rule<Nonterminal, Terminal>& r) {
+            LHS<Nonterminal, Terminal> lhs{r.get_lhs()};
+            o << lhs.get_nont();
+            o << "( ";
+            bool first = true;
+            for (auto arg : lhs.get_args()) {
+                if(!first){
+                    o << ", ";
+                }
+                first=false;
+                for (auto a : arg) {
+                    o << a << " ";
+                }
+            }
+            o << ")";
+            o << " -> ";
+            for (auto rhs : r.get_rhs()){
+                o << rhs;
+            }
+            return o;
+        }
     };
 
-    template <typename Nonterminal, typename Terminal>
-    std::ostream& operator <<(std::ostream& o, const Rule<Nonterminal, Terminal>& r) {
-        LHS<Nonterminal, Terminal> lhs{r.get_lhs()};
-        o << lhs.get_nont();
-        o << "( ";
-        bool first = true;
-        for (auto arg : lhs.get_args()) {
-            if(!first){
-                o << ", ";
-            }
-            first=false;
-            for (auto a : arg) {
-                o << a << " ";
-            }
-        }
-        o << ")";
-        o << " -> ";
-        for (auto rhs : r.get_rhs()){
-            o << rhs;
-        }
-        return o;
-    }
+
 
 
     template<typename Nonterminal, typename Terminal>
@@ -133,22 +132,60 @@ namespace LCFR {
         }
 
         void add_rule(Rule<Nonterminal, Terminal> &&r) {
-            rules.emplace_back(std::make_shared<Rule<Nonterminal,Terminal>>(r));
+            rules.emplace_back(std::make_shared<Rule<Nonterminal,Terminal>>(std::move(r)));
         }
 
-        template <typename Nonterminal1, typename Terminal1>
-        friend std::ostream& operator <<(std::ostream &, const LCFRS<Nonterminal1, Terminal1> &);
+        friend std::ostream& operator <<(std::ostream& o, const LCFRS<Nonterminal, Terminal>& grammar) {
+            o << "Grammar: " << grammar.name  << " (initial: " << grammar.initial_nont << ")" << std::endl;
+            for (auto r : grammar.get_rules()) {
+                o << "    " << *r << std::endl;
+            }
+            return o;
+        }
+
     };
 
-    template <typename Nonterminal, typename Terminal>
-    std::ostream& operator <<(std::ostream& o, const LCFRS<Nonterminal, Terminal>& grammar) {
-        o << "Grammar: " << grammar.name << std::endl;
-        for (auto r : grammar.get_rules()) {
-            o << "    " << *r << std::endl;
-        }
-        return o;
+
+
+
+    // Helper funtions
+
+    template <typename  Nonterminal, typename Terminal>
+    Rule<Nonterminal, Terminal> constructRule(
+            const Nonterminal nont
+            , const std::vector<std::vector<TerminalOrVariable<Terminal>>> args
+            , const std::vector<Nonterminal> rhs
+    ){
+        LHS<Nonterminal,Terminal> lhs(nont);
+        for(auto const& arg : args)
+            lhs.addArgument(arg);
+        return Rule<Nonterminal, Terminal>(lhs, rhs);
     }
 
+    Rule<std::string, std::string> constructRule(
+            const std::string nont
+            , const std::vector<std::string> args
+            , const std::string rhs
+    ){
+        LHS<std::string,std::string> lhs(nont);
+        for (auto const& arg : args) {
+            std::vector<std::string> tokens;
+            tokenize<std::vector<std::string>>(arg, tokens);
+            std::vector<TerminalOrVariable<std::string>> argument;
+            for (std::string s : tokens){
+                if(s[0] == 'x')
+                    argument.emplace_back(Variable{(unsigned long)s[2]-'0',(unsigned long)s[4]-'0'});
+                else
+                    argument.emplace_back(s);
+            }
+            lhs.addArgument(std::move(argument));
+        }
+
+        std::vector<std::string> nonterminals;
+        tokenize(rhs, nonterminals);
+
+        return Rule<std::string, std::string>(lhs, nonterminals);
+    };
 }
 
 

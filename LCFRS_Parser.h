@@ -68,12 +68,12 @@ namespace LCFR{
 
 
     public:
-        ActiveItem(std::shared_ptr<Rule<Nonterminal,Terminal>> r) : rule(r) {
+
+        ActiveItem(std::shared_ptr<Rule<Nonterminal,Terminal>> r, Range range): rule(r), currentRange(range) {
             fanout = rule->get_lhs().get_args().size();
             pre_ranges.reserve(fanout);
             k = 0;
             posInK = 0;
-            currentRange = Range{0,0};
         }
 
 
@@ -129,6 +129,8 @@ namespace LCFR{
 
             currentRange.first = pos;
             currentRange.second = pos;
+
+            return true;
         }
 
 
@@ -138,25 +140,11 @@ namespace LCFR{
 
 
 
-        bool isRecordPlausible() const {
-            TerminalOrVariable<Terminal> adot = afterDot();
-
-            if(adot.which() == 0) // next item is a terminal, so we don't know
-                return true;
-            Variable var = boost::get<Variable>(adot);
-
-            if(records.count(var.get_index()) == 0) // no record yet
-                return true;
-
-            return currentRange.second == records.at(var.get_index())->get_ranges().at(var.get_arg()).first;
-        }
-
-
         bool isTerminalPlausible(const std::vector<Terminal> word) const {
             TerminalOrVariable<Terminal> adot = afterDot();
 
-            if(adot.which() == 1) // next item is a variable, so we don't know
-                return true;
+            if(adot.which() == 1) // next item is a variable
+                return false;
 
             if(get_current_Position().second >= word.size())
                 return false; // there is no word left to be scanned
@@ -178,54 +166,80 @@ namespace LCFR{
             ++posInK;
         }
 
-        bool scanVariable() {
-            if ( ! isRecordPlausible())
+
+        bool hasRecordFor(unsigned long index) const {
+            return records.count(index) > 0;
+        }
+
+
+        bool isRecordPlausible() const {
+            TerminalOrVariable<Terminal> adot = afterDot();
+
+            if(adot.which() == 0) // next item is a terminal
                 return false;
+            Variable var = boost::get<Variable>(adot);
 
-            const auto arg = rule->get_lhs().get_args().at(k);
-            if(arg.at(posInK).which() == 0) // next item is a terminal
-                return false;
-            Variable var = boost::get<Variable>(arg.at(posInK));
+            if(records.count(var.get_index()) == 0) // no record yet
+                return true;
 
-            std::shared_ptr<PassiveItem<Nonterminal, Terminal>> pitem = records.at(var.get_index());
-            Range rangeOfRec = pitem->get_ranges().at(var.get_arg());
+            return currentRange.second == records.at(var.get_index())->get_ranges().at(var.get_arg()).first;
+        }
 
-            Nonterminal b = rule->get_rhs().at(var.get_index());
+        /**
+         * Scans a variable from the record. Assumes that isRecordPlausible() holds!
+         */
+        void scanVariable() {
+            assert(isRecordPlausible());
+
+            Variable var = boost::get<Variable>(rule->get_lhs().get_args().at(k).at(posInK));
+
+            Range rangeOfRec = records.at(var.get_index())->get_ranges().at(var.get_arg());
 
             currentRange.second = rangeOfRec.second;
             ++posInK;
-            return true;
         }
 
-        bool addRecord(const unsigned long arg, const std::shared_ptr<PassiveItem<Nonterminal, Terminal>> pitem){
-            if(records.count(arg)==1)
+        bool addRecord(const unsigned long index, const std::shared_ptr<PassiveItem<Nonterminal, Terminal>> pitem){
+            if(records.count(index)>0)
                 return false; // record already exist
-            records[arg] = pitem;
+            records[index] = pitem;
             return true;
         }
 
-        template <typename Nonterminal1, typename Terminal1>
-        friend std::ostream& operator <<(std::ostream&, const ActiveItem<Nonterminal1, Terminal1>&);
+
+        bool operator ==(const ActiveItem<Nonterminal, Terminal>& item) const {
+            return
+                rule == item.rule
+                && pre_ranges == item.pre_ranges
+                && k == item.k
+                && posInK == item.posInK
+                && currentRange == item.currentRange
+                && records == item.records;
+        }
+
+
+
+        friend std::ostream& operator <<(std::ostream& o, const ActiveItem<Nonterminal, Terminal>& item){
+            o << "<" << *item.rule << ", [";
+            for(auto range : item.pre_ranges){
+                o << range;
+            }
+            o << "], ";
+            o << item.currentRange;
+            o << " -" << item.k << "/" << item.posInK << "- ";
+            if(item.k < item.fanout){
+                auto comp = item.rule->get_lhs().get_args().at(item.k);
+                for (unsigned long i= item.posInK; i < comp.size(); ++i){
+                    o << comp.at(i) << " ";
+                }
+            }
+            o << ">";
+            return o;
+        };
     };
 
-    template <typename Nonterminal, typename Terminal>
-    std::ostream& operator <<(std::ostream& o, const ActiveItem<Nonterminal, Terminal>& item){
-        o << "<" << *item.rule << ", [";
-        for(auto range : item.pre_ranges){
-            o << range;
-        }
-        o << "], ";
-        o << item.currentRange;
-        o << " -" << item.k << "/" << item.posInK << "- ";
-        if(item.k < item.fanout){
-            auto comp = item.rule->get_lhs().get_args().at(item.k);
-            for (unsigned long i= item.posInK; i < comp.size(); ++i){
-                o << comp.at(i) << " ";
-            }
-        }
-        o << ">";
-        return o;
-    };
+
+
 
 
 
@@ -242,6 +256,17 @@ namespace LCFR{
 
         ItemIndex(ItemIndex&& i): nont(i.nont), arg(i.arg), startingPos(i.startingPos) {}
 
+        ItemIndex(const ItemIndex& i): nont(i.nont), arg(i.arg), startingPos(i.startingPos) {}
+
+        friend bool operator<(const ItemIndex<Nonterminal>& l, const ItemIndex<Nonterminal>& r){
+            return std::tie(l.nont, l.arg, l.startingPos) < std::tie(r.nont, r.arg, r.startingPos);
+        }
+
+        friend std::ostream& operator <<(std::ostream& o, const ItemIndex<Nonterminal>& item) {
+            o << "(" << item.nont << "," << item.arg << "," << item.startingPos << ")";
+            return o;
+        }
+
     };
 
     template <typename Nonterminal, typename Terminal>
@@ -253,6 +278,7 @@ namespace LCFR{
         std::map<ItemIndex<Nonterminal>, std::deque<std::shared_ptr<ActiveItem<Nonterminal, Terminal>>>> agenda;
         std::map<ItemIndex<Nonterminal>, std::deque<std::shared_ptr<ActiveItem<Nonterminal, Terminal>>>> history;
         std::map<ItemIndex<Nonterminal>, std::vector<std::shared_ptr<PassiveItem<Nonterminal, Terminal>>>> passiveItems;
+        std::deque<std::shared_ptr<ActiveItem<Nonterminal, Terminal>>> queue;
         std::stack<ItemIndex<Nonterminal>> goalList;
 
     public:
@@ -270,84 +296,136 @@ namespace LCFR{
 
             initialize(); // fill up the agenda
 
-            goalList.push_back(ItemIndex<Nonterminal>(grammar.get_initial_nont(), 0, 0));
+            goalList.push(ItemIndex<Nonterminal>(grammar.get_initial_nont(), 0, 0));
 
             while( ! goalList.empty()){
-                ItemIndex<Nonterminal> currentGoal{goalList.pop()};
 
-                if(! agenda.count(currentGoal)) { // there is no item to be processed
-                    continue;
-                }
+                ItemIndex<Nonterminal> currentGoal(std::move(goalList.top()));
+                goalList.pop();
 
-                // Get current item from current goal
-                std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem{agenda.at(currentGoal).pop_front()};
+std::clog << "Goal: " << currentGoal << std::endl;
+//std::clog << "Passive Items:" << std::endl;
+//for (auto const& passive : passiveItems) {
+//    for(auto const& pItem : passive.second)
+//        std::clog << "    " << *pItem << std::endl;
+//}
 
-                if(history.at(currentGoal)
-                           .find(history.at(currentGoal).begin(), history.at(currentGoal).end(), currentItem)
-                   != history.at(currentGoal).end()){
+                // add all items from the agenda to the queue
+                queue.insert(std::end(queue), std::begin(agenda[currentGoal]), std::end(agenda[currentGoal]));
+                agenda[currentGoal].clear();
+
+                workQueue(std::move(currentGoal));
+            }
+
+std::clog << "Passive Items:" << std::endl;
+for (auto const& passive : passiveItems) {
+    for(auto const& pItem : passive.second)
+        std::clog << "    " << *pItem << std::endl;
+}
+
+        }
+
+
+        void workQueue(const ItemIndex<Nonterminal>&& currentGoal){
+            while( ! queue.empty()) {
+
+                std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem = queue.front();
+                queue.pop_front();
+
+std::clog << "    Item: " << *currentItem << std::endl;
+
+
+
+                if (isInHistory(currentGoal, currentItem)) {
                     // item is already in history
+//std::clog << "      - skipped" << std::endl;
                     continue;
                 }
 
                 // Handle ε-arguments
-                if(currentItem->isArgumentCompleted()){
-                    writeHistory(currentGoal,currentItem); // copy this item into history
+                if (currentItem->isArgumentCompleted()) {
+                    writeHistory(currentGoal, currentItem); // copy this item into history
 
-                    goalList.push(currentGoal); // The goal stays the same after handling of ε-rule
                     currentItem->completeArgument();
-                    if(currentItem->isFinished())
+                    if (currentItem->isFinished())
                         transformToPassive(currentGoal, std::move(currentItem));
                     else
                         // Continue scanning this item for the next components (there are, since it is not finished)
-                        completeArgumentAndAddToAgenda(currentGoal, std::move(currentItem));
+                        generatePositionsAndAddToQueue(std::move(currentItem));
                     continue;
                 }
 
                 // All items have something to be scanned!
-                assert(currentItem->get_current_Position().second < word.size());
+                assert(currentItem->afterDot().which() >= 0);
 
                 // Try to scan a terminal
                 if (tryToScanTerminal(currentGoal, currentItem))
                     continue;
 
-                // Is assigned record plausible?
-                if (! currentItem->isRecordPlausible()) {
-                    goalList.push(currentGoal); // Goal stays the same, item can be forgotten
-                    continue;
-                }
-
-
-                //TODO: adapt to scheme of variable: unify plausability and check
                 // Try to scan a variable with existing record
                 if (tryToScanVariable(currentGoal, currentItem))
                     continue;
 
 
                 // Try to find the needed record
-                assert(currentItem->afterDot().which() == 1) // The next thing is a variable
+                assert(currentItem->afterDot().which() == 1); // The next thing is a variable
+
                 const Variable var = boost::get<Variable>(currentItem->afterDot());
                 const Nonterminal nont = currentItem->get_rule()->get_rhs().at(var.get_index());
-                const ItemIndex goal(nont, var.get_arg(), currentItem->get_current_Position().second);
-                if(passiveItems.count(goal) == 0){
-                    // there are no suitable passive items, try to build one
-                    goalList.push(std::move(currentGoal));
-                    goalList.push(std::move(goal));
-                    agenda[currentGoal].push_back(std::move(currentItem)); // check for this item later
+                const ItemIndex<Nonterminal> goal(nont, var.get_arg() , currentItem->get_current_Position().second);
+                if (passiveItems.count(goal) == 0) {
+                    if(var.get_arg() == 0) { // at argument position 0, only the relevant position needs to be considered
+                        // There are no suitable passive items, try to build one
+                        passiveItems[goal]; // add an empty passive item list to never use this case again!
+                        goalList.push(currentGoal); // Revisit this goal later
+                        goalList.push(std::move(goal)); // But before try to evaluate this
+                        agenda[currentGoal].push_back(std::move(currentItem)); // Check for this item later
+
+                    } else { // If argument > 0, no optimization possible. Try all positions starting from argument 0
+                        agenda[currentGoal].push_back(std::move(currentItem)); // Check for this item later
+                        goalList.push(std::move(currentGoal)); // Revisit this goal later
+                        for (unsigned long pos = 0; pos <= word.size(); ++pos) {
+                            const ItemIndex<Nonterminal> goal2(nont, 0, pos);
+                            passiveItems[goal2]; // add an empty passive item list to never use this case again!
+                            goalList.push(std::move(goal2)); // But before try to evaluate all other
+                        }
+                    }
                     continue;
                 }
 
-                for (Passiveitem pItem : passiveItems.at(goal)){
-
+                bool somethingWasPushed{false};
+                for (std::shared_ptr<PassiveItem<Nonterminal, Terminal>> pItem : passiveItems.at(goal)) {
+                    std::shared_ptr<ActiveItem<Nonterminal, Terminal>> newItem
+                            {std::make_shared<ActiveItem<Nonterminal, Terminal>>(*currentItem)};
+                    if (newItem->addRecord(var.get_index(), pItem) && ! isInHistory(currentGoal, newItem)) {
+                        somethingWasPushed = true;
+                        queue.push_front(std::move(newItem));
+                    }
                 }
-
-
+                if(somethingWasPushed) {
+                    // no history entry cause we want to check again!
+                    // add the item to the agenda, to check again later
+                    agenda[currentGoal].push_back(std::move(currentItem));
+                    goalList.push(std::move(currentGoal));
+std::clog << "           yeah! :-)" << std::endl;
+                }else{
+std::clog << "           nothing was pushed :-(" << std::endl;
+                    writeHistory(currentGoal, currentItem);
+                }
             }
-
         }
 
 
         void initialize() {
-
+            for(std::shared_ptr<Rule<Nonterminal, Terminal>> r : grammar.get_rules()){
+                for(unsigned long pos=0; pos <= word.size(); ++pos){
+                    agenda[ItemIndex<Nonterminal>(r->get_lhs().get_nont(), 0, pos)].push_back(
+                            std::make_shared<ActiveItem<Nonterminal, Terminal>>(
+                                    ActiveItem<Nonterminal, Terminal>{r,Range{pos,pos}}
+                            )
+                    );
+                }
+            }
         }
 
         bool tryToScanTerminal(
@@ -358,7 +436,6 @@ namespace LCFR{
                 return false; // next item is a variable, nothing to be done here
             }
 
-            goalList.push(currentGoal); // Goal stays the same
             writeHistory(currentGoal,currentItem); // item will be processed in the following
 
             // Is a terminal plausible?
@@ -372,12 +449,13 @@ namespace LCFR{
                 currentItem->completeArgument();
                 if(currentItem->isFinished())
                     transformToPassive(currentGoal, std::move(currentItem));
-                else
+                else {
                     // Continue scanning this item for the next components (there are, since it is not finished)
-                    completeArgumentAndAddToAgenda(currentGoal, std::move(currentItem));
+                    generatePositionsAndAddToQueue(std::move(currentItem));
+                }
             } else { // Argument is not complete
                 // Push the item to the front, since it worked out!
-                agenda[currentGoal].push_front(std::move(currentItem));
+                queue.push_front(std::move(currentItem));
             }
             return true; // the appropriate action has been taken
         }
@@ -387,23 +465,34 @@ namespace LCFR{
                 const ItemIndex<Nonterminal>& currentGoal
                 , std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem
         ){
-            goalList.push(currentGoal); // The goal stays the same after scanning
-
-            if(currentItem->scanVariable()){
-                if(currentItem->isArgumentCompleted()){
-                    currentItem->completeArgument();
-                    if(currentItem->isFinished())
-                        transformToPassive(currentGoal, std::move(currentItem));
-                    else
-                        // Continue scanning this item for the next components (there are, since it is not finished)
-                        completeArgumentAndAddToAgenda(currentGoal, std::move(currentItem));
-                } else { // Argument is not complete
-                    // Push the item to the front, since it worked out!
-                    agenda[currentGoal].push_front(std::move(currentItem));
-                }
-                return true;
+            if(currentItem->afterDot().which() != 1){
+                return false; // next item is a terminal, nothing to be done here
             }
-            return false; // Could not scan variable
+
+            if( ! currentItem->hasRecordFor(boost::get<Variable>(currentItem->afterDot()).get_index())){
+                return false; // there is no record yet, nothing to be done here
+            }
+
+            writeHistory(currentGoal, currentItem); // in any case, the item will be processed
+
+
+            if( ! currentItem->isRecordPlausible()) // record cannot be applied. Hence signal to abort
+                return true;
+
+            currentItem->scanVariable();
+
+            if(currentItem->isArgumentCompleted()){
+                currentItem->completeArgument();
+                if(currentItem->isFinished())
+                    transformToPassive(currentGoal, std::move(currentItem));
+                else
+                    // Continue scanning this item for the next components (there are, since it is not finished)
+                    generatePositionsAndAddToQueue(std::move(currentItem));
+            } else { // Argument is not complete
+                // Push the item to the front, since it worked out!
+                queue.push_front(std::move(currentItem));
+            }
+            return true;
         }
 
 
@@ -411,31 +500,50 @@ namespace LCFR{
                 const ItemIndex<Nonterminal>& currentGoal
                 , std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem
         ){
-            passiveItems.at(currentGoal).push_back(std::make_shared(currentItem->convert()));
+            std::shared_ptr<PassiveItem<Nonterminal, Terminal>> pItem
+                    (std::make_shared<PassiveItem<Nonterminal, Terminal>>(currentItem->convert()));
+
+            Nonterminal nont{pItem->get_nont()};
+            std::vector<Range> ranges{pItem->get_ranges()};
+            for(int argument = 0; argument < ranges.size(); ++argument){
+                passiveItems[ItemIndex<Nonterminal>{nont, argument, ranges.at(argument).first}].push_back(pItem);
+            }
         }
 
-        void completeArgumentAndAddToAgenda(
-                const ItemIndex<Nonterminal>& currentGoal
-                , std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem
+        void generatePositionsAndAddToQueue(
+                std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem
         ){
-            currentItem->completeArgument();
             for (unsigned long pos=0; pos <= word.size(); ++pos) {
                 std::shared_ptr<ActiveItem<Nonterminal, Terminal>> copyItem
-                        = std::make_shared(*currentItem);
+                        {std::make_shared<ActiveItem<Nonterminal, Terminal>>(*currentItem)};
                 if (copyItem->setCurrentPosition(pos)) {
-                    // only add, if current position can be set (its still free)
-                    ItemIndex<Nonterminal> copyGoal(currentGoal.nont, copyItem->get_argument(), pos);
-                    agenda[copyGoal].push_front(std::move(copyItem));
-                    goalList.push(copyGoal);
+                    queue.push_front(std::move(copyItem));
                 }
             }
         }
+
+
+        bool isInHistory
+                (const ItemIndex<Nonterminal>& currentGoal
+                , const std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem
+                ) const {
+            if(history.count(currentGoal) == 0)
+                return false;
+            auto it = std::find_if
+                    (std::begin(history.at(currentGoal))
+                            , std::end(history.at(currentGoal))
+                            , [&](std::shared_ptr<ActiveItem<Nonterminal, Terminal>> const& itemIndex) {
+                         return *currentItem == *itemIndex;
+                     });
+            return (it != std::end(history.at(currentGoal)));
+        }
+
 
         void writeHistory(
                 const ItemIndex<Nonterminal>& currentGoal
                 , const std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem
         ){
-            history[currentGoal].push_back(std::make_shared<ActiveItem>(*currentItem));
+            history[currentGoal].push_back(std::make_shared<ActiveItem<Nonterminal, Terminal>>(*currentItem));
         }
     };
 
