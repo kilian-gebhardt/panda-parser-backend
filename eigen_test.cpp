@@ -100,7 +100,26 @@ int main() {
     A.chip(1, 0) = A.chip(1, 0).unaryExpr([&] (const double x) -> double {return x / B(1);});
     std::cerr << "A " << A << std::endl;
 
+    Eigen::array<long, 2> mdim = {4, 2};
+    float * tmem = (float*) malloc(sizeof(float) * 8);
+    Eigen::TensorMap<Eigen::Tensor<float, 2>> tmap (tmem, mdim);
+    tmap.setRandom();
+
+    std::cerr << tmap << std::endl;
 
 
+    A.setValues({{1,2,3,4},{5,6,7,8}});
+    std::cerr << "A " << A << std::endl;
+
+    Eigen::Tensor<double, 2> Bbc = B.reshape(Eigen::array<long, 2>({2, 1})).broadcast(Eigen::array<long, 2>({1,4}));
+
+//    std::cerr << Bbc << std::endl;
+
+    A = A / Bbc;
+
+    std::cerr << "A / B" << A << std::endl;
+
+
+    std::cerr << "sum" << std::endl << A.sum(Eigen::array<long, 1>({1})) << std::endl;
 
 }
