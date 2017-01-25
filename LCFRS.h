@@ -173,7 +173,7 @@ namespace LCFR {
         LHS<std::string,std::string> lhs(nont);
         for (auto const& arg : args) {
             std::vector<std::string> tokens;
-            tokenize<std::vector<std::string>>(arg, tokens);
+            tokenize<std::vector<std::string>>(arg, tokens, " ", true);
             std::vector<TerminalOrVariable<std::string>> argument;
             for (std::string s : tokens){
                 if(s[0] == 'x')
@@ -185,7 +185,7 @@ namespace LCFR {
         }
 
         std::vector<std::string> nonterminals;
-        tokenize(rhs, nonterminals);
+        tokenize(rhs, nonterminals, " ", true);
 
         return Rule<std::string, std::string>(lhs, nonterminals);
     };

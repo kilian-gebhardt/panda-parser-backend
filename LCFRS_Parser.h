@@ -55,10 +55,11 @@ namespace LCFR{
         Nonterminal nont;
         std::vector<Range> ranges;
     public:
-        PassiveItem(PassiveItem<Nonterminal, Terminal>&& pItem){
-            nont = pItem.get_nont();
-            ranges = pItem.get_ranges();
-        }
+        PassiveItem(PassiveItem<Nonterminal, Terminal>&& pItem)
+                : nont(pItem.get_nont()), ranges(pItem.get_ranges()){}
+
+        PassiveItem(const PassiveItem<Nonterminal, Terminal>& pItem)
+                : nont(pItem.nont), ranges(pItem.ranges){}
 
         PassiveItem(Nonterminal n, std::vector<Range> rs): nont(n), ranges(rs){}
 
@@ -69,19 +70,22 @@ namespace LCFR{
                 return ranges;
         }
 
-        template <typename Nonterminal1, typename Terminal1>
-        friend std::ostream& operator <<(std::ostream&, const PassiveItem<Nonterminal1, Terminal1>&);
+
+        friend bool operator<(const PassiveItem<Nonterminal, Terminal>& l
+                , const PassiveItem<Nonterminal, Terminal>& r) {
+            return std::tie(l.nont, l.ranges) < std::tie(r.nont, r.ranges);
+        }
+
+        friend std::ostream& operator <<(std::ostream& o, const PassiveItem<Nonterminal, Terminal>& item){
+            o << "<" << item.get_nont() << ", [";
+            for(auto range : item.get_ranges()){
+                o << range;
+            }
+            o << "]>";
+            return o;
+        };
     };
 
-    template <typename Nonterminal, typename Terminal>
-    std::ostream& operator <<(std::ostream& o, const PassiveItem<Nonterminal, Terminal>& item){
-        o << "<" << item.get_nont() << ", [";
-        for(auto range : item.get_ranges()){
-            o << range;
-        }
-        o << "]>";
-        return o;
-    };
 
 
 
@@ -95,16 +99,17 @@ namespace LCFR{
         unsigned long k; // currently active argument of rule (0-based)
         unsigned int posInK; // position of the "dot"
         Range currentRange;
-        std::map<unsigned long, std::shared_ptr<PassiveItem<Nonterminal, Terminal>>> records;
+        std::vector<std::shared_ptr<PassiveItem<Nonterminal, Terminal>>> records;
 
 
     public:
 
-        ActiveItem(std::shared_ptr<Rule<Nonterminal,Terminal>> r, Range range): rule(r), currentRange(range) {
+        ActiveItem(std::shared_ptr<Rule<Nonterminal,Terminal>> r, Range range) : rule(r), currentRange(range) {
             fanout = rule->get_lhs().get_args().size();
             pre_ranges.reserve(fanout);
             k = 0;
             posInK = 0;
+            records = std::vector<std::shared_ptr<PassiveItem<Nonterminal, Terminal>>>(rule->get_rhs().size());
         }
 
         ActiveItem(const ActiveItem& a):
@@ -123,6 +128,14 @@ namespace LCFR{
         }
 
         std::shared_ptr<Rule<Nonterminal, Terminal>> get_rule() const {
+            return rule;
+        };
+
+        const std::vector<std::shared_ptr<PassiveItem<Nonterminal, Terminal>>>& getRecords() const {
+            return records;
+        };
+
+        const std::shared_ptr<Rule<Nonterminal,Terminal>>& getRule() const{
             return rule;
         };
 
@@ -159,6 +172,7 @@ namespace LCFR{
             return currentRange;
         }
 
+
         bool setCurrentPosition(unsigned int pos) {
             assert(isAtWildcardPosition());
 
@@ -178,7 +192,6 @@ namespace LCFR{
         TerminalOrVariable<Terminal> afterDot() const {
             return rule->get_lhs().get_args().at(k).at(posInK);
         }
-
 
 
         bool isTerminalPlausible(const std::vector<Terminal> word) const {
@@ -209,7 +222,7 @@ namespace LCFR{
 
 
         bool hasRecordFor(unsigned long index) const {
-            return records.count(index) > 0;
+            return records[index] != nullptr;
         }
 
 
@@ -220,10 +233,10 @@ namespace LCFR{
                 return false;
             Variable var = boost::get<Variable>(adot);
 
-            if(records.count(var.get_index()) == 0) // no record yet
+            if(! hasRecordFor(var.get_index())) // no record yet
                 return true;
 
-            return currentRange.second == records.at(var.get_index())->get_ranges().at(var.get_arg()).first;
+            return currentRange.second == records[var.get_index()]->get_ranges().at(var.get_arg()).first;
         }
 
         /**
@@ -244,9 +257,9 @@ namespace LCFR{
             if(afterDot().which()==0)
                 return false; // there is no variable
             Variable var{boost::get<Variable>(afterDot())};
-            if(records.count(var.get_index())>0)
+            if(hasRecordFor(var.get_index()))
                 return false; // record already exist
-            records[var.get_index()] = pitem;
+            records.at(var.get_index()) = pitem;
             return true;
         }
 
@@ -290,6 +303,31 @@ namespace LCFR{
 
 
 
+
+
+    template <typename Nonterminal, typename Terminal>
+    class TraceItem{
+    public:
+        std::shared_ptr<PassiveItem<Nonterminal,Terminal>> uniquePtr;
+        std::vector
+                <
+                std::pair
+                        <
+                        std::shared_ptr<Rule<Nonterminal, Terminal>>
+                        , std::vector<std::shared_ptr<PassiveItem<Nonterminal, Terminal>>>
+                        >
+                > parses;
+    };
+
+
+
+
+
+
+
+
+
+
     template <typename Nonterminal, typename Terminal>
     class LCFRS_Parser {
 
@@ -299,6 +337,10 @@ namespace LCFR{
         std::map<ItemIndex<Nonterminal>, std::vector<std::shared_ptr<PassiveItem<Nonterminal, Terminal>>>> passiveItems;
         std::deque<std::shared_ptr<ActiveItem<Nonterminal, Terminal>>> queue;
         std::map<ItemIndex<Nonterminal>, std::vector<std::shared_ptr<ActiveItem<Nonterminal, Terminal>>>> waiting;
+
+        std::map<PassiveItem<Nonterminal,Terminal>
+                , TraceItem<Nonterminal,Terminal>
+                > trace;
 
     public:
         LCFRS_Parser(const LCFRS<Nonterminal, Terminal> &grammar, std::vector<Terminal> word)
@@ -317,11 +359,11 @@ namespace LCFR{
 
             workQueue();
 
-std::clog << "Passive Items:" << std::endl;
-for (auto const& passive : passiveItems) {
-    for(auto const& pItem : passive.second)
-        std::clog << "    " << *pItem << std::endl;
-}
+//std::clog << "Passive Items:" << std::endl;
+//for (auto const& passive : passiveItems) {
+//    for(auto const& pItem : passive.second)
+//        std::clog << "    " << *pItem << std::endl;
+//}
 
         }
 
@@ -332,7 +374,7 @@ for (auto const& passive : passiveItems) {
                 std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem = queue.front();
                 queue.pop_front();
 
-std::clog << "    Item: " << *currentItem << std::endl;
+//std::clog << "    Item: " << *currentItem << std::endl;
 
 
 
@@ -394,16 +436,17 @@ std::clog << "    Item: " << *currentItem << std::endl;
 
                 // this item is now waiting for further answers
                 waiting[ind].emplace_back(std::move(currentItem));
-std::clog << "         - waiting..." << std::endl;
+//std::clog << "         - waiting..." << std::endl;
 
             }
 
         }
 
         void queueRules(const Nonterminal& nont, const unsigned long pos){
-std::clog << "Queueing items for " << nont
-          << " at " << pos
-          << " (size: " << grammar.get_rules().at(nont).size()  << ")" << std::endl;
+//std::clog << "Queueing items for " << nont
+//          << " at " << pos
+//          << " (size: " << grammar.get_rules().at(nont).size()  << ")" << std::endl;
+
             for(std::shared_ptr<Rule<Nonterminal, Terminal>> r : grammar.get_rules().at(nont)){
                 queue.push_back(
                         std::make_shared<ActiveItem<Nonterminal, Terminal>>(
@@ -478,19 +521,54 @@ std::clog << "Queueing items for " << nont
             std::shared_ptr<PassiveItem<Nonterminal, Terminal>> pItem
                     (std::make_shared<PassiveItem<Nonterminal, Terminal>>(currentItem->convert()));
 
+
+            // prepare the parse
+            std::pair
+                    <std::shared_ptr<Rule<Nonterminal, Terminal>>
+                            , std::vector<std::shared_ptr<PassiveItem<Nonterminal, Terminal>>>
+                    > parse
+                    {
+                            currentItem->getRule()
+                            , currentItem->getRecords()
+                    };
+
+
+
+
             Nonterminal nont{pItem->get_nont()};
-            std::vector<Range> ranges{pItem->get_ranges()};
-            for(unsigned long argument = 0; argument < ranges.size(); ++argument){
-                ItemIndex<Nonterminal> ind(nont, argument, ranges.at(argument).first);
-                passiveItems[ind].push_back(pItem);
-                // notify waiting items
-                for(std::shared_ptr<ActiveItem<Nonterminal, Terminal>> aItem : waiting[ind]){
-                    std::shared_ptr<ActiveItem<Nonterminal, Terminal>> copyItem
-                            {std::make_shared<ActiveItem<Nonterminal, Terminal>>
-                                     (ActiveItem<Nonterminal,Terminal>{*aItem})};
-                    if(copyItem->addRecord(pItem))
-                        queue.push_back(copyItem);
+            if(trace.count(*pItem) == 0) { // observed for first time
+                std::vector<Range> ranges{pItem->get_ranges()};
+                // notify and store
+                for(unsigned long argument = 0; argument < ranges.size(); ++argument){
+                    ItemIndex<Nonterminal> ind(nont, argument, ranges.at(argument).first);
+                    passiveItems[ind].push_back(pItem);
+
+                    for (std::shared_ptr<ActiveItem<Nonterminal, Terminal>> aItem : waiting[ind]) {
+                        std::shared_ptr<ActiveItem<Nonterminal, Terminal>> copyItem
+                                {std::make_shared<ActiveItem<Nonterminal, Terminal>>
+                                         (ActiveItem<Nonterminal, Terminal>{*aItem})};
+                        if (copyItem->addRecord(pItem))
+                            queue.push_back(copyItem);
+                    }
                 }
+                // put into trace
+                TraceItem<Nonterminal,Terminal> traceItem
+                        {
+                                pItem,
+                                std::vector<
+                                        std::pair<
+                                                std::shared_ptr<Rule<Nonterminal, Terminal>>
+                                                , std::vector<std::shared_ptr<PassiveItem<Nonterminal, Terminal>>>
+                                        >
+                                >
+                                        {parse} // only one parse item
+                        };
+                trace[*pItem]
+                        = traceItem;
+            } else { // pItem was already observed
+                // No notification and no storage.
+                // Add parse to existing trace
+                trace[*pItem].parses.push_back(parse);
             }
         }
 
@@ -505,6 +583,12 @@ std::clog << "Queueing items for " << nont
                 }
             }
         }
+
+
+
+        const std::map<PassiveItem<Nonterminal, Terminal>,TraceItem<Nonterminal,Terminal>>& getTrace() const {
+            return trace;
+        };
 
     };
 

@@ -12,7 +12,6 @@ using namespace LCFR;
 void manualParse(const LCFRS<string, string> &grammar, const vector<string> &word);
 
 
-
 int main(){
     LCFRS<string, string> grammar("S","Test");
 
@@ -34,21 +33,29 @@ int main(){
 //    vector<string> word;
 //    tokenize<vector<string>>("a a a a a a a a a b b b b b b b b b", word);
 
-    grammar.add_rule(constructRule("S", vector<string>{"x{0,0} x{1,0} x{0,1} x{1,1}"}, "A B"));
-    grammar.add_rule(constructRule("A", vector<string>{"x{0,0} a", "x{0,1} b"}, "A"));
-    grammar.add_rule(constructRule("A", vector<string>{"a", "b"}, ""));
-    grammar.add_rule(constructRule("B", vector<string>{"a", "b"}, ""));
-    grammar.add_rule(constructRule("B", vector<string>{"x{0,0} a", "x{0,1} b"}, "B"));
-    vector<string> word;
-    tokenize<vector<string>>("a a a b b b", word);
-
-//    grammar.add_rule(constructRule("S", vector<string>{"x{0,1} x{1,1} x{0,0} x{1,0}"}, "A B"));
+//    grammar.add_rule(constructRule("S", vector<string>{"x{0,0} x{1,0} x{0,1} x{1,1}"}, "A B"));
 //    grammar.add_rule(constructRule("A", vector<string>{"x{0,0} a", "x{0,1} b"}, "A"));
 //    grammar.add_rule(constructRule("A", vector<string>{"a", "b"}, ""));
 //    grammar.add_rule(constructRule("B", vector<string>{"a", "b"}, ""));
 //    grammar.add_rule(constructRule("B", vector<string>{"x{0,0} a", "x{0,1} b"}, "B"));
 //    vector<string> word;
-//    tokenize<vector<string>>("b b b b b a a a a a", word);
+//    tokenize<vector<string>>("a a a a b b b b", word);
+
+    grammar.add_rule(constructRule("S", vector<string>{"x{0,1} x{1,1} x{0,0} x{1,0}"}, "A B"));
+    grammar.add_rule(constructRule("A", vector<string>{"x{0,0} a", "x{0,1} b"}, "A"));
+    grammar.add_rule(constructRule("A", vector<string>{"a", "b"}, ""));
+    grammar.add_rule(constructRule("B", vector<string>{"", ""}, "")); // ε-rule
+    grammar.add_rule(constructRule("B", vector<string>{"x{0,0} a", "x{0,1} b"}, "B"));
+    vector<string> word;
+    tokenize<vector<string>>("b b b b b a a a a a", word);
+
+//    grammar.add_rule(constructRule("S", vector<string>{"x{0,0} x{1,0}"}, "A B")); // deleting rule
+//    grammar.add_rule(constructRule("A", vector<string>{"x{0,0} a", "x{0,1} b"}, "A")); // as many a's as b's
+//    grammar.add_rule(constructRule("A", vector<string>{"a", "b"}, ""));
+//    grammar.add_rule(constructRule("B", vector<string>{"", ""}, "")); // ε-rule
+//    grammar.add_rule(constructRule("B", vector<string>{"x{0,0} b b"}, "B")); // an even number of b's
+//    vector<string> word;
+//    tokenize<vector<string>>("a a a a a a b b b b b b", word);
 
 
 
@@ -59,8 +66,23 @@ int main(){
     LCFRS_Parser<string, string> parser(grammar, word);
     parser.do_parse();
 
+
+    map<PassiveItem<string,string>, TraceItem<string,string>> trace = parser.getTrace();
+    clog << "Parses:" << endl;
+
+
+    for (auto const& parse : trace[PassiveItem<string,string>(grammar.get_initial_nont(), std::vector<Range>{Range(0,word.size())})].parses){
+        clog << "    " << *(parse.first) << ": " ;
+        for(auto const& ppitem : parse.second){
+            clog << *ppitem << ", ";
+        }
+        clog << endl;
+    }
+
     return 0;
 }
+
+
 
 void manualParse(const LCFRS<string, string> &grammar, const vector<string> &word) {
     ActiveItem<string, string> activeItem{grammar.get_rules().at("S").front(), Range{0, 0}};
