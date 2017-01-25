@@ -7,6 +7,7 @@
 
 #include <vector>
 #include <boost/variant.hpp>
+#include <map>
 #include "LCFRS_util.h"
 
 
@@ -64,7 +65,7 @@ namespace LCFR {
         }
 
         void addArgument(std::vector<TerminalOrVariable<Terminal>> arg) {
-            args.emplace_back(arg);
+            args.push_back(arg);
         };
     };
 
@@ -117,28 +118,30 @@ namespace LCFR {
     private:
         std::string name;
         Nonterminal initial_nont;
-        std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>> rules;
+        std::map<Nonterminal, std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>>> rules;
     public:
         LCFRS(Nonterminal initial): initial_nont(initial) {};
 
-        LCFRS(Nonterminal initial, std::string gr) : initial_nont(initial), name(gr) {};
+        LCFRS(Nonterminal initial, std::string gr) : name(gr), initial_nont(initial) {};
 
-        const std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>>& get_rules() const {
+        const std::map<Nonterminal, std::vector<std::shared_ptr<Rule<Nonterminal, Terminal>>>>& get_rules() const {
             return rules;
         }
 
-        const Nonterminal get_initial_nont(){
+        const Nonterminal get_initial_nont() const {
             return initial_nont;
         }
 
-        void add_rule(Rule<Nonterminal, Terminal> &&r) {
-            rules.emplace_back(std::make_shared<Rule<Nonterminal,Terminal>>(std::move(r)));
+        void add_rule(Rule<Nonterminal, Terminal>&& r) {
+            Nonterminal nont = r.get_lhs().get_nont();
+            rules[nont].emplace_back(std::make_shared<Rule<Nonterminal,Terminal>>(std::move(r)));
         }
 
         friend std::ostream& operator <<(std::ostream& o, const LCFRS<Nonterminal, Terminal>& grammar) {
             o << "Grammar: " << grammar.name  << " (initial: " << grammar.initial_nont << ")" << std::endl;
-            for (auto r : grammar.get_rules()) {
-                o << "    " << *r << std::endl;
+            for (auto rs : grammar.get_rules()) {
+                for (auto r : rs.second)
+                    o << "    " << *r << std::endl;
             }
             return o;
         }

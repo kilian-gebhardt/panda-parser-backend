@@ -18,7 +18,7 @@ int main(){
 
 //    grammar.add_rule(constructRule("S", vector<string>{"a a x{0,0}"}, "S"));
 //    grammar.add_rule(constructRule("S", vector<string>{"a"}, ""));
-//    vector<string> word{"a", "a", "a"};
+//    vector<string> word{"a", "a", "a", "a"};
 //    manualParse(grammar, word);
 
 //    grammar.add_rule(constructRule("S", vector<string>{"x{0,0} x{0,1}"}, "A"));
@@ -34,21 +34,21 @@ int main(){
 //    vector<string> word;
 //    tokenize<vector<string>>("a a a a a a a a a b b b b b b b b b", word);
 
-//    grammar.add_rule(constructRule("S", vector<string>{"x{0,0} x{1,0} x{0,1} x{1,1}"}, "A B"));
-//    grammar.add_rule(constructRule("A", vector<string>{"x{0,0} a", "x{0,1} b"}, "A"));
-//    grammar.add_rule(constructRule("A", vector<string>{"a", "b"}, ""));
-//    grammar.add_rule(constructRule("B", vector<string>{"a", "b"}, ""));
-//    grammar.add_rule(constructRule("B", vector<string>{"x{0,0} a", "x{0,1} b"}, "B"));
-//    vector<string> word;
-//    tokenize<vector<string>>("a a a b b b", word);
-
-    grammar.add_rule(constructRule("S", vector<string>{"x{0,1} x{1,1} x{0,0} x{1,0}"}, "A B"));
+    grammar.add_rule(constructRule("S", vector<string>{"x{0,0} x{1,0} x{0,1} x{1,1}"}, "A B"));
     grammar.add_rule(constructRule("A", vector<string>{"x{0,0} a", "x{0,1} b"}, "A"));
     grammar.add_rule(constructRule("A", vector<string>{"a", "b"}, ""));
     grammar.add_rule(constructRule("B", vector<string>{"a", "b"}, ""));
     grammar.add_rule(constructRule("B", vector<string>{"x{0,0} a", "x{0,1} b"}, "B"));
     vector<string> word;
-    tokenize<vector<string>>("b b b a a a", word);
+    tokenize<vector<string>>("a a a b b b", word);
+
+//    grammar.add_rule(constructRule("S", vector<string>{"x{0,1} x{1,1} x{0,0} x{1,0}"}, "A B"));
+//    grammar.add_rule(constructRule("A", vector<string>{"x{0,0} a", "x{0,1} b"}, "A"));
+//    grammar.add_rule(constructRule("A", vector<string>{"a", "b"}, ""));
+//    grammar.add_rule(constructRule("B", vector<string>{"a", "b"}, ""));
+//    grammar.add_rule(constructRule("B", vector<string>{"x{0,0} a", "x{0,1} b"}, "B"));
+//    vector<string> word;
+//    tokenize<vector<string>>("b b b b b a a a a a", word);
 
 
 
@@ -63,7 +63,7 @@ int main(){
 }
 
 void manualParse(const LCFRS<string, string> &grammar, const vector<string> &word) {
-    ActiveItem<string, string> activeItem{grammar.get_rules().front(), Range{0, 0}};
+    ActiveItem<string, string> activeItem{grammar.get_rules().at("S").front(), Range{0, 0}};
     clog << activeItem.isFinished() << endl;
     clog << activeItem << endl;
     activeItem.scanTerminal(word);
@@ -74,7 +74,7 @@ void manualParse(const LCFRS<string, string> &grammar, const vector<string> &wor
 
     vector<Range> rangeVector{Range(2,5), Range(2,6)};
     shared_ptr<PassiveItem<string,string>> pItem = make_shared<PassiveItem<string,string>>("A", rangeVector);
-    activeItem.addRecord(0, pItem);
+    activeItem.addRecord(pItem);
     activeItem.scanVariable();
     clog << activeItem << endl;
     clog << activeItem.isArgumentCompleted() << endl;
