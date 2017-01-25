@@ -1048,7 +1048,7 @@ public:
             inside_weights[item] = item_weight_ptr;
 
             Eigen::TensorMap<Eigen::Tensor<double, 1>> inside_weight (item_weight_ptr, nont_dimensions[nont_idx(item.nonterminal)]);
-            inside_weight.setConstant(0.0);
+            inside_weight.setZero();
 
             for (const auto & witness : traces[i].at(item)) {
                 switch (witness.second.size() + 1) {
@@ -1246,7 +1246,7 @@ public:
             root_count.setZero();
 
             Eigen::Tensor<double, 0> corpus_likelihood;
-            corpus_likelihood.setConstant(1);
+            corpus_likelihood.setConstant(0);
 
             for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
                 auto trace = traces[trace_id];
@@ -1256,9 +1256,11 @@ public:
                 auto tr_io_weight = io_weights_la(rule_weights, the_root_weights, nont_dimensions, rule_to_nont_ids, nont_idx, trace_id);
 
                 double * const root_inside_weight_ptr =  std::get<0>(tr_io_weight).at(goals[trace_id]);
+                double * const root_outside_weight_ptr = std::get<1>(tr_io_weight).at(goals[trace_id]);
 
                 Eigen::TensorMap<Eigen::Tensor<double, 1>> root_inside_weight (root_inside_weight_ptr, root_dimension);
-                Eigen::Tensor<double, 1> trace_root_probability = root_inside_weight * root_probability;
+                Eigen::TensorMap<Eigen::Tensor<double, 1>> root_outside_weight (root_outside_weight_ptr, root_dimension);
+                Eigen::Tensor<double, 1> trace_root_probability = root_inside_weight * root_outside_weight;
                 root_count += trace_root_probability;
                 corpus_likelihood += trace_root_probability.sum().log();
 
@@ -1305,9 +1307,18 @@ public:
             }
 
             // maximization
+            unsigned nont = 0;
             for (const std::vector<unsigned> & group : normalization_groups) {
                 const unsigned lhs_dim = rule_dimensions[group[0]][0];
                 maximization(lhs_dim, rule_dimensions, group, rule_counts, rule_weights);
+                if (debug) {
+                    std::cerr << "rules for nonterminal " << nont << std::endl;
+                    for (auto rule : group) {
+                        std::cerr << "rule " << rule << " has probabilites: " << std::endl;
+                        std::cerr << Eigen::TensorMap<Eigen::Tensor<double, 2>>(rule_weights[rule], lhs_dim, subdim(rule_dimensions[rule])) << std::endl;
+                    }
+                }
+                ++nont;
             }
             if (debug) std::cerr << std::endl;
 
