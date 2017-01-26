@@ -67,11 +67,11 @@ int main(){
     parser.do_parse();
 
 
-    map<PassiveItem<string,string>, TraceItem<string,string>> trace = parser.getTrace();
+    map<PassiveItem<string>, TraceItem<string,string>> trace = parser.getTrace();
     clog << "Parses:" << endl;
 
 
-    for (auto const& parse : trace[PassiveItem<string,string>(grammar.get_initial_nont(), std::vector<Range>{Range(0,word.size())})].parses){
+    for (auto const& parse : trace[PassiveItem<string>(grammar.get_initial_nont(), std::vector<Range>{Range(0,word.size())})].parses){
         clog << "    " << *(parse.first) << ": " ;
         for(auto const& ppitem : parse.second){
             clog << *ppitem << ", ";
@@ -95,7 +95,7 @@ void manualParse(const LCFRS<string, string> &grammar, const vector<string> &wor
 
 
     vector<Range> rangeVector{Range(2,5), Range(2,6)};
-    shared_ptr<PassiveItem<string,string>> pItem = make_shared<PassiveItem<string,string>>("A", rangeVector);
+    shared_ptr<PassiveItem<string>> pItem = make_shared<PassiveItem<string>>("A", rangeVector);
     activeItem.addRecord(pItem);
     activeItem.scanVariable();
     clog << activeItem << endl;
@@ -103,6 +103,6 @@ void manualParse(const LCFRS<string, string> &grammar, const vector<string> &wor
     activeItem.completeArgument();
     clog << activeItem.isFinished() << endl;
     clog << activeItem.isAtWildcardPosition() << endl;
-    PassiveItem<string,string> convItem{activeItem.convert()};
+    PassiveItem<string> convItem{activeItem.convert()};
     clog << convItem << endl;
 }
