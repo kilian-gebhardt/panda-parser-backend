@@ -131,20 +131,20 @@ namespace LCFR{
             return rule;
         };
 
-        const std::vector<std::shared_ptr<PassiveItem<Nonterminal>>>& getRecords() const {
+        const std::vector<std::shared_ptr<PassiveItem<Nonterminal>>>& get_records() const {
             return records;
         };
 
-        const std::shared_ptr<Rule<Nonterminal,Terminal>>& getRule() const{
+        const std::shared_ptr<Rule<Nonterminal,Terminal>>& get_rule() const{
             return rule;
         };
 
-        bool isArgumentCompleted() const{
+        bool is_argument_completed() const{
             return posInK >= rule->get_lhs().get_args().at(k).size();
         }
 
-        void completeArgument(){
-            assert(isArgumentCompleted());
+        void complete_argument(){
+            assert(is_argument_completed());
             pre_ranges.push_back(std::move(currentRange));
             currentRange = Range{0,0};
             ++k;
@@ -152,29 +152,29 @@ namespace LCFR{
         }
 
 
-        bool isFinished() const {
+        bool is_finished() const {
             return k >= fanout && posInK == 0;
         }
 
         PassiveItem<Nonterminal> convert() const {
-            assert(isFinished());
+            assert(is_finished());
 
             return PassiveItem<Nonterminal>(rule->get_lhs().get_nont(), pre_ranges);
 
         }
 
 
-        bool isAtWildcardPosition() const {
+        bool is_at_wildcard_position() const {
             return currentRange.first == 0 && currentRange.second == 0;
         }
 
-        Range get_current_Position() const {
+        Range get_current_position() const {
             return currentRange;
         }
 
 
-        bool setCurrentPosition(unsigned int pos) {
-            assert(isAtWildcardPosition());
+        bool set_current_position(unsigned int pos) {
+            assert(is_at_wildcard_position());
 
             // check whether the position is not already in a known range:
             for(Range range : pre_ranges){
@@ -189,30 +189,30 @@ namespace LCFR{
         }
 
 
-        TerminalOrVariable<Terminal> afterDot() const {
+        TerminalOrVariable<Terminal> after_dot() const {
             return rule->get_lhs().get_args().at(k).at(posInK);
         }
 
 
         bool isTerminalPlausible(const std::vector<Terminal> word) const {
-            TerminalOrVariable<Terminal> adot = afterDot();
+            TerminalOrVariable<Terminal> adot = after_dot();
 
             if(adot.which() == 1) // next item is a variable
                 return false;
 
-            if(get_current_Position().second >= word.size())
+            if(get_current_position().second >= word.size())
                 return false; // there is no word left to be scanned
 
             Terminal t = boost::get<Terminal>(adot);
 
-            return word.at(get_current_Position().second) == t;
+            return word.at(get_current_position().second) == t;
         }
 
         /**
          * Scans a terminal, assumes that isTerminalPlausible(word) holds!
          * @param word The word to scan from
          */
-        void scanTerminal(const std::vector<Terminal> word) {
+        void scan_terminal(const std::vector<Terminal> word) {
 
             assert(isTerminalPlausible(word));
 
@@ -221,19 +221,19 @@ namespace LCFR{
         }
 
 
-        bool hasRecordFor(unsigned long index) const {
+        bool has_record_for(unsigned long index) const {
             return records[index] != nullptr;
         }
 
 
-        bool isRecordPlausible() const {
-            TerminalOrVariable<Terminal> adot = afterDot();
+        bool is_record_plausible() const {
+            TerminalOrVariable<Terminal> adot = after_dot();
 
             if(adot.which() == 0) // next item is a terminal
                 return false;
             Variable var = boost::get<Variable>(adot);
 
-            if(! hasRecordFor(var.get_index())) // no record yet
+            if(!has_record_for(var.get_index())) // no record yet
                 return true;
 
             return currentRange.second == records[var.get_index()]->get_ranges().at(var.get_arg()).first;
@@ -242,8 +242,8 @@ namespace LCFR{
         /**
          * Scans a variable from the record. Assumes that isRecordPlausible() holds!
          */
-        void scanVariable() {
-            assert(isRecordPlausible());
+        void scan_variable() {
+            assert(is_record_plausible());
 
             Variable var = boost::get<Variable>(rule->get_lhs().get_args().at(k).at(posInK));
 
@@ -253,18 +253,18 @@ namespace LCFR{
             ++posInK;
         }
 
-        bool addRecord(const std::shared_ptr<PassiveItem<Nonterminal>> pitem){
-            if(afterDot().which()==0)
+        bool add_record(const std::shared_ptr<PassiveItem<Nonterminal>> pitem){
+            if(after_dot().which()==0)
                 return false; // there is no variable
-            Variable var{boost::get<Variable>(afterDot())};
-            if(hasRecordFor(var.get_index()))
+            Variable var{boost::get<Variable>(after_dot())};
+            if(has_record_for(var.get_index()))
                 return false; // record already exist
             records.at(var.get_index()) = pitem;
             return true;
         }
 
 
-        ItemIndex<Nonterminal> getItemIndex() const {
+        ItemIndex<Nonterminal> get_item_index() const {
             return ItemIndex<Nonterminal>(rule->get_lhs().get_nont(), k, posInK);
         }
 
@@ -355,9 +355,9 @@ namespace LCFR{
          */
         void do_parse(){
 
-            queueRules(grammar.get_initial_nont(), 0);
+            queue_rules(grammar.get_initial_nont(), 0);
 
-            workQueue();
+            work_queue();
 
 //std::clog << "Passive Items:" << std::endl;
 //for (auto const& passive : passiveItems) {
@@ -368,7 +368,7 @@ namespace LCFR{
         }
 
 
-        void workQueue(){
+        void work_queue(){
             while( ! queue.empty()) {
 
                 std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem = queue.front();
@@ -379,46 +379,46 @@ namespace LCFR{
 
 
                 // Handle ε-arguments
-                if (currentItem->isArgumentCompleted()) {
+                if (currentItem->is_argument_completed()) {
 
-                    currentItem->completeArgument();
-                    if (currentItem->isFinished())
-                        transformToPassive(std::move(currentItem));
+                    currentItem->complete_argument();
+                    if (currentItem->is_finished())
+                        transform_to_passive(std::move(currentItem));
                     else
                         // Continue scanning this item for the next components (there are, since it is not finished)
-                        generatePositionsAndAddToQueue(std::move(currentItem));
+                        generate_positions_and_add_to_queue(std::move(currentItem));
                     continue;
                 }
 
                 // All items have something to be scanned!
-                assert(currentItem->afterDot().which() >= 0);
+                assert(currentItem->after_dot().which() >= 0);
 
                 // Try to scan a terminal
-                if (tryToScanTerminal(currentItem))
+                if (try_to_scan_terminal(currentItem))
                     continue;
 
                 // Try to scan a variable with existing record
-                if (tryToScanVariable(currentItem))
+                if (try_to_scan_variable(currentItem))
                     continue;
 
 
                 // Try to find the needed record
-                assert(currentItem->afterDot().which() == 1); // The next thing is a variable
+                assert(currentItem->after_dot().which() == 1); // The next thing is a variable
 
-                const Variable var = boost::get<Variable>(currentItem->afterDot());
+                const Variable var = boost::get<Variable>(currentItem->after_dot());
                 const Nonterminal nont = currentItem->get_rule()->get_rhs().at(var.get_index());
-                const ItemIndex<Nonterminal> ind(nont, var.get_arg() , currentItem->get_current_Position().second);
+                const ItemIndex<Nonterminal> ind(nont, var.get_arg() , currentItem->get_current_position().second);
 
 
                 ItemIndex<Nonterminal> representative(nont, 0, ind.startingPos);
                 if (passiveItems.count(representative) == 0) { // Question has not been asked
                     passiveItems[representative]; // Indicate that the question has been asked
                     if (var.get_arg() == 0) { // At argument position 0, only the relevant position needs to be considered
-                        queueRules(nont, ind.startingPos);
+                        queue_rules(nont, ind.startingPos);
 
                     } else { // If argument > 0, no optimization possible. Try all positions starting from argument 0
                         for (unsigned long pos = 0; pos <= word.size(); ++pos) {
-                            queueRules(nont, pos);
+                            queue_rules(nont, pos);
                             passiveItems[ItemIndex<Nonterminal>{nont, 0, pos}];
                         }
                     }
@@ -428,7 +428,7 @@ namespace LCFR{
                         std::shared_ptr<ActiveItem<Nonterminal, Terminal>> aItem
                                 = std::make_shared<ActiveItem<Nonterminal, Terminal>>
                                         (ActiveItem<Nonterminal, Terminal>{*currentItem});
-                        if (aItem->addRecord(pItem))
+                        if (aItem->add_record(pItem))
                             queue.push_front(aItem);
                     }
                 }
@@ -442,7 +442,7 @@ namespace LCFR{
 
         }
 
-        void queueRules(const Nonterminal& nont, const unsigned long pos){
+        void queue_rules(const Nonterminal &nont, const unsigned long pos){
 //std::clog << "Queueing items for " << nont
 //          << " at " << pos
 //          << " (size: " << grammar.get_rules().at(nont).size()  << ")" << std::endl;
@@ -457,8 +457,8 @@ namespace LCFR{
             return;
         }
 
-        bool tryToScanTerminal(std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem){
-            if(currentItem->afterDot().which() != 0){
+        bool try_to_scan_terminal(std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem){
+            if(currentItem->after_dot().which() != 0){
                 return false; // next item is a variable, nothing to be done here
             }
 
@@ -467,15 +467,15 @@ namespace LCFR{
                 // There is a terminal, but it is not plausible. Hence, signal to abort this item
                 return true;
 
-            currentItem->scanTerminal(word);
+            currentItem->scan_terminal(word);
 
-            if(currentItem->isArgumentCompleted()){
-                currentItem->completeArgument();
-                if(currentItem->isFinished())
-                    transformToPassive(std::move(currentItem));
+            if(currentItem->is_argument_completed()){
+                currentItem->complete_argument();
+                if(currentItem->is_finished())
+                    transform_to_passive(std::move(currentItem));
                 else {
                     // Continue scanning this item for the next components (there are, since it is not finished)
-                    generatePositionsAndAddToQueue(std::move(currentItem));
+                    generate_positions_and_add_to_queue(std::move(currentItem));
                 }
             } else { // Argument is not complete
                 // Push the item to the front, since it worked out!
@@ -485,28 +485,28 @@ namespace LCFR{
         }
 
 
-        bool tryToScanVariable(std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem){
-            if(currentItem->afterDot().which() != 1){
+        bool try_to_scan_variable(std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem){
+            if(currentItem->after_dot().which() != 1){
                 return false; // next item is a terminal, nothing to be done here
             }
 
-            if( ! currentItem->hasRecordFor(boost::get<Variable>(currentItem->afterDot()).get_index())){
+            if( !currentItem->has_record_for(boost::get<Variable>(currentItem->after_dot()).get_index())){
                 return false; // there is no record yet, nothing to be done here
             }
 
 
-            if( ! currentItem->isRecordPlausible()) // record cannot be applied. Hence signal to abort
+            if( !currentItem->is_record_plausible()) // record cannot be applied. Hence signal to abort
                 return true;
 
-            currentItem->scanVariable();
+            currentItem->scan_variable();
 
-            if(currentItem->isArgumentCompleted()){
-                currentItem->completeArgument();
-                if(currentItem->isFinished())
-                    transformToPassive(std::move(currentItem));
+            if(currentItem->is_argument_completed()){
+                currentItem->complete_argument();
+                if(currentItem->is_finished())
+                    transform_to_passive(std::move(currentItem));
                 else
                     // Continue scanning this item for the next components (there are, since it is not finished)
-                    generatePositionsAndAddToQueue(std::move(currentItem));
+                    generate_positions_and_add_to_queue(std::move(currentItem));
             } else { // Argument is not complete
                 // Push the item to the front, since it worked out!
                 queue.push_front(std::move(currentItem));
@@ -515,8 +515,8 @@ namespace LCFR{
         }
 
 
-        void transformToPassive(
-                std::shared_ptr<ActiveItem<Nonterminal, Terminal>>&& currentItem
+        void transform_to_passive(
+                std::shared_ptr<ActiveItem<Nonterminal, Terminal>> &&currentItem
         ){
             std::shared_ptr<PassiveItem<Nonterminal>> pItem
                     (std::make_shared<PassiveItem<Nonterminal>>(currentItem->convert()));
@@ -528,8 +528,8 @@ namespace LCFR{
                             , std::vector<std::shared_ptr<PassiveItem<Nonterminal>>>
                     > parse
                     {
-                            currentItem->getRule()
-                            , currentItem->getRecords()
+                            currentItem->get_rule()
+                            , currentItem->get_records()
                     };
 
 
@@ -547,7 +547,7 @@ namespace LCFR{
                         std::shared_ptr<ActiveItem<Nonterminal, Terminal>> copyItem
                                 {std::make_shared<ActiveItem<Nonterminal, Terminal>>
                                          (ActiveItem<Nonterminal, Terminal>{*aItem})};
-                        if (copyItem->addRecord(pItem))
+                        if (copyItem->add_record(pItem))
                             queue.push_back(copyItem);
                     }
                 }
@@ -572,13 +572,13 @@ namespace LCFR{
             }
         }
 
-        void generatePositionsAndAddToQueue(
-                std::shared_ptr<ActiveItem<Nonterminal, Terminal>>&& currentItem
+        void generate_positions_and_add_to_queue(
+                std::shared_ptr<ActiveItem<Nonterminal, Terminal>> &&currentItem
         ){
             for (unsigned long pos=0; pos <= word.size(); ++pos) {
                 std::shared_ptr<ActiveItem<Nonterminal, Terminal>> copyItem
                         {std::make_shared<ActiveItem<Nonterminal, Terminal>>(*currentItem)};
-                if (copyItem->setCurrentPosition(pos)) {
+                if (copyItem->set_current_position(pos)) {
                     queue.push_front(std::move(copyItem));
                 }
             }
@@ -586,7 +586,7 @@ namespace LCFR{
 
 
 
-        const std::map<PassiveItem<Nonterminal>,TraceItem<Nonterminal,Terminal>>& getTrace() const {
+        const std::map<PassiveItem<Nonterminal>,TraceItem<Nonterminal,Terminal>>& get_trace() const {
             return trace;
         };
 

@@ -64,7 +64,7 @@ namespace LCFR {
             return args;
         }
 
-        void addArgument(std::vector<TerminalOrVariable<Terminal>> arg) {
+        void add_argument(std::vector<TerminalOrVariable<Terminal>> arg) {
             args.push_back(arg);
         };
     };
@@ -154,21 +154,18 @@ namespace LCFR {
     // Helper funtions
 
     template <typename  Nonterminal, typename Terminal>
-    Rule<Nonterminal, Terminal> constructRule(
-            const Nonterminal nont
-            , const std::vector<std::vector<TerminalOrVariable<Terminal>>> args
-            , const std::vector<Nonterminal> rhs
+    Rule<Nonterminal, Terminal> construct_rule(
+            const Nonterminal nont, const std::vector<std::vector<TerminalOrVariable<Terminal>>> args,
+            const std::vector<Nonterminal> rhs
     ){
         LHS<Nonterminal,Terminal> lhs(nont);
         for(auto const& arg : args)
-            lhs.addArgument(arg);
+            lhs.add_argument(arg);
         return Rule<Nonterminal, Terminal>(lhs, rhs);
     }
 
-    Rule<std::string, std::string> constructRule(
-            const std::string nont
-            , const std::vector<std::string> args
-            , const std::string rhs
+    Rule<std::string, std::string> construct_rule(
+            const std::string nont, const std::vector<std::string> args, const std::string rhs
     ){
         LHS<std::string,std::string> lhs(nont);
         for (auto const& arg : args) {
@@ -181,7 +178,7 @@ namespace LCFR {
                 else
                     argument.emplace_back(s);
             }
-            lhs.addArgument(std::move(argument));
+            lhs.add_argument(std::move(argument));
         }
 
         std::vector<std::string> nonterminals;
