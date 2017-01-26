@@ -8,7 +8,6 @@
 #include <vector>
 #include <boost/variant.hpp>
 #include <map>
-#include "LCFRS_util.h"
 
 
 namespace LCFR {
@@ -148,44 +147,6 @@ namespace LCFR {
 
     };
 
-
-
-
-    // Helper funtions
-
-    template <typename  Nonterminal, typename Terminal>
-    Rule<Nonterminal, Terminal> construct_rule(
-            const Nonterminal nont, const std::vector<std::vector<TerminalOrVariable<Terminal>>> args,
-            const std::vector<Nonterminal> rhs
-    ){
-        LHS<Nonterminal,Terminal> lhs(nont);
-        for(auto const& arg : args)
-            lhs.add_argument(arg);
-        return Rule<Nonterminal, Terminal>(lhs, rhs);
-    }
-
-    Rule<std::string, std::string> construct_rule(
-            const std::string nont, const std::vector<std::string> args, const std::string rhs
-    ){
-        LHS<std::string,std::string> lhs(nont);
-        for (auto const& arg : args) {
-            std::vector<std::string> tokens;
-            tokenize<std::vector<std::string>>(arg, tokens, " ", true);
-            std::vector<TerminalOrVariable<std::string>> argument;
-            for (std::string s : tokens){
-                if(s[0] == 'x')
-                    argument.emplace_back(Variable{(unsigned long)s[2]-'0',(unsigned long)s[4]-'0'});
-                else
-                    argument.emplace_back(s);
-            }
-            lhs.add_argument(std::move(argument));
-        }
-
-        std::vector<std::string> nonterminals;
-        tokenize(rhs, nonterminals, " ", true);
-
-        return Rule<std::string, std::string>(lhs, nonterminals);
-    };
 }
 
 

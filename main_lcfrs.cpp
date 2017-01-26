@@ -5,6 +5,7 @@
 
 #include "LCFRS.h"
 #include "LCFRS_Parser.h"
+#include "LCFRS_util.h"
 
 using namespace std;
 using namespace LCFR;
