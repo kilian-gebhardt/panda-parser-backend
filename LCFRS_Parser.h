@@ -127,10 +127,6 @@ namespace LCFR{
             return k;
         }
 
-        std::shared_ptr<Rule<Nonterminal, Terminal>> get_rule() const {
-            return rule;
-        };
-
         const std::vector<std::shared_ptr<PassiveItem<Nonterminal>>>& get_records() const {
             return records;
         };
