@@ -122,4 +122,21 @@ int main() {
 
     std::cerr << "sum" << std::endl << A.sum(Eigen::array<long, 1>({1})) << std::endl;
 
+    double * a_mem = (double*) malloc(sizeof(double) * 12);
+    Eigen::TensorMap<Eigen::Tensor<MyVal, 3>> a_(a_mem, 2, 2, 3);
+    a_.setValues({{{1, 2, 3}, {6, 5.0, 4}},
+                 {{7, 8, 9}, {12, 11, 10.5}}
+                });
+
+    std::cerr << "a_ " << std::endl << a_ << std::endl;
+
+    Eigen::TensorMap<Eigen::Tensor<MyVal, 2>> a_r(a_mem, 2, 6);
+    std::cerr << "a_r" << std::endl << a_r << std::endl;
+
+
+    a_r.chip(0, 0) = a_r.chip(0, 0).unaryExpr([&](const double x) -> double { return x / 2; });
+    a_r.chip(1, 0) = a_r.chip(1, 0).unaryExpr([&](const double x) -> double { return x / 4; });
+
+    std::cerr << "a_ " << std::endl << a_ << std::endl;
+    std::cerr << "a_r" << std::endl << a_r << std::endl;
 }

@@ -251,7 +251,7 @@ private:
         return return_;
     }
 
-    bool free_region(double* ptr, unsigned size) {
+    bool free_region(double* const ptr, const unsigned size) {
         if (ptr + size == next) {
             assert(start <= ptr);
             next = ptr;
@@ -1152,8 +1152,8 @@ public:
             }
         }
 
-        auto parent_weight = Eigen::TensorMap<Eigen::Tensor<double, 1>>(outside_weights.at(parent), rule_dim[0]);
-        auto rule_weight = Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>(rules[rule.id], rule_dim);
+        const auto parent_weight = Eigen::TensorMap<Eigen::Tensor<double, 1>>(outside_weights.at(parent), rule_dim[0]);
+        const auto rule_weight = Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>(rules[rule.id], rule_dim);
         outside_weight += parent_weight * rule_probs(rule_weight, relevant_inside_weights);
 
         if (debug and false) {
@@ -1183,7 +1183,7 @@ public:
                     ++nont_pos;
                 }
 
-        Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> rule_weight(rules[witness.first->id], rule_dim);
+        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> rule_weight(rules[witness.first->id], rule_dim);
 
         nont_pos = 1;
         for (const auto & dep_item : witness.second) {
@@ -1258,8 +1258,8 @@ public:
                 double * const root_inside_weight_ptr =  std::get<0>(tr_io_weight).at(goals[trace_id]);
                 double * const root_outside_weight_ptr = std::get<1>(tr_io_weight).at(goals[trace_id]);
 
-                Eigen::TensorMap<Eigen::Tensor<double, 1>> root_inside_weight (root_inside_weight_ptr, root_dimension);
-                Eigen::TensorMap<Eigen::Tensor<double, 1>> root_outside_weight (root_outside_weight_ptr, root_dimension);
+                const Eigen::TensorMap<Eigen::Tensor<double, 1>> root_inside_weight (root_inside_weight_ptr, root_dimension);
+                const Eigen::TensorMap<Eigen::Tensor<double, 1>> root_outside_weight (root_outside_weight_ptr, root_dimension);
                 Eigen::Tensor<double, 1> trace_root_probability = root_inside_weight * root_outside_weight;
                 root_count += trace_root_probability;
                 corpus_likelihood += trace_root_probability.sum().log();
@@ -1393,21 +1393,21 @@ public:
         std::cerr << "Estimating relative frequency of annotated nonterminals." << std::endl;
         // computing in(A_x) * out(A_x) for every A ∈ N and x ∈ X_A
         for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
-            auto io_weight = io_weights_la(rule_weights_ptrs, root_weights_ptrs, nont_dimensions, rule_ids_to_nont_ids, nont_idx, trace_id);
+            const auto io_weight = io_weights_la(rule_weights_ptrs, root_weights_ptrs, nont_dimensions, rule_ids_to_nont_ids, nont_idx, trace_id);
 
             for (const auto & pair : traces[trace_id]) {
                 const ParseItem<Nonterminal, Position> & item = pair.first;
 
-                double * inside_ptr = std::get<0>(io_weight).at(item);
-                double * outside_ptr = std::get<1>(io_weight).at(item);
+                double * const inside_ptr = std::get<0>(io_weight).at(item);
+                double * const outside_ptr = std::get<1>(io_weight).at(item);
 
                 const unsigned dim =  nont_dimensions[nont_idx(item.nonterminal)];
 
-                Eigen::TensorMap<Eigen::Tensor<double, 1>> inside_weight (inside_ptr, dim);
-                Eigen::TensorMap<Eigen::Tensor<double, 1>> outside_weight (outside_ptr, dim);
+                const Eigen::TensorMap<Eigen::Tensor<double, 1>> inside_weight (inside_ptr, dim);
+                const Eigen::TensorMap<Eigen::Tensor<double, 1>> outside_weight (outside_ptr, dim);
 
 
-                auto vals = inside_weight * outside_weight;
+                const auto vals = inside_weight * outside_weight;
                 // denominator cancels out later
                 // auto denominator = sum(vals);
                 auto & target =  merge_weights_partial[nont_idx(item.nonterminal)];

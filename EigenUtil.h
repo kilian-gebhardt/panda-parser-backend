@@ -11,7 +11,7 @@ Eigen::Tensor<Val, 1> rule_probs(const Eigen::Tensor<Val, 1> & rule_las, const s
     return rule_las;
 };
 template<typename Val, typename TENSORTYPE>
-Eigen::TensorMap<Eigen::Tensor<Val, 1>> & rule_probs(Eigen::TensorMap<Eigen::Tensor<Val, 1>> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
+const Eigen::TensorMap<Eigen::Tensor<Val, 1>> & rule_probs(const Eigen::TensorMap<Eigen::Tensor<Val, 1>> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
     return rule_las;
 };
 
@@ -90,7 +90,7 @@ void foo(const std::vector<std::vector<unsigned>> & rule_dimensions
         rule_dimension[i] = rule_dimensions[rule_id][i];
     }
 
-    Eigen::TensorMap<Eigen::Tensor<double, rule_dim>> rule_weight (rule_weights[rule_id], rule_dimension);
+    const Eigen::TensorMap<Eigen::Tensor<double, rule_dim>> rule_weight (rule_weights[rule_id], rule_dimension);
 
     Eigen::array<long, rule_dim> rshape_dim;
     Eigen::array<long, rule_dim> broad_dim;
@@ -99,10 +99,10 @@ void foo(const std::vector<std::vector<unsigned>> & rule_dimensions
         broad_dim[i] = rule_dimension[i];
     }
 
-    auto rule_val = rule_weight;
+    Eigen::Tensor<double, rule_dim> rule_val = rule_weight;
     for (unsigned i = 0; i < rule_dim; ++i) {
         const unsigned item_dim = rule_dimension[i];
-        auto item_weight = (i == 0)
+        const auto item_weight = (i == 0)
                         ? lhn_outside_weight
                         : Eigen::TensorMap<Eigen::Tensor<double, 1>>(std::get<0>(tr_io_weight).at(*witness.second[i - 1]), item_dim);
         rshape_dim[i] = broad_dim[i];
@@ -123,17 +123,18 @@ void maximization(const unsigned lhs_dim, const std::vector<std::vector<unsigned
 
     for (const auto rule : group) {
         const unsigned block_size = subdim(rule_dimensions[rule]);
-        Eigen::TensorMap<Eigen::Tensor<double, 2>> rule_weight(rule_counts[rule], lhs_dim, block_size);
-        lhs_counts += rule_weight.sum(Eigen::array<long, 1>({1}));
+        const Eigen::TensorMap<Eigen::Tensor<double, 2>> rule_count(rule_counts[rule], lhs_dim, block_size);
+        lhs_counts += rule_count.sum(Eigen::array<long, 1>({1}));
     }
     for (const auto rule : group) {
         const unsigned block_size = subdim(rule_dimensions[rule]);
-        Eigen::TensorMap<Eigen::Tensor<double, 2>> rule_weight(rule_counts[rule], lhs_dim, block_size);
+        const Eigen::TensorMap<Eigen::Tensor<double, 2>> rule_count(rule_counts[rule], lhs_dim, block_size);
         Eigen::TensorMap<Eigen::Tensor<double, 2>> rule_probability(rule_probabilites[rule], lhs_dim, block_size);
 
         for (unsigned dim = 0; dim < lhs_dim; ++dim)
-            rule_probability.chip(dim, 0) = rule_weight.chip(dim,0).unaryExpr(
-                    [&] (const double x) -> double {return x / lhs_counts(dim);});
+            if (lhs_counts(dim) > 0) {
+                rule_probability.chip(dim, 0) = rule_count.chip(dim, 0).unaryExpr([&](const double x) -> double { return x / lhs_counts(dim); });
+            }
     }
 }
 
