@@ -72,13 +72,7 @@ int main(){
     clog << "Parses:" << endl;
 
 
-    for (auto const& parse : trace[PassiveItem<string>(grammar.get_initial_nont(), std::vector<Range>{Range(0,word.size())})].parses){
-        clog << "    " << *(parse.first) << ": " ;
-        for(auto const& ppitem : parse.second){
-            clog << *ppitem << ", ";
-        }
-        clog << endl;
-    }
+    print_top_trace(grammar, trace, word);
 
     return 0;
 }

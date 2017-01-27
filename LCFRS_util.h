@@ -6,7 +6,9 @@
 #define STERM_PARSER_LCFRS_UTIL_H
 
 #include "LCFRS.h"
+#include "LCFRS_Parser.h"
 #include <vector>
+#include <iostream>
 
 // https://stackoverflow.com/questions/236129/split-a-string-in-c
 template <typename ContainerT>
@@ -40,14 +42,25 @@ namespace LCFR {
 
 
     template<typename Nonterminal, typename Terminal>
-    class RuleFactory{
+    class LCFRSFactory{
     private:
         LHS<Nonterminal, Terminal> currentLHS;
         std::vector<TerminalOrVariable<Terminal>> argument;
+        LCFRS<Nonterminal,Terminal> grammar;
+        std::unique_ptr<LCFRS_Parser<Nonterminal,Terminal>> parser;
+        std::map<PassiveItem<Nonterminal>,TraceItem<Nonterminal,Terminal>> trace;
+        std::map<PassiveItem<Nonterminal>, unsigned long> passiveItemMap;
+
     public:
+        LCFRSFactory(const Nonterminal initial):
+            currentLHS{LHS<Nonterminal,Terminal>(initial)},
+            argument{std::vector<TerminalOrVariable<Terminal>>()},
+            grammar{LCFRS<Nonterminal,Terminal>(initial)}
+        {}
+
         void new_rule(const Nonterminal lhsNont){
             currentLHS = LHS<Nonterminal,Terminal>(lhsNont);
-            argument.reset();
+            argument.clear();
         }
 
         void add_terminal(const Terminal term){
@@ -60,13 +73,74 @@ namespace LCFR {
 
         void complete_argument(){
             currentLHS.add_argument(argument);
-            argument.reset();
+            argument.clear();
 
         }
 
-        Rule<Nonterminal,Terminal>&& get_rule(std::vector<Nonterminal> rhs){
-            return Rule<Nonterminal,Terminal>(currentLHS,rhs);
+        void add_rule_to_grammar(std::vector<Nonterminal> rhs){
+            grammar.add_rule(Rule<Nonterminal,Terminal>(currentLHS,rhs));
         };
+
+        void do_parse(std::vector<Terminal> word){
+//std::clog << grammar;
+            parser = std::unique_ptr<LCFRS_Parser<Nonterminal,Terminal>>(
+                new LCFRS_Parser<Nonterminal,Terminal>(grammar, word));
+//std::clog << "Doing the parse";
+            parser->do_parse();
+            trace = parser->get_trace();
+//print_top_trace(grammar, trace, word);
+        }
+
+        std::map<unsigned long
+                ,std::pair<Nonterminal
+                        , std::vector<std::pair<unsigned long, unsigned long>>>>
+        get_passive_items_map(){
+            auto result = std::map<unsigned long,std::pair<Nonterminal
+                                                      , std::vector<std::pair<unsigned long, unsigned long>>>>();
+            passiveItemMap = std::map<PassiveItem<Nonterminal>, unsigned long>();
+
+            unsigned long count{0};
+            for (auto tEntry : trace){
+                Nonterminal nont = tEntry.first.get_nont();
+                std::vector<std::pair<unsigned long, unsigned long>> ranges(tEntry.first.get_ranges().size());
+                for (auto range : tEntry.first.get_ranges()){
+                    ranges.push_back(std::pair<unsigned long, unsigned long>(range.first, range.second));
+                }
+                result[count] = std::pair<Nonterminal, std::vector<std::pair<unsigned long, unsigned long>>>
+                        (nont, ranges);
+                passiveItemMap[tEntry.first] = count;
+
+                ++count;
+            }
+
+            return result;
+        }
+
+
+        std::map<unsigned long, std::vector<std::pair<unsigned long, std::vector<unsigned long>>>>
+                convert_trace(){
+            auto result = std::map<unsigned long, std::vector<std::pair<unsigned long, std::vector<unsigned long>>>>();
+
+            for (auto tEntry : trace){
+                const unsigned long pId = passiveItemMap[tEntry.first];
+                auto newTrace = std::vector<std::pair<unsigned long, std::vector<unsigned long>>>();
+                for (auto parse : tEntry.second.parses){
+                    const unsigned long ruleId = parse.first->get_rule_id();
+                    auto pItems = std::vector<unsigned long>();
+                    for (auto ptrPassiveItem : parse.second){
+                        pItems.push_back(passiveItemMap[*ptrPassiveItem]);
+                    }
+                    newTrace.push_back(std::pair<unsigned long, std::vector<unsigned long>>(ruleId, pItems));
+                }
+                result[pId] = newTrace;
+            }
+
+            return result;
+        };
+
+
+
+
     };
 
 
@@ -103,6 +177,22 @@ namespace LCFR {
 
         return Rule<std::string, std::string>(lhs, nonterminals);
     }
+
+    template <typename Nonterminal, typename Terminal>
+    void print_top_trace(LCFRS<Nonterminal, Terminal> grammar
+            , std::map<PassiveItem<Nonterminal>,TraceItem<Nonterminal,Terminal>> trace
+            , std::vector<Terminal> word)
+    {
+        for (auto const& parse : trace[PassiveItem<Nonterminal>(grammar.get_initial_nont()
+                                        , std::vector<Range>{Range(0,word.size())})].parses){
+            std::clog << "    " << *(parse.first) << ": " ;
+            for(auto const& ppitem : parse.second){
+                std::clog << *ppitem << ", ";
+            }
+            std::clog << std::endl;
+        }
+    }
+
 
 } // namespace LCFR
 

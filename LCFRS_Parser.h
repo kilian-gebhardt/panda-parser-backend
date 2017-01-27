@@ -5,6 +5,7 @@
 #ifndef STERM_PARSER_LCFRS_PARSER_H
 #define STERM_PARSER_LCFRS_PARSER_H
 
+#include <iostream>
 #include <map>
 #include <deque>
 #include <stack>

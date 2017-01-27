@@ -74,9 +74,13 @@ namespace LCFR {
     private:
         LHS<Nonterminal, Terminal> lhs;
         std::vector<Nonterminal> rhs;
+        unsigned long ruleId;
     public:
 
-        Rule(LHS<Nonterminal, Terminal> l, std::vector<Nonterminal> r) : lhs(l), rhs(r) {};
+        Rule(LHS<Nonterminal, Terminal> l
+                , std::vector<Nonterminal> r
+                , unsigned long rId = 0)
+        : lhs(l), rhs(r), ruleId(rId) {};
 
         LHS<Nonterminal, Terminal> get_lhs() const {
             return lhs;
@@ -84,6 +88,10 @@ namespace LCFR {
 
         std::vector<Nonterminal> get_rhs() const {
             return rhs;
+        }
+
+        unsigned long get_rule_id() const {
+            return ruleId;
         }
 
         friend std::ostream& operator <<(std::ostream& o, const Rule<Nonterminal, Terminal>& r) {
