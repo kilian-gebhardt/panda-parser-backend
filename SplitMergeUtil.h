@@ -52,7 +52,7 @@ double fRand(double fMin, double fMax)
 }
 
 double rand_split() {
-    return fRand(0.45, 0.55);
+    return fRand(0.95, 1.05);
 //    if (id % 2)
 //        return 0.55;
 //    else
@@ -67,7 +67,7 @@ void fill_split(const std::vector<Val> & old_weights, std::vector<Val> & new_wei
         unsigned index = indexation(selection, dimensions);
         assert (origin_index < old_weights.size());
         assert (index < new_weights.size());
-        Val split_weight = old_weights[origin_index] * Val::to(rand_split());
+        Val split_weight = old_weights[origin_index] * Val::to(rand_split() * pow(0.5, dim - 1));
         new_weights[index] = split_weight;
     } else {
         selection.push_back(0);

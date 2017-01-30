@@ -845,6 +845,82 @@ public:
         return rule_weights_la_unlog;
     }
 
+    template <typename Val>
+    unsigned convert_to_eigen(std::vector<double*> & rule_weights_ptrs, const std::vector<std::vector<Val>> & rule_weights,
+    double* & root_weights_ptrs, const std::vector<Val> & root_weights, const std::vector<std::vector<unsigned>> & rule_dimensions) {
+        unsigned allocated(0);
+        unsigned rule = 0;
+        for(auto rule_weight : rule_weights) {
+            const std::vector<unsigned> & rule_dim = rule_dimensions[rule];
+            double * rule_weight_ptr = get_region(rule_weight.size());
+            const unsigned dims = rule_dim.size();
+
+            switch (dims) {
+                case 1:
+                    convert_format<1>(rule_weight_ptr, rule_dim, rule_weight);
+                    break;
+                case 2:
+                    convert_format<2>(rule_weight_ptr, rule_dim, rule_weight);
+                    break;
+                case 3:
+                    convert_format<3>(rule_weight_ptr, rule_dim, rule_weight);
+                    break;
+                case 4:
+                    convert_format<4>(rule_weight_ptr, rule_dim, rule_weight);
+                    break;
+                default:
+                    assert(false && "Rules with more than 3 RHS nonterminals are not implemented.");
+                    abort();
+            }
+
+            rule_weights_ptrs.push_back(rule_weight_ptr);
+            allocated += rule_weight.size();
+            ++rule;
+        }
+        root_weights_ptrs = get_region(root_weights.size());
+        allocated += root_weights.size();
+        for (unsigned i = 0; i < root_weights.size(); ++i) {
+            root_weights_ptrs[i] = root_weights[i].from();
+        }
+        return allocated;
+    }
+
+    template<typename Val>
+    void convert_from_eigen(const std::vector<double*> rule_weight_ptr, std::vector<std::vector<Val>> & rule_weights,
+    const double* root_weight_ptr, std::vector<Val> & root_weights, const std::vector<std::vector<unsigned>> & rule_dimensions, const unsigned allocated) {
+
+
+        for(unsigned rule = 0; rule < rule_weights.size(); ++rule) {
+            auto & rule_weight = rule_weights[rule];
+            const std::vector<unsigned> & rule_dim = rule_dimensions[rule];
+            const unsigned dims = rule_dim.size();
+
+            switch (dims) {
+                case 1:
+                    de_convert_format<1>(rule_weight_ptr[rule], rule_dim, rule_weight);
+                    break;
+                case 2:
+                    de_convert_format<2>(rule_weight_ptr[rule], rule_dim, rule_weight);
+                    break;
+                case 3:
+                    de_convert_format<3>(rule_weight_ptr[rule], rule_dim, rule_weight);
+                    break;
+                case 4:
+                    de_convert_format<4>(rule_weight_ptr[rule], rule_dim, rule_weight);
+                    break;
+                default:
+                    assert(false && "Rules with more than 3 RHS nonterminals are not implemented.");
+                    abort();
+            }
+        }
+        for (unsigned i = 0; i < root_weights.size(); ++i) {
+            root_weights[i] = Val::to(root_weight_ptr[i]);
+        }
+        if (not free_region(rule_weight_ptr[0], allocated))
+            abort();
+    }
+
+
     template<typename Val, typename NontToIdx>
     void split_merge_cycle(const unsigned cycle, const unsigned n_epochs, double epsilon, double merge_threshold, double merge_percentage,
                            const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
@@ -855,6 +931,7 @@ public:
         std::vector<std::vector<Val>> rule_weights_splitted;
         std::vector<Val> root_weights_splitted;
         std::vector<std::vector<Val>> rule_weights_merged;
+        std::vector<std::vector<unsigned>> rule_dimensions_splitted;
 
         std::vector<unsigned> split_dimensions;
 
@@ -871,10 +948,18 @@ public:
                 dimensions.push_back(split_dimensions[nont]);
             }
             const std::vector<Val> split_probabilities = split_rule(rule_weight, dimensions);
-            rule_weights_splitted.push_back(split_probabilities);
+            rule_weights_splitted.emplace_back(std::move(split_probabilities));
+            if (debug) {
+                std::cerr << std::endl << "Rule prob " << i << " : { ";
+                for (const auto val : rule_weight) std::cerr << val << " ";
+                std::cerr << " } " << std::endl << "after split: { ";
+                for (const auto val : rule_weights_splitted.back()) std::cerr << val << " ";
+                std::cerr << " } " << std::endl << std::endl;
+            }
+            rule_dimensions_splitted.emplace_back(std::move(dimensions));
         }
 
-        const double root_split = rand_split();
+        const double root_split = rand_split() * 0.5;
         root_weights_splitted = {Val::to(root_split) * Val::one(), Val::to(1 - root_split) * Val::one()};
 
         rule_weights_la.clear();
@@ -883,38 +968,15 @@ public:
 
         // em training
 
-        // conversion
         std::vector<double *> rule_weights_ptrs;
-        unsigned allocated(0);
-        for(auto rule_weight : rule_weights_splitted) {
-            double * rule_weight_ptr = get_region(rule_weight.size());
-            for (unsigned i = 0; i < rule_weight.size(); ++i) {
-                rule_weight_ptr[i] = rule_weight[i].from();
-            }
-            rule_weights_ptrs.push_back(rule_weight_ptr);
-            allocated += rule_weight.size();
-        }
-        double * root_weights_ptrs = get_region(root_weights_splitted.size());
-        allocated += root_weights_splitted.size();
-        for (unsigned i = 0; i < root_weights_splitted.size(); ++i) {
-            root_weights_ptrs[i] = root_weights_splitted[i].from();
-        }
+        double * root_weights_ptrs;
+
+        unsigned allocated = convert_to_eigen(rule_weights_ptrs, rule_weights_splitted, root_weights_ptrs, root_weights_splitted, rule_dimensions_splitted);
 
         do_em_training_la(rule_weights_ptrs, root_weights_ptrs, normalization_groups, n_epochs, split_dimensions,
                           rule_to_nonterminals, nont_idx);
 
-        // undo conversion
-        for(unsigned j = 0; j < rule_weights_splitted.size(); ++j) {
-            auto & rule_weight = rule_weights_splitted[j];
-            for (unsigned i = 0; i < rule_weight.size(); ++i) {
-                rule_weight[i] = Val::to(rule_weights_ptrs[j][i]);
-            }
-        }
-        for (unsigned i = 0; i < root_weights_splitted.size(); ++i) {
-            root_weights_splitted[i] = Val::to(root_weights_ptrs[i]);
-        }
-        if (not free_region(rule_weights_ptrs[0], allocated))
-            abort();
+        convert_from_eigen(rule_weights_ptrs, rule_weights_splitted, root_weights_ptrs, root_weights, rule_dimensions_splitted, allocated);
 
         for (auto rule_weights_ : rule_weights_splitted) {
             for (auto rule_weight : rule_weights_) {
@@ -947,6 +1009,7 @@ public:
             std::cerr << std::endl;
         }
 
+        std::vector<std::vector<unsigned>> rule_dimensions_merged;
         // merging
         for (unsigned i = 0; i < rule_weights_splitted.size(); ++i) {
             std::vector<unsigned> old_dimensions;
@@ -963,6 +1026,7 @@ public:
             rule_weights_merged.push_back(
                     merge_rule(rule_weights_splitted[i], old_dimensions, new_dimensions, merges,
                                lhn_merge_factors));
+            rule_dimensions_merged.emplace_back(std::move(new_dimensions));
         }
 
         rule_weights_splitted.clear();
@@ -971,38 +1035,14 @@ public:
 
         // conversion
         std::vector<double *> rule_weights_merged_ptrs;
-        allocated = 0;
-        for(auto rule_weight : rule_weights_merged) {
-            double * rule_weight_ptr = get_region(rule_weight.size());
-            for (unsigned i = 0; i < rule_weight.size(); ++i) {
-                rule_weight_ptr[i] = rule_weight[i].from();
-            }
-            rule_weights_merged_ptrs.push_back(rule_weight_ptr);
-            allocated += rule_weight.size();
-        }
-
-        double * root_weights_merged_ptrs = get_region(root_weights.size());
-        allocated += root_weights.size();
-
-        for (unsigned i = 0; i < root_weights.size(); ++i) {
-            root_weights_merged_ptrs[i] = root_weights[i].from();
-        }
+        double * root_weights_merged_ptrs;
+        allocated = convert_to_eigen(rule_weights_merged_ptrs, rule_weights_merged, root_weights_merged_ptrs, root_weights, rule_dimensions_merged);
 
         do_em_training_la(rule_weights_merged_ptrs, root_weights_merged_ptrs, normalization_groups, n_epochs, new_nont_dimensions,
                           rule_to_nonterminals, nont_idx);
 
-        // undo conversion
-        for(unsigned j = 0; j < rule_weights_merged.size(); ++j) {
-            auto & rule_weight = rule_weights_merged[j];
-            for (unsigned i = 0; i < rule_weight.size(); ++i) {
-                rule_weight[i] = Val::to(rule_weights_merged_ptrs[j][i]);
-            }
-        }
-        for (unsigned i = 0; i < root_weights_splitted.size(); ++i) {
-            root_weights[i] = Val::to(root_weights_merged_ptrs[i]);
-        }
-        if (not free_region(rule_weights_merged_ptrs[0], allocated))
-            abort();
+        convert_from_eigen(rule_weights_merged_ptrs, rule_weights_merged, root_weights_merged_ptrs, root_weights, rule_dimensions_merged, allocated);
+
 
         for (auto rule_weights_ : rule_weights_merged) {
             for (auto rule_weight : rule_weights_) {
@@ -1181,18 +1221,25 @@ public:
         for (auto nont : rule_id_to_nont_ids[witness.first->id]) {
                     rule_dim[nont_pos] = nont_dimensions[nont];
                     ++nont_pos;
-                }
+        }
 
+        if (debug)
+            std::cerr << std::endl << "Computing inside weight summand" << std::endl;
         const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> rule_weight(rules[witness.first->id], rule_dim);
+        if (debug)
+            std::cerr << "rule tensor " << witness.first->id << " address " << rules[witness.first->id] << std::endl << rule_weight << std::endl;
 
         nont_pos = 1;
         for (const auto & dep_item : witness.second) {
                     double * ptr = inside_weights.at(*dep_item);
                     Eigen::TensorMap<Eigen::Tensor<double, 1>> rhs_weight(ptr, rule_dim[nont_pos]);
+                    std::cerr << "rhs " << nont_pos << " inside weight " << std::endl << rhs_weight << std::endl;
                     rhs_weights.push_back(rhs_weight);
                     ++nont_pos;
                 }
 
+        if (debug)
+            std::cerr << "resulting inside weight summand " << std::endl <<  rule_probs(rule_weight, rhs_weights) << std::endl << std::endl;
         inside_weight += rule_probs(rule_weight, rhs_weights);
     }
 
@@ -1374,21 +1421,18 @@ public:
 
         // conversion
         std::vector<double *> rule_weights_ptrs;
-        unsigned allocated(0);
-        for(auto rule_weight : rule_weights) {
-            double * rule_weight_ptr = get_region(rule_weight.size());
-            for (unsigned i = 0; i < rule_weight.size(); ++i) {
-                rule_weight_ptr[i] = rule_weight[i].from();
+        double * root_weights_ptrs;
+
+        std::vector<std::vector<unsigned>> rule_dimensions;
+        for (const auto rule : rule_ids_to_nont_ids) {
+            std::vector<unsigned> rule_dimension;
+            for (unsigned nont : rule) {
+                rule_dimension.emplace_back(nont_dimensions[nont]);
             }
-            rule_weights_ptrs.push_back(rule_weight_ptr);
-            allocated += rule_weight.size();
-        }
-        double * root_weights_ptrs = get_region(root_weights.size());
-        allocated += root_weights.size();
-        for (unsigned i = 0; i < root_weights.size(); ++i) {
-            root_weights_ptrs[i] = root_weights[i].from();
+            rule_dimensions.emplace_back(std::move(rule_dimension));
         }
 
+        unsigned allocated = convert_to_eigen(rule_weights_ptrs, rule_weights, root_weights_ptrs, root_weights, rule_dimensions);
 
         std::cerr << "Estimating relative frequency of annotated nonterminals." << std::endl;
         // computing in(A_x) * out(A_x) for every A ∈ N and x ∈ X_A

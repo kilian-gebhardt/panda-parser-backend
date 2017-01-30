@@ -5,6 +5,7 @@
 #ifndef STERMPARSER_EIGENUTIL_H
 #define STERMPARSER_EIGENUTIL_H
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
+#include "SplitMergeUtil.h"
 
 template<typename Val, typename TENSORTYPE>
 Eigen::Tensor<Val, 1> rule_probs(const Eigen::Tensor<Val, 1> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
@@ -138,5 +139,96 @@ void maximization(const unsigned lhs_dim, const std::vector<std::vector<unsigned
     }
 }
 
+template<int max_dim, typename Val>
+void convert_format(double * const rule_ptr, const std::vector<unsigned> & rule_dim, const std::vector<Val> & weights) {
+    Eigen::array<long, max_dim> rule_dim_a;
+    for(unsigned dim = 0; dim < max_dim; ++dim) {
+        rule_dim_a[dim] = rule_dim[dim];
+    }
+    Eigen::array<long, max_dim> weight_position;
+    Eigen::TensorMap<Eigen::Tensor<double, max_dim>> rule_weight_tensor(rule_ptr, rule_dim_a);
+
+//    std::cerr << rule_weight_tensor << std::endl;
+
+    for(unsigned dim = 0; dim < max_dim; ++dim) {
+        weight_position[dim] = -1;
+    }
+
+    unsigned dim = 0;
+    auto weight_it = weights.begin();
+//    unsigned counter = 0;
+
+    while (dim < max_dim) {
+        if (dim == max_dim - 1 and weight_position[dim] + 1 < rule_dim[dim]) {
+            ++weight_position[dim];
+            assert(weight_it != weights.end());
+            rule_weight_tensor(weight_position) =  weight_it->from();
+//            std::cerr << counter << " ";
+//            for (auto val : weight_position) std::cerr << val << " ";
+//            std::cerr << weight_it->from() << std::endl;
+//            ++counter;
+            ++weight_it;
+        } else if (weight_position[dim] + 1 == rule_dim[dim]) {
+            if (dim > 0) {
+                for (unsigned dim_ = dim; dim_ < max_dim; ++dim_) {
+                    weight_position[dim_] = -1;
+                }
+                --dim;
+            }
+            else
+                break;
+        } else if (weight_position[dim] + 1 < rule_dim[dim]) {
+            ++weight_position[dim];
+            ++dim;
+        }
+    }
+
+//    std::cerr << rule_weight_tensor;
+
+    assert(weight_it == weights.end());
+}
+
+template<int max_dim, typename Val>
+void de_convert_format(double * const rule_ptr, const std::vector<unsigned> & rule_dim, std::vector<Val> & weights) {
+    Eigen::array<long, max_dim> rule_dim_a;
+    for(unsigned dim = 0; dim < max_dim; ++dim) {
+        rule_dim_a[dim] = rule_dim[dim];
+    }
+    Eigen::array<long, max_dim> weight_position;
+    Eigen::TensorMap<Eigen::Tensor<double, max_dim>> rule_weight_tensor(rule_ptr, rule_dim_a);
+
+
+    for(unsigned dim = 0; dim < max_dim; ++dim) {
+        weight_position[dim] = -1;
+    }
+
+    unsigned dim = 0;
+    auto weight_it = weights.begin();
+
+    while (dim < max_dim) {
+        if (dim == max_dim - 1 and weight_position[dim] + 1 < rule_dim[dim]) {
+            ++weight_position[dim];
+            assert(weight_it != weights.end());
+            *weight_it = Val::to(rule_weight_tensor(weight_position));
+
+            ++weight_it;
+        } else if (weight_position[dim] + 1 == rule_dim[dim]) {
+            if (dim > 0) {
+                for (unsigned dim_ = dim; dim_ < max_dim; ++dim_) {
+                    weight_position[dim_] = -1;
+                }
+                --dim;
+            }
+            else
+                break;
+        } else if (weight_position[dim] + 1 < rule_dim[dim]) {
+            ++weight_position[dim];
+            ++dim;
+        }
+    }
+
+
+    assert(weight_it == weights.end());
+}
 
 #endif //STERMPARSER_EIGENUTIL_H
