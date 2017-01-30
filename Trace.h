@@ -41,22 +41,22 @@ public:
 
     LogDouble() : x(minus_infinity) {} ;
 
-    LogDouble(LogDouble&& o) : x(std::move(o.x)) {}
-    LogDouble(LogDouble & o) : x(o.get_Value()) {}
+//    LogDouble(LogDouble&& o) : x(std::move(o.x)) {}
+//    LogDouble(LogDouble & o) : x(o.get_Value()) {}
     LogDouble(const double x) : x(x) {};
     bool operator<(const LogDouble& y) const {
         return x < y.get_Value();
     }
 
-    LogDouble& operator= (const LogDouble & y) {
-        x = y.get_Value();
-        return *this;
-    }
+//    LogDouble& operator= (const LogDouble & y) {
+//        x = y.get_Value();
+//        return *this;
+//    }
 
-    LogDouble& operator= (LogDouble && y) {
-        x = std::move(y.x);
-        return *this;
-    }
+//    LogDouble& operator= (LogDouble && y) {
+//        x = std::move(y.x);
+//        return *this;
+//    }
     bool operator==(const LogDouble & y) const {
         return x == y.get_Value();
     }
@@ -232,7 +232,7 @@ private:
     double * start = nullptr;
     double * next = nullptr;
     double * max = nullptr;
-    unsigned the_size = 10000;
+    unsigned the_size = 625000; // 5MB
 
     double * ones_ptr = nullptr;
 
@@ -1110,7 +1110,7 @@ public:
                 }
                 rhs_weights.clear();
             }
-            if (debug && false) {
+            if (debug) {
                 std::cerr << "inside weight " << item << std::endl;
                 std::cerr << inside_weight << std::endl;
             }
@@ -1233,7 +1233,8 @@ public:
         for (const auto & dep_item : witness.second) {
                     double * ptr = inside_weights.at(*dep_item);
                     Eigen::TensorMap<Eigen::Tensor<double, 1>> rhs_weight(ptr, rule_dim[nont_pos]);
-                    std::cerr << "rhs " << nont_pos << " inside weight " << std::endl << rhs_weight << std::endl;
+                    if (debug)
+                        std::cerr << "rhs " << nont_pos << " inside weight " << std::endl << rhs_weight << std::endl;
                     rhs_weights.push_back(rhs_weight);
                     ++nont_pos;
                 }

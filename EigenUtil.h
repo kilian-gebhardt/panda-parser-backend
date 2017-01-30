@@ -113,6 +113,12 @@ void foo(const std::vector<std::vector<unsigned>> & rule_dimensions
         rshape_dim[i] = 1;
     }
 
+    rshape_dim[0] = broad_dim[0];
+    broad_dim[0] = 1;
+
+    rule_val /= (trace_root_probability.reshape(rshape_dim).broadcast(broad_dim));
+
+    // std::cerr << "rule val: " << std::endl << rule_val << std::endl;
 
     Eigen::TensorMap<Eigen::Tensor<double, rule_dim>> rule_count(rule_counts[rule_id], rule_dimension);
     rule_count += rule_val;
