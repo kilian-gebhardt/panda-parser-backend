@@ -77,12 +77,12 @@ namespace LCFR {
 
         }
 
-        void add_rule_to_grammar(std::vector<Nonterminal> rhs){
-            grammar.add_rule(Rule<Nonterminal,Terminal>(currentLHS,rhs));
+        void add_rule_to_grammar(std::vector<Nonterminal> rhs, const unsigned long ruleId){
+            grammar.add_rule(Rule<Nonterminal,Terminal>(currentLHS,rhs, ruleId));
         };
 
         void do_parse(std::vector<Terminal> word){
-//std::clog << grammar;
+//std::cerr << grammar;
             parser = std::unique_ptr<LCFRS_Parser<Nonterminal,Terminal>>(
                 new LCFRS_Parser<Nonterminal,Terminal>(grammar, word));
 //std::clog << "Doing the parse";
@@ -99,18 +99,18 @@ namespace LCFR {
                                                       , std::vector<std::pair<unsigned long, unsigned long>>>>();
             passiveItemMap = std::map<PassiveItem<Nonterminal>, unsigned long>();
 
-            unsigned long count{0};
+            unsigned long pId{0};
             for (auto tEntry : trace){
                 Nonterminal nont = tEntry.first.get_nont();
-                std::vector<std::pair<unsigned long, unsigned long>> ranges(tEntry.first.get_ranges().size());
+                std::vector<std::pair<unsigned long, unsigned long>> ranges{};
                 for (auto range : tEntry.first.get_ranges()){
                     ranges.push_back(std::pair<unsigned long, unsigned long>(range.first, range.second));
                 }
-                result[count] = std::pair<Nonterminal, std::vector<std::pair<unsigned long, unsigned long>>>
+                result[pId] = std::pair<Nonterminal, std::vector<std::pair<unsigned long, unsigned long>>>
                         (nont, ranges);
-                passiveItemMap[tEntry.first] = count;
+                passiveItemMap[tEntry.first] = pId;
 
-                ++count;
+                ++pId;
             }
 
             return result;

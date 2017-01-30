@@ -71,7 +71,6 @@ int main(){
     map<PassiveItem<string>, TraceItem<string,string>> trace = parser.get_trace();
     clog << "Parses:" << endl;
 
-
     print_top_trace(grammar, trace, word);
 
     return 0;

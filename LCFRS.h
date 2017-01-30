@@ -96,6 +96,7 @@ namespace LCFR {
 
         friend std::ostream& operator <<(std::ostream& o, const Rule<Nonterminal, Terminal>& r) {
             LHS<Nonterminal, Terminal> lhs{r.get_lhs()};
+            o << r.get_rule_id() << ": ";
             o << lhs.get_nont();
             o << "( ";
             bool first = true;
