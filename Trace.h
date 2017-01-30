@@ -1310,7 +1310,9 @@ public:
                 const Eigen::TensorMap<Eigen::Tensor<double, 1>> root_outside_weight (root_outside_weight_ptr, root_dimension);
                 Eigen::Tensor<double, 1> trace_root_probability = root_inside_weight * root_outside_weight;
                 root_count += trace_root_probability;
-                corpus_likelihood += trace_root_probability.sum().log();
+                Eigen::Tensor<double, 0> trace_root_prob_ = trace_root_probability.sum();
+                const double trace_root_probability_val = trace_root_prob_(0);
+                corpus_likelihood += trace_root_prob_.log();
 
                 if (debug)
                     std::cerr << "instance root probability: " << std::endl << trace_root_probability << std::endl;
@@ -1333,16 +1335,16 @@ public:
 
                         switch (rule_dim) {
                             case 1:
-                                foo<1>(rule_dimensions, rule_id, rule_weights, witness, nont_dimensions, lhn_outside_weight, trace_root_probability, nont_idx, tr_io_weight, rule_counts);
+                                foo<1>(rule_dimensions, rule_id, rule_weights, witness, nont_dimensions, lhn_outside_weight, trace_root_probability_val, nont_idx, tr_io_weight, rule_counts);
                                 break;
                             case 2:
-                                foo<2>(rule_dimensions, rule_id, rule_weights, witness, nont_dimensions, lhn_outside_weight, trace_root_probability, nont_idx, tr_io_weight, rule_counts);
+                                foo<2>(rule_dimensions, rule_id, rule_weights, witness, nont_dimensions, lhn_outside_weight, trace_root_probability_val, nont_idx, tr_io_weight, rule_counts);
                                 break;
                             case 3:
-                                foo<3>(rule_dimensions, rule_id, rule_weights, witness, nont_dimensions, lhn_outside_weight, trace_root_probability, nont_idx, tr_io_weight, rule_counts);
+                                foo<3>(rule_dimensions, rule_id, rule_weights, witness, nont_dimensions, lhn_outside_weight, trace_root_probability_val, nont_idx, tr_io_weight, rule_counts);
                                 break;
                             case 4:
-                                foo<4>(rule_dimensions, rule_id, rule_weights, witness, nont_dimensions, lhn_outside_weight, trace_root_probability, nont_idx, tr_io_weight, rule_counts);
+                                foo<4>(rule_dimensions, rule_id, rule_weights, witness, nont_dimensions, lhn_outside_weight, trace_root_probability_val, nont_idx, tr_io_weight, rule_counts);
                                 break;
                             default:
                                 std::cerr << "Rules with RHS > " << 4 << " are not implemented." << std::endl;

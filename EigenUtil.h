@@ -81,7 +81,7 @@ void foo(const std::vector<std::vector<unsigned>> & rule_dimensions
         , Witness & witness
         , const std::vector<unsigned> & nont_dimensions
         , const Eigen::TensorMap<Eigen::Tensor<double, 1>> & lhn_outside_weight
-        , Eigen::Tensor<double, 1> & trace_root_probability
+        , const double trace_root_probability
         , NontToIdx nont_idx
         , const MAP & tr_io_weight
         , std::vector<double*> & rule_counts
@@ -113,10 +113,19 @@ void foo(const std::vector<std::vector<unsigned>> & rule_dimensions
         rshape_dim[i] = 1;
     }
 
-    rshape_dim[0] = broad_dim[0];
-    broad_dim[0] = 1;
 
-    rule_val /= (trace_root_probability.reshape(rshape_dim).broadcast(broad_dim));
+
+
+
+    if (trace_root_probability > 0) {
+        rule_val = rule_val.unaryExpr([&](const double x) -> double { return x / trace_root_probability; });
+    } else {
+        rule_val = rule_val.unaryExpr([&](const double x) -> double { 0; });
+    }
+
+//    rshape_dim[0] = broad_dim[0];
+//    broad_dim[0] = 1;
+//    rule_val /= (trace_root_probability.reshape(rshape_dim).broadcast(broad_dim));
 
     // std::cerr << "rule val: " << std::endl << rule_val << std::endl;
 
