@@ -39,8 +39,8 @@ public:
 
     LogDouble() : x(minus_infinity) {} ;
 
-    LogDouble(LogDouble&& o) : x(std::move(o.x)) {}
-    LogDouble(LogDouble & o) : x(o.get_Value()) {}
+//    LogDouble(LogDouble&& o) : x(std::move(o.x)) {}
+//    LogDouble(LogDouble & o) : x(o.get_Value()) {}
     LogDouble(const double x) : x(x) {};
     bool operator<(const LogDouble& y) const {
         return x < y.get_Value();
@@ -51,10 +51,10 @@ public:
         return *this;
     }
 
-    LogDouble& operator= (LogDouble && y) {
+/*    LogDouble& operator= (LogDouble && y) {
         x = std::move(y.x);
         return *this;
-    }
+    }*/
     bool operator==(const LogDouble & y) const {
         return x == y.get_Value();
     }
@@ -837,7 +837,7 @@ public:
             rule_weights_splitted.push_back(split_probabilities);
         }
 
-        const double root_split = rand_split();
+        const double root_split = rand_split() * 0.5;
         root_weights_splitted = {Val::to(root_split) * Val::one(), Val::to(1 - root_split) * Val::one()};
 
         rule_weights_la.clear();
