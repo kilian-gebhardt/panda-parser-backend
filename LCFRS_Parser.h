@@ -102,6 +102,8 @@ namespace LCFR{
         Range currentRange;
         std::vector<std::shared_ptr<PassiveItem<Nonterminal>>> records;
 
+        TerminalOrVariable<Terminal> aDot;
+
 
     public:
 
@@ -111,6 +113,9 @@ namespace LCFR{
             k = 0;
             posInK = 0;
             records = std::vector<std::shared_ptr<PassiveItem<Nonterminal>>>(rule->get_rhs().size());
+
+
+            update_after_dot();
         }
 
         ActiveItem(const ActiveItem& a):
@@ -121,6 +126,7 @@ namespace LCFR{
                 , posInK(a.posInK)
                 , currentRange(a.currentRange)
                 , records(a.records)
+                , aDot(a.aDot)
         {}
 
 
@@ -146,6 +152,8 @@ namespace LCFR{
             currentRange = Range{0,0};
             ++k;
             posInK = 0;
+
+            update_after_dot();
         }
 
 
@@ -153,10 +161,12 @@ namespace LCFR{
             return k >= fanout && posInK == 0;
         }
 
-        PassiveItem<Nonterminal> convert() const {
+        const std::shared_ptr<PassiveItem<Nonterminal>> convert() const {
             assert(is_finished());
 
-            return PassiveItem<Nonterminal>(rule->get_lhs().get_nont(), pre_ranges);
+            return std::make_shared<PassiveItem<Nonterminal>>(
+                    PassiveItem<Nonterminal>(rule->get_lhs().get_nont(), pre_ranges)
+            );
 
         }
 
@@ -185,9 +195,21 @@ namespace LCFR{
             return true;
         }
 
+        /**
+         * Updates the value of aDot.
+         * If there is nothing after the dot, the value stays the same!
+         * @return
+         */
+        void update_after_dot() {
+            if(is_finished())
+                return;
+            const auto& argument = rule->get_lhs().get_args().at(k);
+            if(posInK < argument.size())
+                aDot = argument.at(posInK);
+        }
 
         TerminalOrVariable<Terminal> after_dot() const {
-            return rule->get_lhs().get_args().at(k).at(posInK);
+            return aDot;
         }
 
 
@@ -215,6 +237,8 @@ namespace LCFR{
 
             ++currentRange.second;
             ++posInK;
+
+            update_after_dot();
         }
 
 
@@ -248,6 +272,8 @@ namespace LCFR{
 
             currentRange.second = rangeOfRec.second;
             ++posInK;
+
+            update_after_dot();
         }
 
         bool add_record(const std::shared_ptr<PassiveItem<Nonterminal>> pitem){
@@ -439,12 +465,12 @@ namespace LCFR{
 
         }
 
-        void queue_rules(const Nonterminal &nont, const unsigned long pos){
+        void queue_rules(const Nonterminal& nont, const unsigned long pos){
 //std::clog << "Queueing items for " << nont
 //          << " at " << pos
 //          << " (size: " << grammar.get_rules().at(nont).size()  << ")" << std::endl;
 
-            for(std::shared_ptr<Rule<Nonterminal, Terminal>> r : grammar.get_rules().at(nont)){
+            for(const std::shared_ptr<Rule<Nonterminal, Terminal>>& r : grammar.get_rules().at(nont)){
                 queue.push_back(
                         std::make_shared<ActiveItem<Nonterminal, Terminal>>(
                                 ActiveItem<Nonterminal, Terminal>(r,Range{pos,pos})
@@ -513,17 +539,16 @@ namespace LCFR{
 
 
         void transform_to_passive(
-                std::shared_ptr<ActiveItem<Nonterminal, Terminal>> &&currentItem
+                const std::shared_ptr<ActiveItem<Nonterminal, Terminal>>&& currentItem
         ){
-            std::shared_ptr<PassiveItem<Nonterminal>> pItem
-                    (std::make_shared<PassiveItem<Nonterminal>>(currentItem->convert()));
+            const std::shared_ptr<PassiveItem<Nonterminal>>& pItem = currentItem->convert();
 
 
             // prepare the parse
-            std::pair
+            const std::pair
                     <std::shared_ptr<Rule<Nonterminal, Terminal>>
                             , std::vector<std::shared_ptr<PassiveItem<Nonterminal>>>
-                    > parse
+                    >& parse
                     {
                             currentItem->get_rule()
                             , currentItem->get_records()
@@ -532,16 +557,16 @@ namespace LCFR{
 
 
 
-            Nonterminal nont{pItem->get_nont()};
+            const Nonterminal& nont{pItem->get_nont()};
             if(trace.count(*pItem) == 0) { // observed for first time
-                std::vector<Range> ranges{pItem->get_ranges()};
+                const std::vector<Range> ranges{pItem->get_ranges()};
                 // notify and store
                 for(unsigned long argument = 0; argument < ranges.size(); ++argument){
-                    ItemIndex<Nonterminal> ind(nont, argument, ranges.at(argument).first);
+                    const ItemIndex<Nonterminal> ind(nont, argument, ranges.at(argument).first);
                     passiveItems[ind].push_back(pItem);
 
-                    for (std::shared_ptr<ActiveItem<Nonterminal, Terminal>> aItem : waiting[ind]) {
-                        std::shared_ptr<ActiveItem<Nonterminal, Terminal>> copyItem
+                    for (const std::shared_ptr<ActiveItem<Nonterminal, Terminal>>& aItem : waiting[ind]) {
+                        const std::shared_ptr<ActiveItem<Nonterminal, Terminal>>& copyItem
                                 {std::make_shared<ActiveItem<Nonterminal, Terminal>>
                                          (ActiveItem<Nonterminal, Terminal>{*aItem})};
                         if (copyItem->add_record(pItem))
@@ -549,7 +574,7 @@ namespace LCFR{
                     }
                 }
                 // put into trace
-                TraceItem<Nonterminal,Terminal> traceItem
+                const TraceItem<Nonterminal,Terminal>& traceItem
                         {
                                 pItem,
                                 std::vector<

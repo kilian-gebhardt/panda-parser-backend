@@ -59,8 +59,6 @@ int main(){
 //    tokenize<vector<string>>("a a a a a a b b b b b b", word);
 
 
-
-
     clog << grammar << endl;
 
 
@@ -74,29 +72,4 @@ int main(){
     print_top_trace(grammar, trace, word);
 
     return 0;
-}
-
-
-
-void manual_parse(const LCFRS<string, string> &grammar, const vector<string> &word) {
-    ActiveItem<string, string> activeItem{grammar.get_rules().at("S").front(), Range{0, 0}};
-    clog << activeItem.is_finished() << endl;
-    clog << activeItem << endl;
-    activeItem.scan_terminal(word);
-    clog << activeItem << endl;
-    activeItem.scan_terminal(word);
-    clog << activeItem << endl;
-
-
-    vector<Range> rangeVector{Range(2,5), Range(2,6)};
-    shared_ptr<PassiveItem<string>> pItem = make_shared<PassiveItem<string>>("A", rangeVector);
-    activeItem.add_record(pItem);
-    activeItem.scan_variable();
-    clog << activeItem << endl;
-    clog << activeItem.is_argument_completed() << endl;
-    activeItem.complete_argument();
-    clog << activeItem.is_finished() << endl;
-    clog << activeItem.is_at_wildcard_position() << endl;
-    PassiveItem<string> convItem{activeItem.convert()};
-    clog << convItem << endl;
 }

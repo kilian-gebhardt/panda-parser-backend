@@ -50,6 +50,7 @@ namespace LCFR {
         std::unique_ptr<LCFRS_Parser<Nonterminal,Terminal>> parser;
         std::map<PassiveItem<Nonterminal>,TraceItem<Nonterminal,Terminal>> trace;
         std::map<PassiveItem<Nonterminal>, unsigned long> passiveItemMap;
+        std::vector<Terminal> word;
 
     public:
         LCFRSFactory(const Nonterminal initial):
@@ -81,8 +82,9 @@ namespace LCFR {
             grammar.add_rule(Rule<Nonterminal,Terminal>(currentLHS,rhs, ruleId));
         };
 
-        void do_parse(std::vector<Terminal> word){
+        void do_parse(std::vector<Terminal> w){
 //std::cerr << grammar;
+            word = w;
             parser = std::unique_ptr<LCFRS_Parser<Nonterminal,Terminal>>(
                 new LCFRS_Parser<Nonterminal,Terminal>(grammar, word));
 //std::clog << "Doing the parse";
@@ -136,8 +138,22 @@ namespace LCFR {
             }
 
             return result;
-        };
+        }
 
+        Nonterminal get_initial_nont() const {
+            return grammar.get_initial_nont();
+        }
+
+        std::vector<Terminal> get_word() const {
+            return word;
+        }
+
+        std::pair<Nonterminal, std::vector<std::pair<unsigned long, unsigned long>>> get_initial_passive_item() const {
+            return std::pair<Nonterminal, std::vector<std::pair<unsigned long, unsigned long>>>
+                (grammar.get_initial_nont()
+                , std::vector<std::pair<unsigned long, unsigned long>>
+                    {std::pair<unsigned long, unsigned long>(0,word.size())});
+        }
 
 
 

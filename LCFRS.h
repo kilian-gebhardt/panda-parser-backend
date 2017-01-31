@@ -55,16 +55,20 @@ namespace LCFR {
             args = std::vector<std::vector<TerminalOrVariable<Terminal>>>();
         };
 
-        Nonterminal get_nont() const {
+        const Nonterminal& get_nont() const {
             return nont;
         };
 
-        std::vector<std::vector<TerminalOrVariable<Terminal>>> get_args() const {
+        const std::vector<std::vector<TerminalOrVariable<Terminal>>>& get_args() const {
             return args;
         }
 
-        void add_argument(std::vector<TerminalOrVariable<Terminal>> arg) {
+        void add_argument(std::vector<TerminalOrVariable<Terminal>>& arg) {
             args.push_back(arg);
+        };
+
+        void add_argument(std::vector<TerminalOrVariable<Terminal>>&& arg) {
+            args.emplace_back(std::move(arg));
         };
     };
 
@@ -82,11 +86,11 @@ namespace LCFR {
                 , unsigned long rId = 0)
         : lhs(l), rhs(r), ruleId(rId) {};
 
-        LHS<Nonterminal, Terminal> get_lhs() const {
+        const LHS<Nonterminal, Terminal>& get_lhs() const {
             return lhs;
         };
 
-        std::vector<Nonterminal> get_rhs() const {
+        const std::vector<Nonterminal>& get_rhs() const {
             return rhs;
         }
 
@@ -136,7 +140,7 @@ namespace LCFR {
             return rules;
         }
 
-        const Nonterminal get_initial_nont() const {
+        const Nonterminal& get_initial_nont() const {
             return initial_nont;
         }
 
