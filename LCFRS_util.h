@@ -55,8 +55,9 @@ namespace LCFR {
     public:
         LCFRSFactory(const Nonterminal initial):
             currentLHS{LHS<Nonterminal,Terminal>(initial)},
-            argument{std::vector<TerminalOrVariable<Terminal>>()},
-            grammar{LCFRS<Nonterminal,Terminal>(initial)}
+            argument{std::vector<TerminalOrVariable<Terminal> >()},
+            grammar{LCFRS<Nonterminal,Terminal>(initial)},
+            passiveItemMap{std::map<PassiveItem<Nonterminal>, unsigned long>()}
         {}
 
         void new_rule(const Nonterminal lhsNont){
@@ -83,14 +84,13 @@ namespace LCFR {
         };
 
         void do_parse(std::vector<Terminal> w){
-//std::cerr << grammar;
             word = w;
             parser = std::unique_ptr<LCFRS_Parser<Nonterminal,Terminal>>(
                 new LCFRS_Parser<Nonterminal,Terminal>(grammar, word));
-//std::clog << "Doing the parse";
             parser->do_parse();
             trace = parser->get_trace();
-//print_top_trace(grammar, trace, word);
+            // reset passive_items:
+            passiveItemMap.clear();
         }
 
         std::map<unsigned long
@@ -99,7 +99,6 @@ namespace LCFR {
         get_passive_items_map(){
             auto result = std::map<unsigned long,std::pair<Nonterminal
                                                       , std::vector<std::pair<unsigned long, unsigned long>>>>();
-            passiveItemMap = std::map<PassiveItem<Nonterminal>, unsigned long>();
 
             unsigned long pId{0};
             for (auto tEntry : trace){
@@ -121,6 +120,11 @@ namespace LCFR {
 
         std::map<unsigned long, std::vector<std::pair<unsigned long, std::vector<unsigned long>>>>
                 convert_trace(){
+
+            // convert_trace relies on the work of get_passive_items_map()
+            if(passiveItemMap.empty())
+                get_passive_items_map();
+
             auto result = std::map<unsigned long, std::vector<std::pair<unsigned long, std::vector<unsigned long>>>>();
 
             for (auto tEntry : trace){

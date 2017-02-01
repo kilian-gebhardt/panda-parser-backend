@@ -2,6 +2,7 @@
 // Created by Markus on 19.01.17.
 //
 #include <iostream>
+#include <memory>
 
 #include "LCFRS.h"
 #include "LCFRS_Parser.h"
