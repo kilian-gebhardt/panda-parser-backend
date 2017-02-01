@@ -166,4 +166,17 @@ int main() {
 
     std::cerr << result_ << std::endl;
 
+
+    Eigen::TensorMap<Eigen::Tensor<double, 2>> rule_w2(rule_p, 2, 4);
+    rule_w2.chip(0, 0) = rule_w2.chip(0, 0).unaryExpr([&](const double x) -> double { return x / 2; });
+    rule_w2.chip(1, 0) = rule_w2.chip(1, 0).unaryExpr([&](const double x) -> double { return x / 4; });
+
+    std::cerr << rule_w << std::endl;
+
+    for (unsigned dim = 0; dim < result.dimension(0); ++dim){
+        std::cerr << result(dim) << " ";
+    }
+    std::cerr << std::endl;
+
+
 }

@@ -8,48 +8,49 @@
 #include "SplitMergeUtil.h"
 
 template<typename Val, typename TENSORTYPE>
-Eigen::Tensor<Val, 1> rule_probs(const Eigen::Tensor<Val, 1> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
+inline Eigen::Tensor<Val, 1> rule_probs(const Eigen::Tensor<Val, 1> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
+    assert(rhs_lass.size() == 0);
     return rule_las;
 };
 template<typename Val, typename TENSORTYPE>
-const Eigen::TensorMap<Eigen::Tensor<Val, 1>> & rule_probs(const Eigen::TensorMap<Eigen::Tensor<Val, 1>> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
+inline const Eigen::TensorMap<Eigen::Tensor<Val, 1>> & rule_probs(const Eigen::TensorMap<Eigen::Tensor<Val, 1>> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
     return rule_las;
 };
 
 template<typename Val, typename TENSORTYPE>
-Eigen::Tensor<Val, 1> rule_probs(const Eigen::Tensor<Val, 2> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
+inline Eigen::Tensor<Val, 1> rule_probs(const Eigen::Tensor<Val, 2> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
     auto contraction = rule_las.contract(rhs_lass[0], Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(1, 0)}));
     return contraction;
 }
 template<typename Val, typename TENSORTYPE>
-Eigen::Tensor<Val, 1> rule_probs(const Eigen::TensorMap<Eigen::Tensor<Val, 2>> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
+inline Eigen::Tensor<Val, 1> rule_probs(const Eigen::TensorMap<Eigen::Tensor<Val, 2>> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
     auto contraction = rule_las.contract(rhs_lass[0], Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(1, 0)}));
     return contraction;
 }
 
 
 template<typename Val, typename TENSORTYPE>
-Eigen::Tensor<Val, 1> rule_probs(const Eigen::Tensor<Val, 3> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
+inline Eigen::Tensor<Val, 1> rule_probs(const Eigen::Tensor<Val, 3> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
     auto c1 = rule_las.contract(rhs_lass[1], Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(2, 0)}));
     auto c2 = c1.contract(rhs_lass[0], Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(1, 0)}));
     return c2;
 }
 template<typename Val, typename TENSORTYPE>
-Eigen::Tensor<Val, 1> rule_probs(const Eigen::TensorMap<Eigen::Tensor<Val, 3>> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
+inline Eigen::Tensor<Val, 1> rule_probs(const Eigen::TensorMap<Eigen::Tensor<Val, 3>> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
     auto c1 = rule_las.contract(rhs_lass[1], Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(2, 0)}));
     auto c2 = c1.contract(rhs_lass[0], Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(1, 0)}));
     return c2;
 }
 
 template<typename Val, typename TENSORTYPE>
-Eigen::Tensor<Val, 1> rule_probs(const Eigen::Tensor<Val, 4> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
+inline Eigen::Tensor<Val, 1> rule_probs(const Eigen::Tensor<Val, 4> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
     auto c1 = rule_las.contract(rhs_lass[2], Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(3, 0)}));
     auto c2 = c1.contract(rhs_lass[1], Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(2, 0)}));
     auto c3 = c2.contract(rhs_lass[0], Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(1, 0)}));
     return c3;
 }
 template<typename Val, typename TENSORTYPE>
-Eigen::Tensor<Val, 1> rule_probs(const Eigen::TensorMap<Eigen::Tensor<Val, 4>> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
+inline Eigen::Tensor<Val, 1> rule_probs(const Eigen::TensorMap<Eigen::Tensor<Val, 4>> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
     auto c1 = rule_las.contract(rhs_lass[2], Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(3, 0)}));
     auto c2 = c1.contract(rhs_lass[1], Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(2, 0)}));
     auto c3 = c2.contract(rhs_lass[0], Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(1, 0)}));
@@ -57,41 +58,39 @@ Eigen::Tensor<Val, 1> rule_probs(const Eigen::TensorMap<Eigen::Tensor<Val, 4>> &
 }
 
 
-template <int N, typename Val, typename TENSORTYPE>
-Eigen::Tensor<Val, 1> rule_probs(const Eigen::Tensor<Val, N> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
-    assert((N > 1) && (rhs_lass.size() > N-2));
-    Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {Eigen::IndexPair<int>(N - 1, 0)};
-    Eigen::Tensor<Val, N-1> contraction = rule_las.contract(rhs_lass[N - 2], product_dims);
+//template <int N, typename Val, typename TENSORTYPE>
+//Eigen::Tensor<Val, 1> rule_probs(const Eigen::Tensor<Val, N> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
+//    assert((N > 1) && (rhs_lass.size() > N-2));
+//    Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {Eigen::IndexPair<int>(N - 1, 0)};
+//    Eigen::Tensor<Val, N-1> contraction = rule_las.contract(rhs_lass[N - 2], product_dims);
+//
+//    return rule_probs(contraction, rhs_lass);
+//};
+//template <int N, typename Val, typename TENSORTYPE>
+//Eigen::Tensor<Val, 1> rule_probs(const Eigen::TensorMap<Eigen::Tensor<Val, N>> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
+//    assert((N > 1) && (rhs_lass.size() > N-2));
+//    Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {Eigen::IndexPair<int>(N - 1, 0)};
+//    Eigen::Tensor<Val, N-1> contraction = rule_las.contract(rhs_lass[N - 2], product_dims);
+//
+//    return rule_probs(contraction, rhs_lass);
+//};
 
-    return rule_probs(contraction, rhs_lass);
-};
-template <int N, typename Val, typename TENSORTYPE>
-Eigen::Tensor<Val, 1> rule_probs(const Eigen::TensorMap<Eigen::Tensor<Val, N>> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
-    assert((N > 1) && (rhs_lass.size() > N-2));
-    Eigen::array<Eigen::IndexPair<int>, 1> product_dims = {Eigen::IndexPair<int>(N - 1, 0)};
-    Eigen::Tensor<Val, N-1> contraction = rule_las.contract(rhs_lass[N - 2], product_dims);
 
-    return rule_probs(contraction, rhs_lass);
-};
 
-template<int rule_dim, typename Witness, typename NontToIdx, typename MAP>
-void foo(const std::vector<std::vector<unsigned>> & rule_dimensions
-        , const int rule_id
-        , const std::vector<double*> & rule_weights
-        , Witness & witness
-        , const std::vector<unsigned> & nont_dimensions
-        , const Eigen::TensorMap<Eigen::Tensor<double, 1>> & lhn_outside_weight
-        , const double trace_root_probability
-        , NontToIdx nont_idx
-        , const MAP & tr_io_weight
-        , std::vector<double*> & rule_counts
+
+template<int rule_dim, typename Witness, typename MAP>
+inline void compute_rule_count(const std::vector<unsigned> & rule_dimension_,
+                        double * const rule_weight_ptr, Witness &witness,
+                        const Eigen::TensorMap<Eigen::Tensor<double, 1>> &lhn_outside_weight,
+                        const double trace_root_probability, const MAP &inside_weights,
+                        double * const rule_count_ptr
 ) {
     Eigen::array<long, rule_dim> rule_dimension;
-    for (unsigned i = 0; i < rule_dimensions[rule_id].size(); ++i) {
-        rule_dimension[i] = rule_dimensions[rule_id][i];
+    for (unsigned i = 0; i < rule_dimension_.size(); ++i) {
+        rule_dimension[i] = rule_dimension_[i];
     }
 
-    const Eigen::TensorMap<Eigen::Tensor<double, rule_dim>> rule_weight (rule_weights[rule_id], rule_dimension);
+    const Eigen::TensorMap<Eigen::Tensor<double, rule_dim>> rule_weight (rule_weight_ptr, rule_dimension);
 
     Eigen::array<long, rule_dim> rshape_dim;
     Eigen::array<long, rule_dim> broad_dim;
@@ -105,7 +104,7 @@ void foo(const std::vector<std::vector<unsigned>> & rule_dimensions
         const unsigned item_dim = rule_dimension[i];
         const auto item_weight = (i == 0)
                         ? lhn_outside_weight
-                        : Eigen::TensorMap<Eigen::Tensor<double, 1>>(std::get<0>(tr_io_weight).at(*witness.second[i - 1]), item_dim);
+                        : Eigen::TensorMap<Eigen::Tensor<double, 1>>(inside_weights.at(*witness.second[i - 1]), item_dim);
         rshape_dim[i] = broad_dim[i];
         broad_dim[i] = 1;
         rule_val *= item_weight.reshape(rshape_dim).broadcast(broad_dim);
@@ -113,34 +112,78 @@ void foo(const std::vector<std::vector<unsigned>> & rule_dimensions
         rshape_dim[i] = 1;
     }
 
+    rule_val = rule_val.unaryExpr([&](const double x) -> double {
+        if (x < 0) {
+            std::cerr << "rule weight" << std::endl << rule_weight << std::endl;
+
+            for (unsigned i = 0; i < rule_dim; ++i) {
+                const unsigned item_dim = rule_dimension[i];
+                const auto item_weight = (i == 0)
+                                         ? lhn_outside_weight
+                                         : Eigen::TensorMap<Eigen::Tensor<double, 1>>(inside_weights.at(*witness.second[i - 1]), item_dim);
+                std::cerr << "item " << i << std::endl << item_weight << std::endl;
+            }
 
 
-
+            std::cerr << "resulting value " << std::endl << rule_val << std::endl;
+            abort();
+        }
+        return x;
+    });
 
     if (trace_root_probability > 0) {
-        rule_val = rule_val.unaryExpr([&](const double x) -> double { return x / trace_root_probability; });
+        rule_val = rule_val.unaryExpr([&](const double x) -> double {
+            return x / trace_root_probability;
+        });
     } else {
-        rule_val = rule_val.unaryExpr([&](const double x) -> double { 0; });
+        rule_val = rule_val.unaryExpr([&](const double x) -> double { return 0; });
     }
 
-//    rshape_dim[0] = broad_dim[0];
-//    broad_dim[0] = 1;
-//    rule_val /= (trace_root_probability.reshape(rshape_dim).broadcast(broad_dim));
+    Eigen::TensorMap<Eigen::Tensor<double, rule_dim>> rule_count(rule_count_ptr, rule_dimension);
 
-    // std::cerr << "rule val: " << std::endl << rule_val << std::endl;
+    rule_count = rule_count.unaryExpr([&](const double x) -> double {
+        if (x < 0) {
+            std::cerr << "rule count (before add) " << std::endl << rule_count << std::endl;
+            abort();
+        }
+        return x;
+    });
 
-    Eigen::TensorMap<Eigen::Tensor<double, rule_dim>> rule_count(rule_counts[rule_id], rule_dimension);
-    rule_count += rule_val;
+    Eigen::Tensor<double, rule_dim> tmp = rule_count + rule_val;
+
+    if (false) {
+        rule_count = rule_count.unaryExpr([&](const double x) -> double {
+            if (x < 0) {
+                std::cerr << "rule count (before add) " << std::endl << rule_count << std::endl;
+                std::cerr << "rule val (added to) " << std::endl << rule_val << std::endl;
+                std::cerr << "rule count (after add) " << std::endl << tmp << std::endl;
+                abort();
+            }
+            return x;
+        });
+    }
+
+    rule_count = tmp;
 }
 
-void maximization(const unsigned lhs_dim, const std::vector<std::vector<unsigned>>& rule_dimensions, const std::vector<unsigned> & group, const std::vector<double *> & rule_counts, std::vector<double *> & rule_probabilites) {
+inline void maximization(const unsigned lhs_dim, const std::vector<std::vector<unsigned>>& rule_dimensions, const std::vector<unsigned> & group, const std::vector<double *> & rule_counts, std::vector<double *> & rule_probabilites) {
     Eigen::Tensor<double, 1> lhs_counts (lhs_dim);
     lhs_counts.setZero();
 
     for (const auto rule : group) {
         const unsigned block_size = subdim(rule_dimensions[rule]);
-        const Eigen::TensorMap<Eigen::Tensor<double, 2>> rule_count(rule_counts[rule], lhs_dim, block_size);
-        lhs_counts += rule_count.sum(Eigen::array<long, 1>({1}));
+        Eigen::TensorMap<Eigen::Tensor<double, 2>> rule_count(rule_counts[rule], lhs_dim, block_size);
+//        lhs_counts += rule_count.sum(Eigen::array<long, 1>({1}));
+        rule_count = rule_count.unaryExpr([&](const double x) -> double {
+            if (x < 0) {
+                std::cerr << rule_count << std::endl;
+                abort();
+            }
+            return x;
+        });
+        for (unsigned dim = 0; dim < lhs_dim; ++dim) {
+            lhs_counts.chip(dim, 0) += rule_count.chip(dim, 0).sum();
+        }
     }
     for (const auto rule : group) {
         const unsigned block_size = subdim(rule_dimensions[rule]);
@@ -149,13 +192,39 @@ void maximization(const unsigned lhs_dim, const std::vector<std::vector<unsigned
 
         for (unsigned dim = 0; dim < lhs_dim; ++dim)
             if (lhs_counts(dim) > 0) {
-                rule_probability.chip(dim, 0) = rule_count.chip(dim, 0).unaryExpr([&](const double x) -> double { return x / lhs_counts(dim); });
+                rule_probability.chip(dim, 0) = rule_count.chip(dim, 0).unaryExpr([&](const double x) -> double {
+                    if (false) {
+                        if (x > lhs_counts(dim)) {
+                            std::cerr << "lhs counts" << std::endl << lhs_counts << std::endl;
+                            std::cerr << "rule counts" << std::endl << rule_count << std::endl;
+                            std::cerr << std::endl << std::endl;
+
+                            for (unsigned rule_ : group) {
+                                Eigen::TensorMap<Eigen::Tensor<double, 2>> rule_count_(rule_counts[rule_], lhs_dim,
+                                                                                       subdim(rule_dimensions[rule_]));
+                                rule_count_ = rule_count_.unaryExpr([&](const double x) -> double {
+                                    if (x < 0) {
+                                        std::cerr << rule_count_ << std::endl;
+                                        abort();
+                                    }
+                                    std::cerr << x << " ";
+                                    return x;
+                                });
+                                std::cerr << std::endl;
+                                std::cerr << rule_count_ << std::endl << std::endl;
+
+                            }
+
+                            abort();
+                        }
+                    }
+                    return x / lhs_counts(dim); });
             }
     }
 }
 
 template<int max_dim, typename Val>
-void convert_format(double * const rule_ptr, const std::vector<unsigned> & rule_dim, const std::vector<Val> & weights) {
+inline void convert_format(double * const rule_ptr, const std::vector<unsigned> & rule_dim, const std::vector<Val> & weights) {
     Eigen::array<long, max_dim> rule_dim_a;
     for(unsigned dim = 0; dim < max_dim; ++dim) {
         rule_dim_a[dim] = rule_dim[dim];
@@ -200,11 +269,14 @@ void convert_format(double * const rule_ptr, const std::vector<unsigned> & rule_
 
 //    std::cerr << rule_weight_tensor;
 
-    assert(weight_it == weights.end());
+    if(weight_it != weights.end()) {
+        std::cerr << "conversion error.";
+        abort();
+    }
 }
 
 template<int max_dim, typename Val>
-void de_convert_format(double * const rule_ptr, const std::vector<unsigned> & rule_dim, std::vector<Val> & weights) {
+inline void de_convert_format(double * const rule_ptr, const std::vector<unsigned> & rule_dim, std::vector<Val> & weights) {
     Eigen::array<long, max_dim> rule_dim_a;
     for(unsigned dim = 0; dim < max_dim; ++dim) {
         rule_dim_a[dim] = rule_dim[dim];
@@ -242,8 +314,10 @@ void de_convert_format(double * const rule_ptr, const std::vector<unsigned> & ru
         }
     }
 
-
-    assert(weight_it == weights.end());
+    if(weight_it != weights.end()) {
+        std::cerr << "conversion error.";
+        abort();
+    }
 }
 
 #endif //STERMPARSER_EIGENUTIL_H
