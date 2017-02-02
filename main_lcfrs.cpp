@@ -3,6 +3,9 @@
 //
 #include <iostream>
 #include <memory>
+#include <vector>
+#include <boost/variant.hpp>
+#include <map>
 
 #include "LCFRS.h"
 #include "LCFRS_Parser.h"
