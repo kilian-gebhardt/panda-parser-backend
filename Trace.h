@@ -238,27 +238,36 @@ private:
     double * ones_ptr = nullptr;
 
     double * get_region(unsigned size) {
-        if (start == max) {
-            start = (double*) malloc(sizeof(double) * the_size);
-            max = start + the_size;
-            next = start;
+        if (not self_malloc)
+            return (double*) malloc(sizeof(double) * size);
+        else {
+            if (start == max) {
+                start = (double *) malloc(sizeof(double) * the_size);
+                max = start + the_size;
+                next = start;
+            }
+            if (max - next < size) {
+                std::cerr << "Maximum size of double storage exceeded" << std::endl;
+                abort();
+            }
+            double *return_ = next;
+            next = return_ + size;
+            return return_;
         }
-        if (max - next < size) {
-            std::cerr << "Maximum size of double storage exceeded" << std::endl;
-            abort();
-        }
-        double * return_ = next;
-        next = return_ + size;
-        return return_;
     }
 
     bool free_region(double* const ptr, const unsigned size) {
-        if (ptr + size == next) {
-            assert(start <= ptr);
-            next = ptr;
+        if (not self_malloc) {
+            free(ptr);
             return true;
+        } else {
+            if (ptr + size == next) {
+                assert(start <= ptr);
+                next = ptr;
+                return true;
+            }
+            return false;
         }
-        return false;
     }
 
     std::vector<
@@ -310,6 +319,7 @@ private:
     std::unordered_set<ParseItem<Nonterminal, Position>> inserted_items;
 
     const bool debug = false;
+    const bool self_malloc = true;
 
 public:
     TraceManager(bool debug=false) : debug(debug) {
@@ -917,8 +927,14 @@ public:
         for (unsigned i = 0; i < root_weights.size(); ++i) {
             root_weights[i] = Val::to(root_weight_ptr[i]);
         }
-        if (not free_region(rule_weight_ptr[0], allocated))
-            abort();
+        if (self_malloc) {
+            if (not free_region(rule_weight_ptr[0], allocated))
+                abort();
+        } else {
+            for (auto ptr : rule_weight_ptr) {
+                free_region(ptr, 0);
+            }
+        }
     }
 
 
@@ -1346,7 +1362,6 @@ public:
             rule_dimensions.push_back(rule_dimension);
             double * ptr = get_region(size);
             Eigen::TensorMap<Eigen::Tensor<double, 1>> rule_count (ptr, size);
-//            rule_count.setZero();
             rule_counts.push_back(ptr);
             rule_dimension_total += size;
         }
@@ -1359,9 +1374,19 @@ public:
 
         while (epoch < n_epochs) {
 
-            // reset rule counts (all at once)
-            Eigen::TensorMap<Eigen::Tensor<double, 1>> rule_count(rule_counts[0], rule_dimension_total);
-            rule_count.setZero();
+            if (self_malloc) {
+                // reset rule counts (all at once)
+                Eigen::TensorMap<Eigen::Tensor<double, 1>> rule_count(rule_counts[0], rule_dimension_total);
+                rule_count.setZero();
+            } else {
+                unsigned rule = 0;
+                for (auto nont_ids : rule_to_nont_ids) {
+                    const unsigned size = calc_size(rule_dimensions[rule]);
+                    Eigen::TensorMap<Eigen::Tensor<double, 1>> rule_count(rule_counts[rule], size);
+                    rule_count.setZero();
+                    ++rule;
+                }
+            }
 
             // reset root counts
             root_count.setZero();
@@ -1435,8 +1460,16 @@ public:
                         }
                     }
                 }
-                if (not free_region(std::get<2>(tr_io_weight), std::get<3>(tr_io_weight)))
-                    abort();
+                if (self_malloc) {
+                    if (not free_region(std::get<2>(tr_io_weight), std::get<3>(tr_io_weight)))
+                        abort();
+                } else {
+                    for (auto map : {inside_weights, outside_weights}) {
+                        for (auto pair : map) {
+                            free_region(pair.second, 0);
+                        }
+                    }
+                }
             }
 
             // maximization
@@ -1472,10 +1505,17 @@ public:
                 root_probability = root_count.unaryExpr([&] (const double x) -> double { return x / corpus_prob_sum(0);});
         }
 
-        if (not free_region(root_count_ptr, root_dimension))
-            abort();
-        if (not free_region(rule_counts[0], rule_dimension_total))
-            abort();
+        if (self_malloc) {
+            if (not free_region(root_count_ptr, root_dimension))
+                abort();
+            if (not free_region(rule_counts[0], rule_dimension_total))
+                abort();
+        } else {
+            free_region(root_count_ptr, root_dimension);
+            for (auto ptr : rule_counts) {
+                free_region(ptr, 0);
+            }
+        }
         fedisableexcept(FE_DIVBYZERO | FE_INVALID| FE_OVERFLOW);
 
     }
@@ -1548,9 +1588,16 @@ public:
                 // target += vals.unaryExpr([&] (const double x) -> double {return x / denominator(0);});
                 target += vals;
             }
-
-            if (not free_region(std::get<2>(io_weight), std::get<3>(io_weight)))
-                abort();
+            if (self_malloc) {
+                if (not free_region(std::get<2>(io_weight), std::get<3>(io_weight)))
+                    abort();
+            } else {
+                for (auto map : {std::get<0>(io_weight), std::get<1>(io_weight)}) {
+                    for (auto pair : map) {
+                        free_region(pair.second, 0);
+                    }
+                }
+            }
 
         }
 
@@ -1672,12 +1719,23 @@ public:
                 postfixes.clear();
             }
 
-            if (not free_region(std::get<2>(io_weight), std::get<3>(io_weight)))
-                abort();
+            if (self_malloc) {
+               if (not free_region(std::get<2>(io_weight), std::get<3>(io_weight)))
+                    abort();
+            } else {
+                for (auto map : {std::get<0>(io_weight), std::get<1>(io_weight)}) {
+                    for (auto pair : map) {
+                        free_region(pair.second, 0);
+                    }
+                }
+            }
         }
 
-        if (not free_region(rule_weights_ptrs[0], allocated))
-            abort();
+//        if (not free_region(rule_weights_ptrs[0], allocated))
+//            abort();
+        for (auto ptr : rule_weights_ptrs) {
+            free_region(ptr, 0);
+        }
 
         const bool merge_perc = merge_percent >= 0.0 && merge_percent <= 100.0;
 
