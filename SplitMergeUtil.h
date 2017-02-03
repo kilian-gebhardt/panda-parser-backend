@@ -164,7 +164,7 @@ void fill_merge(const std::vector<Val> & split_weights, std::vector<Val> & merge
 
 template <typename Val>
 void fill_merge2(const std::vector<Val> & split_weights, std::vector<Val> & merged_weights, const std::vector<unsigned> & old_dimensions
-        , const std::vector<unsigned> & new_dimensions, std::vector<unsigned> & selection, const unsigned dim_,
+        , const std::vector<unsigned> & new_dimensions, std::vector<unsigned> & selection,
                 const std::vector<std::vector<std::vector<unsigned>>> & merges, const std::vector<Val> & lhn_merge_weights
 ) {
     unsigned dim = 0;
@@ -227,7 +227,7 @@ std::vector<Val> merge_rule(  const std::vector<Val> & split_weights
     std::cerr << std::endl;*/
     std::vector<Val> merged_weights = std::vector<Val>(new_size, Val::zero());
     std::vector<unsigned> selection;
-    fill_merge2(split_weights, merged_weights, old_dimensions, new_dimensions, selection, 0, merges, lhn_merge_factors);
+    fill_merge2(split_weights, merged_weights, old_dimensions, new_dimensions, selection, merges, lhn_merge_factors);
 
     /*std::cerr << "mw: ";
     for (auto mw : merged_weights) {
