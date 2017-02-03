@@ -23,8 +23,13 @@ inline void outside_weight_step2(const std::vector<double *> &rules, const std::
     const auto rule_weight = Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>(rules[rule.id], rule_dim);
     const auto parent_weight = Eigen::TensorMap<Eigen::Tensor<double, 1>>(outside_weights.at(parent), rule_dim[0]);
 
+    /*
+
     auto rule_val = rule_weight * parent_weight.reshape(Eigen::array<long, rule_rank>{rule_weight.dimension(0), 1}).broadcast(Eigen::array<long, 2>{1, rule_weight.dimension(1)});
     auto outside_weight_summand = rule_val.sum(Eigen::array<long, 1>{0});
+    */
+
+    auto outside_weight_summand = rule_weight.contract(parent_weight, Eigen::array<Eigen::IndexPair<long>, 1>({Eigen::IndexPair<long>(0, 0)}));
 
     outside_weight += outside_weight_summand;
 }
@@ -56,11 +61,14 @@ inline void outside_weight_step3(const std::vector<double *> &rules, const std::
 
     Eigen::TensorMap<Eigen::Tensor<double, 1>>rhs_weight(rhs_ptr, rule_dim[position == 0 ? 2 : 1]);
 
-    auto rule_val = rule_weight
-                    * parent_weight.reshape(Eigen::array<long, rule_rank>{rule_weight.dimension(0), 1, 1}).broadcast(Eigen::array<long, rule_rank>{1, rule_weight.dimension(1), rule_weight.dimension(2)})
-                    * (position == 1 ? rhs_weight.reshape(Eigen::array<long, rule_rank>{1, rule_weight.dimension(1), 1}).broadcast(Eigen::array<long, rule_rank>{rule_weight.dimension(0), 1, rule_weight.dimension(2)}) :
-                       rhs_weight.reshape(Eigen::array<long, rule_rank>{1, 1, rule_weight.dimension(2)}).broadcast(Eigen::array<long, rule_rank>{rule_weight.dimension(0), rule_weight.dimension(1), 1}));
-    auto outside_weight_summand = rule_val.sum(Eigen::array<long, 2>{0, position == 0 ? 2 : 1});
-    outside_weight += outside_weight_summand;
+//    auto rule_val = rule_weight
+//                    * parent_weight.reshape(Eigen::array<long, rule_rank>{rule_weight.dimension(0), 1, 1}).broadcast(Eigen::array<long, rule_rank>{1, rule_weight.dimension(1), rule_weight.dimension(2)})
+//                    * (position == 1 ? rhs_weight.reshape(Eigen::array<long, rule_rank>{1, rule_weight.dimension(1), 1}).broadcast(Eigen::array<long, rule_rank>{rule_weight.dimension(0), 1, rule_weight.dimension(2)}) :
+//                       rhs_weight.reshape(Eigen::array<long, rule_rank>{1, 1, rule_weight.dimension(2)}).broadcast(Eigen::array<long, rule_rank>{rule_weight.dimension(0), rule_weight.dimension(1), 1}));
+//    auto outside_weight_summand = rule_val.sum(Eigen::array<long, 2>{0, position == 0 ? 2 : 1});
 
+    auto c1 = rule_weight.contract(rhs_weight, Eigen::array<Eigen::IndexPair<long>, 1>({Eigen::IndexPair<long>(position == 0 ? 2 : 1, 0)}));
+    auto c2 = c1.contract(parent_weight, Eigen::array<Eigen::IndexPair<long>, 1>({Eigen::IndexPair<long>(0, 0)}));
+
+    outside_weight += c2;
 }

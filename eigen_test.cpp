@@ -168,6 +168,7 @@ int main() {
 
 
     Eigen::TensorMap<Eigen::Tensor<double, 2>> rule_w2(rule_p, 2, 4);
+
     rule_w2.chip(0, 0) = rule_w2.chip(0, 0).unaryExpr([&](const double x) -> double { return x / 2; });
     rule_w2.chip(1, 0) = rule_w2.chip(1, 0).unaryExpr([&](const double x) -> double { return x / 4; });
 

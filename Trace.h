@@ -1283,11 +1283,15 @@ public:
         constexpr unsigned rhs_pos = 1;
         double * rhs_ptr = inside_weights.at(*(witness.second[rhs_pos - 1]));
         const Eigen::TensorMap<Eigen::Tensor<double, 1>> item_weight(rhs_ptr, rule_dim[rhs_pos]);
-        auto tmp_value = rule_weight * item_weight.reshape(Eigen::array<long, 2>{1, rule_weight.dimension(1)}).broadcast(Eigen::array<long, 2>{rule_weight.dimension(0), 1});
 
-        for (unsigned dim = 0; dim < rule_dim[0]; ++dim)
-            inside_weight.chip(dim, 0) += tmp_value.chip(dim, 0).sum();
+//        auto tmp_value = rule_weight * item_weight.reshape(Eigen::array<long, 2>{1, rule_weight.dimension(1)}).broadcast(Eigen::array<long, 2>{rule_weight.dimension(0), 1});
+//
+//
+//        for (unsigned dim = 0; dim < rule_dim[0]; ++dim)
+//            inside_weight.chip(dim, 0) += tmp_value.chip(dim, 0).sum();
 
+        auto c1 = rule_weight.contract(item_weight, Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(1, 0)}));
+        inside_weight += c1;
     }
 
     template<typename Witness>
@@ -1319,6 +1323,7 @@ public:
         double * rhs_ptr2 = inside_weights.at(*(witness.second[rhs_pos2 - 1]));
         const Eigen::TensorMap<Eigen::Tensor<double, 1>> rhs_item_weight2(rhs_ptr2, rule_dim[rhs_pos2]);
 
+        /*
         auto tmp_value = rule_weight
                          * rhs_item_weight1.reshape(Eigen::array<long, rule_rank>{1, rule_weight.dimension(1), 1}).broadcast(Eigen::array<long, rule_rank>{rule_weight.dimension(0), 1, rule_weight.dimension(2)})
                          * rhs_item_weight2.reshape(Eigen::array<long, rule_rank>{1, 1, rule_weight.dimension(2)}).broadcast(Eigen::array<long, rule_rank>{rule_weight.dimension(0), rule_weight.dimension(1), 1})
@@ -1326,6 +1331,10 @@ public:
 
         for (unsigned dim = 0; dim < rule_dim[0]; ++dim)
             inside_weight.chip(dim, 0) += tmp_value.chip(dim, 0).sum();
+        */
+        auto c1 = rule_weight.contract(rhs_item_weight2, Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(2, 0)}));
+        auto c2 = c1.contract(rhs_item_weight1, Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(1, 0)}));
+        inside_weight += c2;
     }
 
 
