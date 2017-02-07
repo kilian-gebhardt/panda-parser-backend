@@ -20,6 +20,7 @@
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 #include "EigenUtil.h"
 #include <fenv.h>
+#include <algorithm>
 
 
 const double minus_infinity = -std::numeric_limits<double>::infinity();
@@ -224,20 +225,44 @@ class TraceManager {
 private:
     double * start = nullptr;
     double * next = nullptr;
-    double * max = nullptr;
-    unsigned the_size = 625000; // 5MB
+    double * max_mem = nullptr;
+    unsigned the_size = 0; // 625000; // 5MB
+
+    bool reserve_memory(unsigned size) {
+        std::cerr << "reserving " << size << std::endl;
+        if (self_malloc) {
+            if (start == next) {
+                if (start != nullptr and max_mem - start < size) {
+                    free(start);
+                }
+                if (start == nullptr or max_mem - start < size) {
+                    unsigned allocate = the_size > size ? the_size : size;
+                    std::cerr << "allocating " << allocate << std::endl;
+                    start = (double *) malloc(sizeof(double) * allocate);
+                    max_mem = start + allocate;
+                    next = start;
+                }
+                return true;
+            } else
+                return false;
+
+        } else
+            return true;
+    }
 
     double * get_region(unsigned size) {
         if (not self_malloc)
             return (double*) malloc(sizeof(double) * size);
         else {
-            if (start == max) {
+            if (start == nullptr) {
                 start = (double *) malloc(sizeof(double) * the_size);
-                max = start + the_size;
+                max_mem = start + the_size;
                 next = start;
             }
-            if (max - next < size) {
+            if (max_mem - next < size) {
                 std::cerr << "Maximum size of double storage exceeded" << std::endl;
+                std::cerr << "Required  " << size << std::endl;
+                std::cerr << "Available " << (max_mem - next) / sizeof(double) << std::endl;
                 abort();
             }
             double *return_ = next;
@@ -311,6 +336,7 @@ private:
     const bool debug = false;
     const bool self_malloc = true;
 
+    MAPTYPE<Nonterminal, unsigned> max_items_with_nonterminal;
 public:
     TraceManager(bool debug=false) : debug(debug) {}
 
@@ -400,6 +426,20 @@ public:
                     trace_reverse[*item].push_back(std::make_tuple(rule, witness_ptr, parent_ptr, i));
                 }
             }
+        }
+
+        MAPTYPE<Nonterminal, unsigned> number_of_items;
+        for (auto item : topological_order) {
+            if (number_of_items.count(item.nonterminal))
+                ++number_of_items[item.nonterminal];
+            else
+                number_of_items[item.nonterminal] = 1;
+        }
+        for (auto pair : number_of_items) {
+            if (not max_items_with_nonterminal.count(pair.first))
+                max_items_with_nonterminal[pair.first] = std::max(max_items_with_nonterminal.at(pair.first), pair.second);
+            else
+                max_items_with_nonterminal[pair.first] = pair.second;
         }
     }
 
@@ -842,6 +882,24 @@ public:
         return rule_weights_la_unlog;
     }
 
+    template<typename Val>
+    unsigned total_rule_sizes(std::vector<std::vector<Val>> & rule_weights) const {
+        unsigned counter = 0;
+        for(const auto & rule_weight : rule_weights) {
+            counter += rule_weight.size();
+        }
+        return counter;
+    }
+
+    template<typename NontIdx>
+    unsigned max_item_size(const std::vector<unsigned> & nont_dimensions, const NontIdx nont_idx) const {
+        unsigned counter = 0;
+        for (const auto & pair : max_items_with_nonterminal) {
+            counter += pair.second * nont_dimensions.at(nont_idx(pair.first));
+        }
+        return counter;
+    }
+
     template <typename Val>
     unsigned convert_to_eigen(std::vector<double*> & rule_weights_ptrs, const std::vector<std::vector<Val>> & rule_weights,
     double* & root_weights_ptrs, const std::vector<Val> & root_weights, const std::vector<std::vector<unsigned>> & rule_dimensions) {
@@ -970,6 +1028,14 @@ public:
         std::cerr << "em training after " << cycle + 1 << ". split" << std::endl;
 
         // em training
+
+        unsigned required_memory = total_rule_sizes(rule_weights_splitted) * 2; // *2 for rule weights and rule counts
+        required_memory += max_item_size(split_dimensions, nont_idx) * 2; // *2 for inside and outside weight
+        required_memory += 2 * 2; // for root weights and counts
+        if (not reserve_memory(required_memory)) {
+            std::cerr << "Could not reserve required memory." << std::endl;
+            abort();
+        }
 
         std::vector<double *> rule_weights_ptrs;
         double * root_weights_ptrs;
