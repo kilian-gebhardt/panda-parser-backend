@@ -2,25 +2,17 @@
 // Created by kilian on 03/02/17.
 //
 
-template<typename NontToIdx, typename Witness>
-inline void outside_weight_step2(const std::vector<double *> &rules, const std::vector<unsigned int> &nont_dimensions,
-                          const NontToIdx nont_idx, MAPTYPE<ParseItem<Nonterminal, Position>, double *> & outside_weights,
+template<typename Witness>
+inline void outside_weight_step2(const std::vector<RuleTensor<double>> &rules,
+                          MAPTYPE<ParseItem<Nonterminal, Position>, double *> & outside_weights,
                           Eigen::TensorMap<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>, 0, Eigen::MakePointer> &
                           outside_weight, Witness witness) const {
     const auto &rule = *(std::get<0>(witness));
-    const auto &siblings = *(std::get<1>(witness));
     const auto &parent = *(std::get<2>(witness));
     constexpr unsigned rule_rank {2};
 
-    Eigen::array<long, rule_rank> rule_dim;
-    rule_dim[0] = nont_dimensions[nont_idx(parent.nonterminal)];
-
-    for (unsigned i = 0; i < rule_rank - 1; ++i) {
-        const auto & rhs_item = siblings[i];
-        rule_dim[i + 1] = nont_dimensions[nont_idx(rhs_item->nonterminal)];
-    }
-
-    const auto rule_weight = Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>(rules[rule.id], rule_dim);
+    const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[rule.id]);
+    const Eigen::array<long, rule_rank> & rule_dim = rule_weight.dimensions();
     const auto parent_weight = Eigen::TensorMap<Eigen::Tensor<double, 1>>(outside_weights.at(parent), rule_dim[0]);
 
     /*
@@ -34,9 +26,9 @@ inline void outside_weight_step2(const std::vector<double *> &rules, const std::
     outside_weight += outside_weight_summand;
 }
 
-template<typename NontToIdx, typename Witness>
-inline void outside_weight_step3(const std::vector<double *> &rules, const std::vector<unsigned int> &nont_dimensions,
-                          const NontToIdx nont_idx, const MAPTYPE<ParseItem < Nonterminal, Position>, double *> & inside_weights,
+template<typename Witness>
+inline void outside_weight_step3(const std::vector<RuleTensor<double>> &rules,
+                                 const MAPTYPE<ParseItem < Nonterminal, Position>, double *> & inside_weights,
                           MAPTYPE<ParseItem<Nonterminal, Position>, double *> & outside_weights,
                           Eigen::TensorMap<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>, 0, Eigen::MakePointer> &
                           outside_weight, Witness witness) const {
@@ -46,15 +38,9 @@ inline void outside_weight_step3(const std::vector<double *> &rules, const std::
     const unsigned position = std::get<3>(witness);
     constexpr unsigned rule_rank {3};
 
-    Eigen::array<long, rule_rank> rule_dim;
-    rule_dim[0] = nont_dimensions[nont_idx(parent.nonterminal)];
 
-    for (unsigned i = 0; i < rule_rank - 1; ++i) {
-        const auto & rhs_item = siblings[i];
-        rule_dim[i + 1] = nont_dimensions[nont_idx(rhs_item->nonterminal)];
-    }
-
-    const auto rule_weight = Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>(rules[rule.id], rule_dim);
+    const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[rule.id]);
+    const Eigen::array<long, rule_rank> & rule_dim = rule_weight.dimensions();
     const auto parent_weight = Eigen::TensorMap<Eigen::Tensor<double, 1>>(outside_weights.at(parent), rule_dim[0]);
 
     double *const rhs_ptr = inside_weights.at(*siblings[position == 0 ? 1 : 0]);

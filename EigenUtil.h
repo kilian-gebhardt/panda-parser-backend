@@ -74,22 +74,27 @@ inline Eigen::Tensor<Val, 1> rule_probs(const Eigen::TensorMap<Eigen::Tensor<Val
 //
 //    return rule_probs(contraction, rhs_lass);
 //};
+template <typename Scalar>
+using RuleTensor = typename boost::variant<
+          Eigen::TensorMap<Eigen::Tensor<Scalar, 1>>
+        , Eigen::TensorMap<Eigen::Tensor<Scalar, 2>>
+        , Eigen::TensorMap<Eigen::Tensor<Scalar, 3>>
+        , Eigen::TensorMap<Eigen::Tensor<Scalar, 4>>
+        , Eigen::TensorMap<Eigen::Tensor<Scalar, 5>>
+        , Eigen::TensorMap<Eigen::Tensor<Scalar, 6>>
+        >;
 
 
 template<typename Witness, typename MAP>
-inline void compute_rule_count2(const std::vector<unsigned> & rule_dimension_,
-                               double * const rule_weight_ptr, Witness &witness,
+inline void compute_rule_count2(RuleTensor<double> rule_weight_tensor, Witness &witness,
                                const Eigen::TensorMap<Eigen::Tensor<double, 1>> &lhn_outside_weight,
                                const double trace_root_probability, const MAP &inside_weights,
-                               double * const rule_count_ptr
+                               RuleTensor<double> & rule_count_tensor
 ) {
     constexpr unsigned rule_rank {2};
-    Eigen::array<long, rule_rank> rule_dimension;
-    for (unsigned i = 0; i < rule_dimension_.size(); ++i) {
-        rule_dimension[i] = rule_dimension_[i];
-    }
 
-    const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> rule_weight (rule_weight_ptr, rule_dimension);
+    const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rule_weight_tensor);
+    const Eigen::array<long, rule_rank> & rule_dimension = rule_weight.dimensions();
 
     Eigen::TensorMap<Eigen::Tensor<double, 1>> rhs_weight(inside_weights.at(*witness.second[0]), rule_dimension[1]);
     auto rule_val = rule_weight
@@ -99,7 +104,6 @@ inline void compute_rule_count2(const std::vector<unsigned> & rule_dimension_,
                                                                         .broadcast(Eigen::array<long, rule_rank>{rule_weight.dimension(0), 1})
                     ;
 
-    Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> rule_count(rule_count_ptr, rule_dimension);
 
     if (trace_root_probability > 0) {
         rule_count += rule_val.unaryExpr([&](const double x) -> double {
@@ -109,19 +113,15 @@ inline void compute_rule_count2(const std::vector<unsigned> & rule_dimension_,
 }
 
 template<typename Witness, typename MAP>
-inline void compute_rule_count3(const std::vector<unsigned> & rule_dimension_,
-                                double * const rule_weight_ptr, Witness &witness,
+inline void compute_rule_count3(const RuleTensor<double> rule_weight_tensor, Witness &witness,
                                 const Eigen::TensorMap<Eigen::Tensor<double, 1>> &lhn_outside_weight,
                                 const double trace_root_probability, const MAP &inside_weights,
-                                double * const rule_count_ptr
+                                RuleTensor<double> & rule_count_tensor
 ) {
     constexpr unsigned rule_rank {3};
-    Eigen::array<long, rule_rank> rule_dimension;
-    for (unsigned i = 0; i < rule_dimension_.size(); ++i) {
-        rule_dimension[i] = rule_dimension_[i];
-    }
 
-    const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> rule_weight (rule_weight_ptr, rule_dimension);
+    const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rule_weight_tensor);
+    const Eigen::array<long, rule_rank> & rule_dimension = rule_weight.dimensions();
 
     Eigen::TensorMap<Eigen::Tensor<double, 1>> rhs_weight1(inside_weights.at(*witness.second[0]), rule_dimension[1]);
     Eigen::TensorMap<Eigen::Tensor<double, 1>> rhs_weight2(inside_weights.at(*witness.second[1]), rule_dimension[2]);
@@ -134,8 +134,7 @@ inline void compute_rule_count3(const std::vector<unsigned> & rule_dimension_,
                     * rhs_weight2.reshape(Eigen::array<long, rule_rank>{1, 1, rule_weight.dimension(2)})
                                                                         .broadcast(Eigen::array<long, rule_rank>{rule_weight.dimension(0), rule_weight.dimension(1), 1})
     ;
-
-    Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> rule_count(rule_count_ptr, rule_dimension);
+    Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_count = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rule_count_tensor);
 
     if (trace_root_probability > 0) {
         rule_count += rule_val.unaryExpr([&](const double x) -> double {
@@ -146,7 +145,7 @@ inline void compute_rule_count3(const std::vector<unsigned> & rule_dimension_,
 
 template<int rule_dim, typename Witness, typename MAP>
 inline void compute_rule_count(const std::vector<unsigned> & rule_dimension_,
-                        double * const rule_weight_ptr, Witness &witness,
+                        const RuleTensor<double> rule_weight_tensor, Witness &witness,
                         const Eigen::TensorMap<Eigen::Tensor<double, 1>> &lhn_outside_weight,
                         const double trace_root_probability, const MAP &inside_weights,
                         double * const rule_count_ptr
@@ -156,7 +155,7 @@ inline void compute_rule_count(const std::vector<unsigned> & rule_dimension_,
         rule_dimension[i] = rule_dimension_[i];
     }
 
-    const Eigen::TensorMap<Eigen::Tensor<double, rule_dim>> rule_weight (rule_weight_ptr, rule_dimension);
+    const Eigen::TensorMap<Eigen::Tensor<double, rule_dim>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_dim>>>(rule_weight_tensor);
 
     Eigen::array<long, rule_dim> rshape_dim;
     Eigen::array<long, rule_dim> broad_dim;
@@ -294,8 +293,17 @@ inline void maximization(const unsigned lhs_dim, const std::vector<std::vector<u
     }
 }
 
+template<int rule_rank>
+inline RuleTensor<double> createTensor(double * const storage, const std::vector<unsigned> & rule_dimension) {
+    Eigen::array<long, rule_rank> rule_dim_a;
+    for(unsigned dim = 0; dim < rule_rank; ++dim) {
+        rule_dim_a[dim] = rule_dimension[dim];
+    }
+    return Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>(storage, rule_dim_a);
+}
+
 template<int max_dim, typename Val>
-inline void convert_format(double * const rule_ptr, const std::vector<unsigned> & rule_dim, const std::vector<Val> & weights) {
+inline void convert_format(double * const rule_ptr, const std::vector<unsigned> & rule_dim, const std::vector<Val> & weights, std::vector<RuleTensor<double>> & rule_tensors) {
     Eigen::array<long, max_dim> rule_dim_a;
     for(unsigned dim = 0; dim < max_dim; ++dim) {
         rule_dim_a[dim] = rule_dim[dim];
@@ -344,6 +352,8 @@ inline void convert_format(double * const rule_ptr, const std::vector<unsigned> 
         std::cerr << "conversion error.";
         abort();
     }
+
+    rule_tensors.emplace_back(std::move(rule_weight_tensor));
 }
 
 template<int max_dim, typename Val>
