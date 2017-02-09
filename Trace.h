@@ -1471,7 +1471,7 @@ public:
 
             // compute new root weights
             if (corpus_prob_sum(0) > 0)
-                root_probability = root_count.unaryExpr([&] (const double x) -> double { return x / corpus_prob_sum(0);});
+                root_probability = root_count * (1 / corpus_prob_sum(0));
         }
 
         if (self_malloc) {
