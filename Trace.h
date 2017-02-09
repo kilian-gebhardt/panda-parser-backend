@@ -259,7 +259,7 @@ public:
                 number_of_items[item.nonterminal] = 1;
         }
         for (auto pair : number_of_items) {
-            if (not max_items_with_nonterminal.count(pair.first))
+            if (max_items_with_nonterminal.count(pair.first))
                 max_items_with_nonterminal[pair.first] = std::max(max_items_with_nonterminal.at(pair.first), pair.second);
             else
                 max_items_with_nonterminal[pair.first] = pair.second;
