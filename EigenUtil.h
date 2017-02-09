@@ -6,6 +6,7 @@
 #define STERMPARSER_EIGENUTIL_H
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 #include "SplitMergeUtil.h"
+#include <boost/variant.hpp>
 
 template<typename Val, typename TENSORTYPE>
 inline Eigen::Tensor<Val, 1> rule_probs(const Eigen::Tensor<Val, 1> & rule_las, const std::vector<TENSORTYPE> & rhs_lass) {
@@ -104,6 +105,7 @@ inline void compute_rule_count2(RuleTensor<double> rule_weight_tensor, Witness &
                                                                         .broadcast(Eigen::array<long, rule_rank>{rule_weight.dimension(0), 1})
                     ;
 
+    Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_count = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rule_count_tensor);
 
     if (trace_root_probability > 0) {
         rule_count += rule_val * (1 / trace_root_probability);
