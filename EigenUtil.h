@@ -85,9 +85,24 @@ using RuleTensor = typename boost::variant<
         , Eigen::TensorMap<Eigen::Tensor<Scalar, 6>>
         >;
 
+inline void compute_rule_count1(const RuleTensor<double> & rule_weight_tensor, const Eigen::TensorMap<Eigen::Tensor<double, 1>> &lhn_outside_weight,
+                                const double trace_root_probability, RuleTensor<double> & rule_count_tensor
+) {
+    constexpr unsigned rule_rank {1};
+
+    const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rule_weight_tensor);
+
+    auto rule_val = rule_weight * lhn_outside_weight;
+
+    Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_count = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rule_count_tensor);
+
+    if (trace_root_probability > 0) {
+        rule_count += rule_val * (1 / trace_root_probability);
+    }
+}
 
 template<typename Witness, typename MAP>
-inline void compute_rule_count2(RuleTensor<double> rule_weight_tensor, Witness &witness,
+inline void compute_rule_count2(const RuleTensor<double> & rule_weight_tensor, Witness &witness,
                                const Eigen::TensorMap<Eigen::Tensor<double, 1>> &lhn_outside_weight,
                                const double trace_root_probability, const MAP &inside_weights,
                                RuleTensor<double> & rule_count_tensor
@@ -113,7 +128,7 @@ inline void compute_rule_count2(RuleTensor<double> rule_weight_tensor, Witness &
 }
 
 template<typename Witness, typename MAP>
-inline void compute_rule_count3(const RuleTensor<double> rule_weight_tensor, Witness &witness,
+inline void compute_rule_count3(const RuleTensor<double> & rule_weight_tensor, Witness &witness,
                                 const Eigen::TensorMap<Eigen::Tensor<double, 1>> &lhn_outside_weight,
                                 const double trace_root_probability, const MAP &inside_weights,
                                 RuleTensor<double> & rule_count_tensor

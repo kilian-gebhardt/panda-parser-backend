@@ -1403,9 +1403,9 @@ public:
 
                             switch (rule_dim) {
                                 case 1:
-                                    compute_rule_count<1>(rule_dimensions[rule_id], rule_tensors[rule_id], witness,
-                                                          lhn_outside_weight, trace_root_probability(0),
-                                                          inside_weights, rule_counts[rule_id]);
+                                    compute_rule_count1(rule_tensors[rule_id],
+                                                        lhn_outside_weight, trace_root_probability(0),
+                                                        rule_count_tensors[rule_id]);
                                     break;
                                 case 2:
                                     compute_rule_count2(rule_tensors[rule_id], witness,
