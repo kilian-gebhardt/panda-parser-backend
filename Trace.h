@@ -1584,7 +1584,7 @@ public:
             p.emplace_back(std::vector<Val>());
             for (unsigned i = 0; i < las_weights.dimension(0); i = i + 2) {
                 double combined_weight = las_weights(i) + las_weights(i+1);
-                if ((not isnan(combined_weight)) and combined_weight > 0) {
+                if ((not std::isnan(combined_weight)) and combined_weight > 0) {
                     p.back().emplace_back(Val::to(las_weights(i) / combined_weight));
                     p.back().emplace_back(Val::to(las_weights(i + 1) / combined_weight));
                 } else {
@@ -1616,7 +1616,7 @@ public:
 //                    const Val in = io_weight.first.at(item)[dim];
 //                    const Val out = io_weight.second.at(item)[dim];
 //                    denominator += (in * out);
-//                    assert(! isnan(denominator.get_Value()));
+//                    assert(! std::isnan(denominator.get_Value()));
 //                }
                 const auto nont_dim = nont_dimensions[nont_idx(item.nonterminal)];
                 prefixes.resize(nont_dim / 2, Val::zero());
@@ -1670,7 +1670,7 @@ public:
 //                    const Val Q = Val::add_subtract2_divide(denominator, in_merged * out_merged, in1 * out1, in2 * out2, denominator);
                     const Val Q = (prefixes[dim / 2] + postfixes[dim / 2] + in_merged * out_merged) / denominator;
 
-                    if (isnan(Q.get_Value())) {
+                    if (std::isnan(Q.get_Value())) {
                         std::cerr << "bad fraction " << Q << " where" << std::endl;
                         std::cerr << "prefix  " << prefixes[dim/2] << std::endl;
                         std::cerr << "postfix " << postfixes[dim/2] << std::endl;
@@ -1686,7 +1686,7 @@ public:
 //                        std::cerr << "prod(in_merged, out_merged) = " << in_merged * out_merged << std::endl;
 //                        std::cerr << "prod(in1, out1) = " << in1 * out1 << std::endl;
 //                        std::cerr << "prod(in2, out2) = " << in2 * out2 << std::endl;
-                        assert(!isnan(Q.get_Value()));
+                        assert(!std::isnan(Q.get_Value()));
                     }
 
                     Val & delta = merge_delta[nont][dim / 2];
