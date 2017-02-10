@@ -1551,13 +1551,13 @@ public:
 
 
                 const auto vals = inside_weight * outside_weight;
-                // denominator cancels out later
-                // auto denominator = sum(vals);
-                auto & target =  merge_weights_partial[nont_idx(item.nonterminal)];
-
-                // denominator cancels out later
-                // target += vals.unaryExpr([&] (const double x) -> double {return x / denominator(0);});
-                target += vals;
+                Eigen::Tensor<double, 0> denominator = vals.sum();
+                Eigen::Tensor<double, 1> fraction = vals * (1 / denominator(0));
+                Eigen::Tensor<bool, 0> nan = fraction.isnan().any();
+                Eigen::Tensor<bool, 0> inf = fraction.isinf().any();
+                if (not nan(0) and not inf(0)){
+                    auto & target =  merge_weights_partial[nont_idx(item.nonterminal)];
+                    target += fraction;                }
             }
             if (self_malloc) {
                 if (not free_region(std::get<2>(io_weight), std::get<3>(io_weight)))
@@ -1579,12 +1579,12 @@ public:
             p.emplace_back(std::vector<Val>());
             for (unsigned i = 0; i < las_weights.dimension(0); i = i + 2) {
                 double combined_weight = las_weights(i) + las_weights(i+1);
-                if (combined_weight != 0) {
-                    p.back().push_back(Val::to(las_weights(i) / combined_weight));
-                    p.back().push_back(Val::to(las_weights(i + 1) / combined_weight));
+                if ((not isnan(combined_weight)) and combined_weight > 0) {
+                    p.back().emplace_back(Val::to(las_weights(i) / combined_weight));
+                    p.back().emplace_back(Val::to(las_weights(i + 1) / combined_weight));
                 } else {
-                    p.back().push_back(Val::to(0.5));
-                    p.back().push_back(Val::to(0.5));
+                    p.back().emplace_back(Val::to(0.5));
+                    p.back().emplace_back(Val::to(0.5));
                 }
             }
         }
