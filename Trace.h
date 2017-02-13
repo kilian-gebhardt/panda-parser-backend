@@ -1040,7 +1040,6 @@ public:
     inline void io_weights_la(
             const std::vector<RuleTensor<double>> & rules,
             const WeightVector & root,
-            const std::vector<std::vector<unsigned>> & rule_id_to_nont_ids,
             const unsigned i) {
 
 
@@ -1069,7 +1068,7 @@ public:
                         inside_weight_step3(inside_weights, inside_weight, witness, rules);
                         break;
                     case 4:
-                        inside_weight_step<4>(rule_id_to_nont_ids, inside_weights, inside_weight, witness, rules);
+                        inside_weight_step<4>(inside_weights, inside_weight, witness, rules);
                         break;
                     default:
                         std::cerr<< "Rules with more than 3 RHS nonterminals are not implemented." << std::endl;
@@ -1251,8 +1250,7 @@ public:
 
 
     template<int rule_rank, typename Witness>
-    void inside_weight_step(const std::vector<std::vector<unsigned int>> &rule_id_to_nont_ids,
-                            const MAPTYPE<ParseItem<Nonterminal, Position>, WeightVector> & inside_weights,
+    void inside_weight_step(const MAPTYPE<ParseItem<Nonterminal, Position>, WeightVector> & inside_weights,
                                 WeightVector &
                                 inside_weight, Witness & witness, const std::vector<RuleTensor<double>> &rules) const {
         if (debug)
@@ -1383,12 +1381,13 @@ public:
 
             double corpus_likelihood(0.0);
 
+            // expectation
             for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
                 auto trace = traces[trace_id];
                 if (trace.size() == 0)
                     continue;
 
-                io_weights_la(rule_tensors, root_probability, rule_to_nont_ids, trace_id);
+                io_weights_la(rule_tensors, root_probability, trace_id);
 
                 const auto & inside_weights = traces_inside_weights[trace_id];
                 const auto & outside_weights = traces_outside_weights[trace_id];
@@ -1397,11 +1396,17 @@ public:
                 const Eigen::TensorMap<Eigen::Tensor<double, 1>> & root_outside_weight = outside_weights.at(goals[trace_id]);
 
                 trace_root_probabilities = root_inside_weight * root_outside_weight;
-                if (trace_root_probability(0) > 0)
-                    root_count += trace_root_probabilities;
                 trace_root_probability = trace_root_probabilities.sum();
 
-                corpus_likelihood += trace_root_probability(0) > 0 ? log(trace_root_probability(0)) : minus_infinity;
+                if (not std::isnan(trace_root_probability(0))
+                    and not std::isinf(trace_root_probability(0))
+                    and trace_root_probability(0) > 0) {
+                    root_count += trace_root_probabilities;
+                    corpus_likelihood += log(trace_root_probability(0));
+                } else {
+                    corpus_likelihood += minus_infinity;
+                    continue;
+                }
 
                 if (debug)
                     std::cerr << "instance root probability: " << std::endl << trace_root_probabilities << std::endl;
@@ -1415,45 +1420,43 @@ public:
                         const WeightVector & lhn_inside_weight = inside_weights.at(pair.first);
                         std::cerr << lhn_inside_weight << std::endl;
                     }
-                    if (trace_root_probability(0) > 0) {
-                        for (const auto & witness : pair.second) {
-                            const int rule_id = witness.first->id;
-                            const unsigned rule_dim = rule_dimensions[rule_id].size();
+                    for (const auto & witness : pair.second) {
+                        const int rule_id = witness.first->id;
+                        const unsigned rule_dim = rule_dimensions[rule_id].size();
 
-                            switch (rule_dim) {
-                                case 1:
-                                    compute_rule_count1(rule_tensors[rule_id],
-                                                        lhn_outside_weight, trace_root_probability(0),
-                                                        rule_count_tensors[rule_id]);
-                                    break;
-                                case 2:
-                                    compute_rule_count2(rule_tensors[rule_id], witness,
-                                                          lhn_outside_weight, trace_root_probability(0),
-                                                          inside_weights,
-                                                          rule_count_tensors[rule_id]
+                        switch (rule_dim) {
+                            case 1:
+                                compute_rule_count1(rule_tensors[rule_id],
+                                                    lhn_outside_weight, trace_root_probability(0),
+                                                    rule_count_tensors[rule_id]);
+                                break;
+                            case 2:
+                                compute_rule_count2(rule_tensors[rule_id], witness,
+                                                      lhn_outside_weight, trace_root_probability(0),
+                                                      inside_weights,
+                                                      rule_count_tensors[rule_id]
 //                                                           rule_counts[rule_id]
-                                    );
-                                    break;
-                                case 3:
-                                    compute_rule_count3(rule_tensors[rule_id], witness,
-                                                          lhn_outside_weight, trace_root_probability(0),
-                                                          inside_weights,
-                                                          rule_count_tensors[rule_id]
+                                );
+                                break;
+                            case 3:
+                                compute_rule_count3(rule_tensors[rule_id], witness,
+                                                      lhn_outside_weight, trace_root_probability(0),
+                                                      inside_weights,
+                                                      rule_count_tensors[rule_id]
 //                                                          rule_counts[rule_id]
-                                    );
-                                    break;
-                                case 4:
-                                    compute_rule_count<4>(rule_tensors[rule_id], witness,
-                                                          lhn_outside_weight, trace_root_probability(0),
-                                                          inside_weights,
-                                                          rule_count_tensors[rule_id]
+                                );
+                                break;
+                            case 4:
+                                compute_rule_count<4>(rule_tensors[rule_id], witness,
+                                                      lhn_outside_weight, trace_root_probability(0),
+                                                      inside_weights,
+                                                      rule_count_tensors[rule_id]
 //                                                          rule_counts[rule_id]
-                                    );
-                                    break;
-                                default:
-                                    std::cerr << "Rules with RHS > " << 3 << " are not implemented." << std::endl;
-                                    abort();
-                            }
+                                );
+                                break;
+                            default:
+                                std::cerr << "Rules with RHS > " << 3 << " are not implemented." << std::endl;
+                                abort();
                         }
                     }
                 }
@@ -1555,7 +1558,7 @@ public:
         std::cerr << "Estimating relative frequency of annotated nonterminals." << std::endl;
         // computing in(A_x) * out(A_x) for every A ∈ N and x ∈ X_A
         for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
-            io_weights_la(rule_weight_tensors, root_weight_tensor, rule_ids_to_nont_ids, trace_id);
+            io_weights_la(rule_weight_tensors, root_weight_tensor, trace_id);
             const auto & inside_weights = traces_inside_weights[trace_id];
             const auto & outside_weights = traces_outside_weights[trace_id];
 

@@ -195,7 +195,9 @@ inline void maximization(const unsigned lhs_dim, const std::vector<std::vector<u
         Eigen::TensorMap<Eigen::Tensor<double, 2>> rule_probability(rule_probabilites[rule], lhs_dim, block_size);
 
         for (unsigned dim = 0; dim < lhs_dim; ++dim)
-            if (lhs_counts(dim) > 0) {
+            if (not std::isnan(lhs_counts(dim))
+                and not std::isinf(lhs_counts(dim))
+                and lhs_counts(dim) > 0) {
                 rule_probability.chip(dim, 0) = rule_count.chip(dim, 0) * (1 / lhs_counts(dim));
             }
     }
