@@ -6,6 +6,7 @@
 #define STERMPARSER_EIGENUTIL_H
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 #include "SplitMergeUtil.h"
+#include <cfloat>
 #include <boost/variant.hpp>
 
 template<typename Val, typename TENSORTYPE>
@@ -198,7 +199,15 @@ inline void maximization(const unsigned lhs_dim, const std::vector<std::vector<u
             if (not std::isnan(lhs_counts(dim))
                 and not std::isinf(lhs_counts(dim))
                 and lhs_counts(dim) > 0) {
-                rule_probability.chip(dim, 0) = rule_count.chip(dim, 0) * (1 / lhs_counts(dim));
+                int power;
+                std::frexp(lhs_counts(0), &power);
+                if (power < -520) {
+                    // some floating point precision-related scaling
+                    rule_probability.chip(dim, 0) =
+                            (rule_count.chip(dim, 0) * std::pow(FLT_RADIX, 512)) * (1 / (lhs_counts(dim) * std::pow(2.0, 512)));
+                }
+                else
+                    rule_probability.chip(dim, 0) = rule_count.chip(dim, 0) * (1 / lhs_counts(dim));
             }
     }
 }
