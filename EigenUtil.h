@@ -203,8 +203,10 @@ inline void maximization(const unsigned lhs_dim, const std::vector<std::vector<u
                 std::frexp(lhs_counts(0), &power);
                 if (power < -520) {
                     // some floating point precision-related scaling
-                    rule_probability.chip(dim, 0) =
-                            (rule_count.chip(dim, 0) * std::pow(FLT_RADIX, 512)) * (1 / (lhs_counts(dim) * std::pow(2.0, 512)));
+//                    rule_probability.chip(dim, 0) =
+//                            (rule_count.chip(dim, 0) * std::pow(FLT_RADIX, 512)) * (1 / (lhs_counts(dim) * std::pow(2.0, 512)));
+                    rule_probability.chip(dim , 0)
+                            = rule_count.chip(dim, 0).unaryExpr([&] (const double x) -> double {return x / lhs_counts(dim);});
                 }
                 else
                     rule_probability.chip(dim, 0) = rule_count.chip(dim, 0) * (1 / lhs_counts(dim));
