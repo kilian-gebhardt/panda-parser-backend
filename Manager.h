@@ -24,14 +24,27 @@ namespace Manage{
     class Element {
     private:
         ID id;
-        std::weak_ptr<Manager<InfoT, oID>> manager;
+        std::shared_ptr<Manager<InfoT, oID>> manager;
 
     public:
-        Element(ID aId, std::weak_ptr<Manager<InfoT, oID>> aManager): id(aId), manager(aManager) {};
+        Element(){}; // TODO: This constructor is needed for Managing of Hyperedges. Can it be avoided?
+        Element(ID aId, std::shared_ptr<Manager<InfoT, oID>> aManager): id(aId), manager(aManager) {};
+        Element(const Element<InfoT, oID>& e): id(e.id), manager(e.manager) {};
+//        Element(Element<InfoT, oID>&& e): id(std::move(e.id)), manager(std::move(e.manager)) {};
 
-        InfoT<oID>& operator->() {return (*manager)[id]; }
-        inline bool operator==(const Element<InfoT, oID> r) {return id == r.id; }
-        inline bool operator!=(const Element<InfoT, oID> r) {return id != r.id; }
+        InfoT<oID>* operator->() {return &((*manager)[id]); }
+        inline bool operator==(const Element<InfoT, oID> r) const {return id == r.id; }
+        inline bool operator!=(const Element<InfoT, oID> r) const {return id != r.id; }
+        inline bool operator<(const Element<InfoT, oID> r) const {return id < r.id; }
+        inline bool operator<=(const Element<InfoT, oID> r) const {return id <= r.id; }
+        inline bool operator>(const Element<InfoT, oID> r) const {return id <= r.id; }
+        inline bool operator>=(const Element<InfoT, oID> r) const {return id <= r.id; }
+
+
+        friend std::ostream& operator <<(std::ostream& o, const Element<InfoT, oID>& item){
+            o << item.id;
+            return o;
+        }
 
     };
 
@@ -39,27 +52,15 @@ namespace Manage{
     class Info {
     private:
         ID id;
-//        std::weak_ptr<Manager<Info,oID>> manager;
         oID originalId;
 
     public:
-//        Info(ID aId
-//             , std::weak_ptr<Manager<Info, oID>> aManager)
-//        : id(aId), manager(aManager) {};
 
-        Info(const ID aId
-//             , const std::weak_ptr<Manager<Info,oID>> aManager
-             , const oID& anOriginalId)
-        : id(aId)
-//                , manager(aManager)
-                , originalId(anOriginalId) {};
+        Info(ID aId, oID anOriginalId)
+        : id(aId), originalId(anOriginalId) {};
 
 
-        ID get_id() const {return id; }
-
-        Element<Info, oID> get_element();//{
-//            return Element<Info, oID>(id, manager);
-//        }
+        ID& get_id() {return id; }
 
         void set_original_id(const oID& anOId){originalId = anOId; }
 
@@ -75,7 +76,6 @@ namespace Manage{
         std::vector<InfoT<oID>> infos {std::vector<InfoT<oID>>() };
 
     public:
-
 
               InfoT<oID>& operator[](ID id)       {return infos[id]; }
         const InfoT<oID>& operator[](ID id) const {return infos[id]; }
@@ -108,41 +108,70 @@ namespace Manage{
     private:
         Element<Node,oID> outgoing;
         std::vector<Element<Node,oID>> incoming;
-        std::weak_ptr<Manager<HyperEdge,oID>> manager;
+        std::shared_ptr<Manager<HyperEdge,oID>> manager;
 
     public:
         HyperEdge(ID aId
-                , std::weak_ptr<Manager<HyperEdge,oID>> aManager
+                , std::shared_ptr<Manager<HyperEdge,oID>> aManager
+                , Element<Node, oID> anOutg
+                , std::vector<Element<Node, oID>> anInc
                 , oID anOriginalId)
-                : Info<oID>(aId, anOriginalId) {
+                : Info<oID>(aId, anOriginalId)
+                , outgoing(anOutg)
+                , incoming(anInc)
+                , manager(aManager){ }
 
-            manager = aManager;
+        HyperEdge(ID aId
+                , std::shared_ptr<Manager<HyperEdge,oID>> aManager
+                , oID anOriginalId)
+                : Info<oID>(aId, anOriginalId)
+                , manager(aManager){ }
+
+        Element<HyperEdge, oID> get_element() {
+            return Element<HyperEdge, oID>(Info<oID>::get_id(), manager);
+        };
+
+        void set_outgoing(const Element<Node, oID>& anOutg){
+            outgoing = anOutg;
         }
 
+        void set_incoming(const std::vector<Element<Node, oID>>& anInc){
+            incoming = anInc;
+        }
     };
 
     template <typename oID>
     class Node : public Info<oID>{
     private:
-        std::vector<HyperEdge<oID>> incoming;
-        std::vector<std::pair<HyperEdge<oID>, ID>> outgoing;
-        std::weak_ptr<Manager<Node,oID>> manager;
+        std::vector<Element<HyperEdge,oID>> incoming {std::vector<Element<HyperEdge,oID>>() };
+        std::vector<std::pair<Element<HyperEdge,oID>, ID>> outgoing {std::vector<std::pair<Element<HyperEdge,oID>,ID>>() };
+        std::shared_ptr<Manager<Node,oID>> manager;
     public:
 
         Node(const ID aId
-                , const std::weak_ptr<Manager<Node,oID>> aManager
+                , const std::shared_ptr<Manager<Node,oID>> aManager
                 , const oID& anOriginalId)
                 : Info<oID>(aId, anOriginalId) {
             manager = aManager;
         }
 
-        void add_incoming(const Element<HyperEdge,oID>& inc){
+        Element<Node, oID> get_element() {
+            return Element<Node, oID>(Info<oID>::get_id(), manager);
+        };
+
+        void add_incoming(Element<HyperEdge,oID> inc){
             incoming.push_back(inc);
         }
+        void add_incoming(Element<HyperEdge,oID>&& inc){
+            incoming.emplace_back(std::move(inc));
+        }
 
-        void add_outgoing(const std::pair<Element<HyperEdge,oID>, ID> out){
+        void add_outgoing(const std::pair<Element<HyperEdge,oID>, ID>& out){
             outgoing.push_back(out);
         }
+
+        std::vector<Element<HyperEdge,oID>> get_incoming() const { return incoming; };
+        std::vector<std::pair<Element<HyperEdge,oID>, ID>> get_outgoing() const { return outgoing; };
 
 //        const Element<Vertex<oID>> get_element() const;
     };
@@ -150,17 +179,21 @@ namespace Manage{
     template <typename oID>
     class Hypergraph : public Manager<Node,oID> {
     private:
-        Manager<HyperEdge,oID> edges;
+        std::shared_ptr<Manager<HyperEdge,oID>> edges{ std::make_shared<Manager<HyperEdge,oID>>(Manager<HyperEdge,oID>()) };
     public:
-        void add_hyperedge(Element<Node,oID>& target, std::vector<Element<Node, oID>>& sources, oID eId){
-            HyperEdge<oID> edge = edges.create_element(eId);
-            target->add_incoming(edge.get_element());
+
+        void add_hyperedge(Element<Node,oID> outgoing
+                , std::vector<Element<Node, oID>> incoming
+                , const oID oId){
+            HyperEdge<oID> edge = edges->create_element(oId);
+            edge.set_outgoing(outgoing);
+            edge.set_incoming(incoming);
+            outgoing->add_incoming(edge.get_element());
+            for (unsigned long i=0; i<incoming.size(); ++i ){
+                incoming[i]->add_outgoing(std::pair<Element<HyperEdge,oID>,unsigned long>(edge.get_element(), i));
+            }
         }
 
-
-        void add_hyperedge(ID target, std::vector<ID> sources){
-
-        }
     };
 
 
