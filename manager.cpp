@@ -42,6 +42,38 @@ int main(){
 
     for (auto e : e2->get_outgoing())
         std::clog << "(" << e.first << "," << e.second << ")";
+    std::clog << std::endl;
+
+
+
+
+    std::clog << "Fun with iterators:" << std::endl;
+    for (auto t : *hg) {
+        std::clog << t << " ";
+    }
+
+    std::clog << std::endl;
+
+    for (auto const_it = hg->cbegin(); const_it != hg->cend(); ++const_it){
+        std::clog << *const_it;
+    }
+
+    std::clog << std::endl;
+
+    std::clog << typeid(std::iterator_traits<ManagerIterator<Node, std::string>>::difference_type).name();
+    std::clog << std::endl;
+
+    auto it = hg->begin();
+    auto it2 = it + 1;
+    it += 2;
+    std::clog << *it;
+    std::clog << *it2;
+    it -= 1;
+    std::clog << *it;
+    std::clog << (it[2]);
+    std::clog << (hg->end() - it);
+
+
 
 
 }

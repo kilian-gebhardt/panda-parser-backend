@@ -79,9 +79,18 @@ namespace Manage{
         ID get_id() const noexcept {return id; }
 
         const oID& get_original_id() const noexcept {return originalId; }
+
+        friend std::ostream& operator <<(std::ostream& o, const Info<oID>& item){
+            o << "<" << item.id << ">";
+            return o;
+        }
     };
 
 
+
+
+    template <template <typename oID> typename InfoT, typename oID, bool isconst = false>
+    class ManagerIterator; // forward reference
 
 
     template <template <typename oID> typename InfoT, typename oID>
@@ -90,6 +99,13 @@ namespace Manage{
         std::vector<InfoT<oID>> infos {std::vector<InfoT<oID>>() };
 
     public:
+        using value_type = Element<InfoT, oID>;
+        using pointer = Element<InfoT, oID>*;
+        using reference = Element<InfoT, oID>&;
+        using iterator = ManagerIterator<InfoT, oID>;
+        using const_iterator = ManagerIterator<InfoT, oID, true>;
+
+
 
               InfoT<oID>& operator[](ID id)       {return infos[id]; }
         const InfoT<oID>& operator[](ID id) const {return infos[id]; }
@@ -97,12 +113,93 @@ namespace Manage{
         template <typename... Cargs>
         InfoT<oID>& create_element(const oID anOId, Cargs... args){
             const ID id = infos.size();
-            infos.emplace_back(id, anOId, this->shared_from_this(), args...);
+            infos.emplace_back(id, anOId, this->shared_from_this(), std::forward<Cargs>(args)...);
             return infos[id];
+        }
+
+        ManagerIterator<InfoT, oID> begin() {return ManagerIterator<InfoT, oID>(0, this->shared_from_this()); }
+        ManagerIterator<InfoT, oID> end() {
+            return ManagerIterator<InfoT, oID>(infos.size(), this->shared_from_this());
+        }
+
+        const ManagerIterator<InfoT, oID, true> cbegin() {
+            return ManagerIterator<InfoT, oID, true>(0, this->shared_from_this());
+        }
+        const ManagerIterator<InfoT, oID, true> cend() {
+            return ManagerIterator<InfoT, oID, true>(infos.size(), this->shared_from_this());
         }
 
     };
 
+    template <template <typename oID> typename InfoT, typename oID, bool isconst>
+    class ManagerIterator {
+    private:
+        unsigned long index;
+        ManagerPtr<InfoT, oID> manager;
+    public:
+        using difference_type = long;
+        using value_type = Element<InfoT, oID>;
+        using pointer = typename std::conditional<isconst, const Element<InfoT, oID>*, Element<InfoT, oID>* >::type;
+        using reference = typename std::conditional<isconst, const Element<InfoT, oID>, Element<InfoT, oID>>::type;
+        using iterator_category = std::random_access_iterator_tag;
+
+        ManagerIterator(): index(0) {}
+        ManagerIterator(unsigned long i, const ManagerPtr<InfoT, oID>& m): index(i), manager(m) {}
+        ManagerIterator(const ManagerIterator<InfoT, oID, isconst>& mit): index(mit.index), manager(mit.manager) {}
+        // todo: enable implicit conversion of non-const iterator to const iterator
+
+        bool operator==(const ManagerIterator<InfoT, oID, isconst>& mit) const noexcept {return mit.index == index; }
+        bool operator!=(const ManagerIterator<InfoT, oID, isconst>& mit) const noexcept {return !(*this == mit); }
+        bool operator<(const ManagerIterator<InfoT, oID, isconst>& mit) const noexcept {return index < mit.index; }
+        bool operator<=(const ManagerIterator<InfoT, oID, isconst>& mit) const noexcept {return index <= mit.index; }
+        bool operator>(const ManagerIterator<InfoT, oID, isconst>& mit) const noexcept {return !(*this <= mit); }
+        bool operator>=(const ManagerIterator<InfoT, oID, isconst>& mit) const noexcept {return !(*this < mit); }
+
+        value_type operator*() const {return Element<InfoT, oID>(index, manager); }
+        value_type operator->() const {return Element<InfoT, oID>(index, manager); }
+
+        ManagerIterator<InfoT, oID, isconst> operator++() { // ++i
+            return ManagerIterator<InfoT, oID, isconst>(++index, manager);
+        }
+        ManagerIterator<InfoT, oID, isconst>& operator++(int) { // i++
+            auto result = ManagerIterator<InfoT, oID, isconst>(index, manager);
+            ++index;
+            return result;
+        }
+        ManagerIterator<InfoT, oID, isconst> operator--() { // ++i
+            return ManagerIterator<InfoT, oID, isconst>(--index, manager);
+        }
+        ManagerIterator<InfoT, oID, isconst>& operator--(int) { // i++
+            auto result = ManagerIterator<InfoT, oID, isconst>(index, manager);
+            --index;
+            return result;
+        }
+
+        ManagerIterator<InfoT, oID, isconst>& operator+=(difference_type shift) {
+            index += shift;
+            return *this;
+        }
+        ManagerIterator<InfoT, oID, isconst>& operator-=(difference_type shift) {
+            index -= shift;
+            return *this;
+        }
+
+        ManagerIterator<InfoT, oID, isconst> operator+(difference_type shift) const {
+            return ManagerIterator<InfoT, oID, isconst>(index+shift, manager);
+        }
+        difference_type operator-(const ManagerIterator<InfoT, oID, isconst>& other) const {
+            return index - other.index;
+        }
+
+        reference operator[](const difference_type i) const {
+            return Element<InfoT, oID>(index + i, manager);
+        }
+
+
+        friend class ManagerIterator<InfoT, oID, true>;
+        friend class ManagerIterator<InfoT, oID, false>;
+
+    };
 
 
 
