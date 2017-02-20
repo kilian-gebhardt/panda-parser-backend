@@ -1524,8 +1524,8 @@ public:
                 Eigen::Tensor<double, 1> trace_root_probabilities = root_inside_weight * root_outside_weight;
                 Eigen::Tensor<double, 0> trace_root_probability = trace_root_probabilities.sum();
 
-                if (not isnan(trace_root_probability(0))
-                    and not isinf(trace_root_probability(0))
+                if (not std::isnan(trace_root_probability(0))
+                    and not std::isinf(trace_root_probability(0))
                     and trace_root_probability(0) > 0) {
                     root_count += trace_root_probabilities;
                     corpus_likelihood += log(trace_root_probability(0));
