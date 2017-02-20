@@ -1405,18 +1405,61 @@ public:
             }
 
             // maximization
-            unsigned nont = 0;
-            for (const std::vector<unsigned> & group : normalization_groups) {
-                const unsigned lhs_dim = rule_dimensions[group[0]][0];
-                maximization(lhs_dim, rule_dimensions, group, rule_counts[0], rule_weights);
-                if (debug) {
-                    std::cerr << "rules for nonterminal " << nont << std::endl;
-                    for (auto rule : group) {
-                        std::cerr << "rule " << rule << " has probabilites: " << std::endl;
-                        std::cerr << Eigen::TensorMap<Eigen::Tensor<double, 2>>(rule_weights[rule], lhs_dim, subdim(rule_dimensions[rule])) << std::endl;
+            if (N_THREADS <= 1) {
+                unsigned nont = 0;
+                for (const std::vector<unsigned> & group : normalization_groups) {
+                    const unsigned lhs_dim = rule_dimensions[group[0]][0];
+                    maximization(lhs_dim, rule_dimensions, group, rule_counts[0], rule_weights);
+                    if (debug) {
+                        std::cerr << "rules for nonterminal " << nont << std::endl;
+                        for (auto rule : group) {
+                            std::cerr << "rule " << rule << " has probabilites: " << std::endl;
+                            std::cerr << Eigen::TensorMap<Eigen::Tensor<double, 2>>(rule_weights[rule], lhs_dim, subdim(rule_dimensions[rule])) << std::endl;
+                        }
                     }
+                    ++nont;
                 }
-                ++nont;
+            } else {
+                unsigned nont = 0;
+                std::mutex nont_mutex;
+
+                std::vector<std::thread> workers;
+                for (unsigned thread = 0; thread < N_THREADS; ++thread) {
+                    workers.push_back(std::thread([&]()
+                    {
+                        unsigned my_nont {0};
+                        unsigned max_nont {0};
+
+                        while (my_nont < normalization_groups.size()) {
+                            {
+                                std::lock_guard<std::mutex> lock(nont_mutex);
+                                my_nont = nont;
+                                max_nont = std::min<unsigned>(nont + BATCH_SIZE, normalization_groups.size());
+                                nont = max_nont;
+                            }
+
+                            for ( ; my_nont < max_nont; ++my_nont) {
+                                const std::vector<unsigned> & group = normalization_groups[my_nont];
+                                const unsigned lhs_dim = rule_dimensions[group[0]][0];
+                                maximization(lhs_dim, rule_dimensions, group, rule_counts[0], rule_weights);
+                                if (debug) {
+                                    std::cerr << "rules for nonterminal " << my_nont << std::endl;
+                                    for (auto rule : group) {
+                                        std::cerr << "rule " << rule << " has probabilites: " << std::endl;
+                                        std::cerr << Eigen::TensorMap<Eigen::Tensor<double, 2>>(rule_weights[rule],
+                                                                                                lhs_dim,
+                                                                                                subdim(rule_dimensions[rule]))
+                                                  << std::endl;
+                                    }
+                                }
+                            }
+                        }
+                    }));
+                }
+                std::for_each(workers.begin(), workers.end(), [](std::thread &t)
+                {
+                    t.join();
+                });
             }
             if (debug) std::cerr << std::endl;
 
