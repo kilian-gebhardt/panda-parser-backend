@@ -5,10 +5,14 @@
 #ifndef STERM_PARSER_LCFRS_UTIL_H
 #define STERM_PARSER_LCFRS_UTIL_H
 
-#include "LCFRS.h"
-#include "LCFRS_Parser.h"
 #include <vector>
 #include <iostream>
+#include <sstream>
+#include "LCFRS.h"
+#include "LCFRS_Parser.h"
+#include "Hypergraph.h"
+
+
 
 // https://stackoverflow.com/questions/236129/split-a-string-in-c
 template <typename ContainerT>
@@ -34,18 +38,17 @@ void tokenize(const std::string& str, ContainerT& tokens,
 
         lastPos = pos + 1;
     }
-}
+};
 
 
 
 namespace LCFR {
 
-
     template<typename Nonterminal, typename Terminal>
     class LCFRSFactory{
     private:
         LHS<Nonterminal, Terminal> currentLHS;
-        std::vector<TerminalOrVariable<Terminal>> argument;
+        std::vector< TerminalOrVariable<Terminal>> argument;
         LCFRS<Nonterminal,Terminal> grammar;
         std::unique_ptr<LCFRS_Parser<Nonterminal,Terminal>> parser;
         std::map<PassiveItem<Nonterminal>,TraceItem<Nonterminal,Terminal>> trace;
@@ -136,7 +139,7 @@ namespace LCFR {
                     for (auto ptrPassiveItem : parse.second){
                         pItems.push_back(passiveItemMap[*ptrPassiveItem]);
                     }
-                    newTrace.push_back(std::pair<unsigned long, std::vector<unsigned long>>(ruleId, pItems));
+                    newTrace.push_back(std::make_pair(ruleId, pItems));
                 }
                 result[pId] = newTrace;
             }
@@ -153,25 +156,27 @@ namespace LCFR {
         }
 
         std::pair<Nonterminal, std::vector<std::pair<unsigned long, unsigned long>>> get_initial_passive_item() const {
-            return std::pair<Nonterminal, std::vector<std::pair<unsigned long, unsigned long>>>
-                (grammar.get_initial_nont()
-                , std::vector<std::pair<unsigned long, unsigned long>>
-                    {std::pair<unsigned long, unsigned long>(0,word.size())});
-        }
+            return std::make_pair(grammar.get_initial_nont()
+                    , std::vector<std::pair<unsigned long, unsigned long>>{std::make_pair(0,word.size())});
 
+        }
 
 
     };
 
 
+    template<typename Terminal>
+    using TerminalOrVariable = typename boost::variant<Terminal, Variable>;
 
     template<typename Nonterminal, typename Terminal>
-    Rule<Nonterminal, Terminal> construct_rule(const Nonterminal nont, const std::vector<std::vector<TerminalOrVariable<Terminal>>> args, const std::vector<Nonterminal> rhs) {
+    Rule<Nonterminal, Terminal> construct_rule(const Nonterminal nont
+            , const std::vector<std::vector<TerminalOrVariable<Terminal>>> args
+            , const std::vector<Nonterminal> rhs){
         LHS<Nonterminal, Terminal> lhs(nont);
-        for(auto const &arg : args)
+        for(auto const& arg : args)
             lhs.add_argument(arg);
         return Rule<Nonterminal, Terminal>(lhs, rhs);
-    }
+    };
 
 
     LCFR::Rule<std::string, std::string> construct_rule(
@@ -196,7 +201,7 @@ namespace LCFR {
         tokenize(rhs, nonterminals, " ", true);
 
         return Rule<std::string, std::string>(lhs, nonterminals);
-    }
+    };
 
     template <typename Nonterminal, typename Terminal>
     void print_top_trace(LCFRS<Nonterminal, Terminal> grammar
@@ -211,10 +216,48 @@ namespace LCFR {
             }
             std::clog << std::endl;
         }
+    };
+
+
+    template <typename Nonterminal, typename Terminal>
+    Manage::HypergraphPtr<unsigned long> convert_trace_to_hypergraph(LCFRS<Nonterminal, Terminal> grammar
+            , std::map<PassiveItem<Nonterminal>, TraceItem<Nonterminal, Terminal>> trace){
+        using namespace Manage;
+        using oID = unsigned long;
+        // construct all nodes
+        auto nodelist = std::map<PassiveItem<Nonterminal>, Element<Node, oID>>();
+        HypergraphPtr<oID> hg = std::make_shared<Hypergraph<oID>>();
+        for (auto const& item : trace) {
+            Node<oID> n = hg->create(0); // no old id available
+            // todo: set infos on n
+            nodelist.emplace(item.first, n.get_element());
+        }
+
+        // construct hyperedges
+        for (auto const& item : trace) {
+            Element<Node, oID> outgoing = nodelist.at(*(item.second.uniquePtr));
+            std::vector<Element<Node, oID>> incoming;
+            for(auto const& parse : item.second.parses){
+                incoming.clear();
+                incoming.reserve(parse.second.size());
+                for(auto const& pItem : parse.second)
+                    incoming.push_back(nodelist.at(*pItem));
+
+                HyperEdge<oID>& edge(hg->add_hyperedge(outgoing, incoming, parse.first->get_rule_id()));
+                // todo: set infos on edge
+            }
+
+        }
+
+        return hg;
+
     }
 
 
 } // namespace LCFR
+
+
+
 
 
 

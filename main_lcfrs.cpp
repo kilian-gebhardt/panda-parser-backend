@@ -75,5 +75,7 @@ int main(){
 
     print_top_trace(grammar, trace, word);
 
+    convert_trace_to_hypergraph<string, string>(grammar, trace);
+
     return 0;
 }

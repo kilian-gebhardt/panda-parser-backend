@@ -6,18 +6,18 @@
 #include <memory>
 #include <string>
 #include <map>
-#include "Manager.h"
+#include "Hypergraph.h"
 
 using namespace Manage;
 
 int main(){
     std::shared_ptr<Hypergraph<std::string>> hg = std::make_shared<Hypergraph<std::string>>();
 
-    Node<std::string> node1 = hg->create_element("hello");
+    Node<std::string> node1 = hg->create("hello");
     Element<Node, std::string> e1 = node1.get_element();
-    Node<std::string> node2 = hg->create_element("world");
+    Node<std::string> node2 = hg->create("world");
     Element<Node, std::string> e2 = node2.get_element();
-    Node<std::string> node3 = hg->create_element("this");
+    Node<std::string> node3 = hg->create("this");
 
     ID id = node1.get_id();
 
