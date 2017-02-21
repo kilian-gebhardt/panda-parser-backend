@@ -894,7 +894,7 @@ public:
         }
 
         // determine merges
-        const auto merge_info = merge_prepare(rule_weights_splitted, root_weights_splitted, split_dimensions,
+        const auto merge_info = merge_prepare(N_THREADS, BATCH_SIZE, rule_weights_splitted, root_weights_splitted, split_dimensions,
                                               rule_to_nonterminals, nont_idx, Val::to(merge_threshold), merge_percentage);
 
 
@@ -1665,54 +1665,14 @@ public:
         }
     }
 
-    template <typename Val, typename NontToIdx>
-    std::tuple< std::vector<std::vector<std::vector<unsigned>>>
-              , std::vector<unsigned>
-              , std::vector<std::vector<Val>>
-              >
-    merge_prepare(const std::vector<std::vector<Val>> & rule_weights
-            , const std::vector<Val> & root_weights
-            , const std::vector<unsigned> & nont_dimensions
-            , const std::vector<std::vector<unsigned>> & rule_ids_to_nont_ids
-                       , const NontToIdx nont_idx
-                       , const Val merge_threshold_
-                       , const double merge_percent = -1.0
-            ) {
-
-
-        // first we compute the fractions p_1, p_2
-        // with which the probabality mass is shared between merged latent states
-
-        // this is prepared with computing globally averaged outside weights
-        // TODO allocate via get_region
-        std::vector<Eigen::Tensor<double, 1>> merge_weights_partial;
-        for (auto dim : nont_dimensions) {
-            Eigen::Tensor<double, 1> merge_weight(dim);
-            merge_weight.setZero();
-            merge_weights_partial.emplace_back(merge_weight);
-        }
-
-        // conversion
-        std::vector<double *> rule_weights_ptrs;
-        std::vector<RuleTensor<double>> rule_weight_tensors;
-        double * root_weights_ptrs;
-
-        std::vector<std::vector<unsigned>> rule_dimensions;
-        for (const auto rule : rule_ids_to_nont_ids) {
-            std::vector<unsigned> rule_dimension;
-            for (unsigned nont : rule) {
-                rule_dimension.emplace_back(nont_dimensions[nont]);
-            }
-            rule_dimensions.emplace_back(std::move(rule_dimension));
-        }
-
-        unsigned allocated = convert_to_eigen(rule_weights_ptrs, rule_weights, rule_weight_tensors, root_weights_ptrs, root_weights, rule_dimensions);
-
-        WeightVector root_weight_tensor(root_weights_ptrs, root_weights.size());
-
-        std::cerr << "Estimating relative frequency of annotated nonterminals." << std::endl;
-        // computing in(A_x) * out(A_x) for every A ∈ N and x ∈ X_A
-        for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
+    template <typename NontToIdx>
+    void estimateNontFreqLA(const unsigned start,
+                            const unsigned stop,
+                            const NontToIdx nont_idx,
+                        std::vector<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>> &merge_weights_partial,
+                        const std::vector<RuleTensor<double>> &rule_weight_tensors,
+                        const WeightVector &root_weight_tensor) {// computing in(A_x) * out(A_x) for every A ∈ N and x ∈ X_A
+        for (unsigned trace_id = start; trace_id < stop; ++trace_id) {
             io_weights_la(rule_weight_tensors, root_weight_tensor, trace_id);
             const auto & inside_weights = traces_inside_weights[trace_id];
             const auto & outside_weights = traces_outside_weights[trace_id];
@@ -1730,38 +1690,17 @@ public:
                 Eigen::Tensor<bool, 0> inf = fraction.isinf().any();
                 if (not nan(0) and not inf(0)){
                     auto & target =  merge_weights_partial[nont_idx(item.nonterminal)];
-                    target += fraction;                }
-
-            }
-        }
-
-        std::cerr << "Computing merge factors." << std::endl;
-        // finally we compute the fractions
-        std::vector<std::vector<Val>> p;
-        for (auto las_weights : merge_weights_partial) {
-            p.emplace_back(std::vector<Val>());
-            for (unsigned i = 0; i < las_weights.dimension(0); i = i + 2) {
-                double combined_weight = las_weights(i) + las_weights(i+1);
-                if ((not std::isnan(combined_weight)) and combined_weight > 0) {
-                    p.back().emplace_back(Val::to(las_weights(i) / combined_weight));
-                    p.back().emplace_back(Val::to(las_weights(i + 1) / combined_weight));
-                } else {
-                    p.back().emplace_back(Val::to(0.5));
-                    p.back().emplace_back(Val::to(0.5));
+                    target += fraction;
                 }
             }
         }
+    }
 
-        std::cerr << "Computing likelihood deltas of merges." << std::endl;
-        // now we approximate the likelihood Δ of merging two latent states
-        std::vector<std::vector<Val>> merge_delta;
-        for (auto dim : nont_dimensions) {
-            merge_delta.push_back(std::vector<Val>(dim / 2, Val::one()));
-        }
-
-        std::vector<Val> prefixes;
-        std::vector<Val> postfixes;
-        for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
+    template <typename NontToIdx, typename Val>
+    inline void computeMergeDeltas(const unsigned start, const unsigned stop, const NontToIdx nont_idx, const std::vector<std::vector<Val>> &p, std::vector<Val> &prefixes,
+                   std::vector<Val> &postfixes, const std::vector<unsigned int> &nont_dimensions,
+                   std::vector<std::vector<Val>> &merge_delta) const {
+        for (unsigned trace_id = start; trace_id < stop; ++trace_id) {
             const MAPTYPE<ParseItem<Nonterminal, Position>, WeightVector> & inside_weights = traces_inside_weights[trace_id];
             const MAPTYPE<ParseItem<Nonterminal, Position>, WeightVector> & outside_weights = traces_outside_weights[trace_id];
 
@@ -1855,6 +1794,159 @@ public:
                 postfixes.clear();
             }
         }
+    }
+
+
+    template <typename Val, typename NontToIdx>
+    std::tuple< std::vector<std::vector<std::vector<unsigned>>>
+              , std::vector<unsigned>
+              , std::vector<std::vector<Val>>
+              >
+    merge_prepare(
+            const unsigned N_THREADS
+            , const unsigned BATCH_SIZE
+            , const std::vector<std::vector<Val>> & rule_weights
+            , const std::vector<Val> & root_weights
+            , const std::vector<unsigned> & nont_dimensions
+            , const std::vector<std::vector<unsigned>> & rule_ids_to_nont_ids
+                       , const NontToIdx nont_idx
+                       , const Val merge_threshold_
+                       , const double merge_percent = -1.0
+            ) {
+
+
+        // first we compute the fractions p_1, p_2
+        // with which the probabality mass is shared between merged latent states
+
+        // this is prepared with computing globally averaged outside weights
+        // TODO allocate via get_region
+        std::vector<std::vector<Eigen::Tensor<double, 1>>> merge_weights_partial(N_THREADS);
+        for (auto dim : nont_dimensions) {
+            Eigen::Tensor<double, 1> merge_weight(dim);
+            merge_weight.setZero();
+            for (unsigned thread = 0; thread < N_THREADS; ++thread)
+                merge_weights_partial[thread].emplace_back(merge_weight);
+        }
+
+        // conversion
+        std::vector<double *> rule_weights_ptrs;
+        std::vector<RuleTensor<double>> rule_weight_tensors;
+        double * root_weights_ptrs;
+
+        std::vector<std::vector<unsigned>> rule_dimensions;
+        for (const auto rule : rule_ids_to_nont_ids) {
+            std::vector<unsigned> rule_dimension;
+            for (unsigned nont : rule) {
+                rule_dimension.emplace_back(nont_dimensions[nont]);
+            }
+            rule_dimensions.emplace_back(std::move(rule_dimension));
+        }
+
+        unsigned allocated = convert_to_eigen(rule_weights_ptrs, rule_weights, rule_weight_tensors, root_weights_ptrs, root_weights, rule_dimensions);
+
+        WeightVector root_weight_tensor(root_weights_ptrs, root_weights.size());
+
+        std::cerr << "Estimating relative frequency of annotated nonterminals." << std::endl;
+        if (N_THREADS <= 1)
+            estimateNontFreqLA(0, traces.size(), nont_idx, merge_weights_partial[0], rule_weight_tensors, root_weight_tensor);
+        else {
+            std::mutex next_trace_mutex;
+            unsigned next_trace {0};
+            std::vector<std::thread> workers;
+            for (unsigned thread = 0; thread < N_THREADS; ++thread) {
+                workers.push_back(std::thread([thread, this, &BATCH_SIZE, &next_trace, &next_trace_mutex, &nont_idx,
+                                                      &merge_weights_partial, &rule_weight_tensors,
+                                                      &root_weight_tensor](){
+                    unsigned my_next_trace {0};
+                    unsigned my_last_trace {0};
+                    while (my_next_trace < traces.size()) {
+                        {
+                            std::lock_guard<std::mutex> lock(next_trace_mutex);
+                            my_next_trace = next_trace;
+                            // since nonterminal freq expectation is cheaper than rule freq expectation,
+                            // we doubled the batch_size here
+                            next_trace += BATCH_SIZE * 2;
+                            my_last_trace = std::min<unsigned>(next_trace, traces.size());
+                        }
+                        estimateNontFreqLA(my_next_trace, my_last_trace, nont_idx, merge_weights_partial[thread],
+                                           rule_weight_tensors, root_weight_tensor);
+                    }
+                }));
+            }
+            std::for_each(workers.begin(), workers.end(), [](std::thread &t)
+            {
+                t.join();
+            });
+            for (unsigned nont = 0; nont < merge_weights_partial[0].size(); ++nont) {
+                for (unsigned thread = 1; thread < N_THREADS; ++thread) {
+                    merge_weights_partial[0][nont] += merge_weights_partial[0][thread];
+                }
+            }
+        }
+
+        std::cerr << "Computing merge factors." << std::endl;
+        // finally we compute the fractions
+        std::vector<std::vector<Val>> p;
+        for (auto las_weights : merge_weights_partial[0]) {
+            p.emplace_back(std::vector<Val>());
+            for (unsigned i = 0; i < las_weights.dimension(0); i = i + 2) {
+                double combined_weight = las_weights(i) + las_weights(i+1);
+                if ((not std::isnan(combined_weight)) and combined_weight > 0) {
+                    p.back().emplace_back(Val::to(las_weights(i) / combined_weight));
+                    p.back().emplace_back(Val::to(las_weights(i + 1) / combined_weight));
+                } else {
+                    p.back().emplace_back(Val::to(0.5));
+                    p.back().emplace_back(Val::to(0.5));
+                }
+            }
+        }
+
+        std::cerr << "Computing likelihood deltas of merges." << std::endl;
+        // now we approximate the likelihood Δ of merging two latent states
+        std::vector<std::vector<std::vector<Val>>> merge_delta(N_THREADS);
+        for (auto dim : nont_dimensions) {
+            for (unsigned thread {0}; thread < N_THREADS; ++thread)
+                merge_delta[thread].push_back(std::vector<Val>(dim / 2, Val::one()));
+        }
+
+        if (N_THREADS <= 1) {
+            std::vector<Val> prefixes;
+            std::vector<Val> postfixes;
+            unsigned start = 0;
+            unsigned stop = traces.size();
+            computeMergeDeltas(start, stop, nont_idx, p, prefixes, postfixes, nont_dimensions, merge_delta[0]);
+        } else {
+            std::mutex next_trace_mutex;
+            unsigned next_trace {0};
+            std::vector<std::thread> workers;
+            for (unsigned thread = 0; thread < N_THREADS; ++thread) {
+                workers.push_back(std::thread([thread, this, &next_trace_mutex, &next_trace, &BATCH_SIZE, &nont_idx, &p, &nont_dimensions, &merge_delta](){
+                    std::vector<Val> prefixes;
+                    std::vector<Val> postfixes;
+                    unsigned my_next_trace {0};
+                    unsigned my_last_trace {0};
+                    while (my_next_trace < traces.size()) {
+                        {
+                            std::lock_guard<std::mutex> lock(next_trace_mutex);
+                            my_next_trace = next_trace;
+                            next_trace += BATCH_SIZE;
+                            my_last_trace = std::min<unsigned>(next_trace, traces.size());
+                        }
+                        computeMergeDeltas(my_next_trace, my_last_trace, nont_idx, p, prefixes, postfixes, nont_dimensions, merge_delta[thread]);
+                    }
+                }));
+            }
+            std::for_each(workers.begin(), workers.end(), [](std::thread &t)
+            {
+                t.join();
+            });
+            for (unsigned nont = 0; nont < merge_delta[0].size(); ++nont) {
+                for (unsigned thread = 1; thread < N_THREADS; ++thread) {
+                    std::transform(merge_delta[0][nont].begin(), merge_delta[0][nont].end(),
+                                   merge_delta[thread][nont].begin(), merge_delta[0][nont].begin(), std::multiplies<Val>());
+                }
+            }
+        }
 
         if (self_malloc) {
             if (not free_region(rule_weights_ptrs[0], allocated))
@@ -1877,7 +1969,7 @@ public:
         Val threshold = Val::zero();
         if (merge_perc) {
             // order merges according to likelihood_loss
-            for (const auto & delta : merge_delta) {
+            for (const auto & delta : merge_delta[0]) {
                 ordered_merge_weights.insert(std::end(ordered_merge_weights), std::begin(delta), std::end(delta));
             }
             std::sort(std::begin(ordered_merge_weights), std::end(ordered_merge_weights), std::greater<Val>());
@@ -1899,7 +1991,7 @@ public:
         unsigned splits = 0;
 
         if (debug) std::cerr << "merge deltas: ";
-        for (const auto & delta : merge_delta) {
+        for (const auto & delta : merge_delta[0]) {
             if (debug) std::cerr << " { ";
             merge_selection.push_back(std::vector<std::vector<unsigned>>());
             for (unsigned dim = 0; dim < nont_dimensions[nont] / 2; ++dim) {
