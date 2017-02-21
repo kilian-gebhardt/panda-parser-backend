@@ -1666,12 +1666,13 @@ public:
     }
 
     template <typename NontToIdx>
-    void estimateNontFreqLA(const unsigned start,
+    inline void estimateNontFreqLA(const unsigned start,
                             const unsigned stop,
                             const NontToIdx nont_idx,
                         std::vector<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>> &merge_weights_partial,
                         const std::vector<RuleTensor<double>> &rule_weight_tensors,
-                        const WeightVector &root_weight_tensor) {// computing in(A_x) * out(A_x) for every A ∈ N and x ∈ X_A
+                        const WeightVector &root_weight_tensor) {
+        // computing in(A_x) * out(A_x) for every A ∈ N and x ∈ X_A
         for (unsigned trace_id = start; trace_id < stop; ++trace_id) {
             io_weights_la(rule_weight_tensors, root_weight_tensor, trace_id);
             const auto & inside_weights = traces_inside_weights[trace_id];
