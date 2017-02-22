@@ -587,6 +587,7 @@ public:
 
     template<typename Val>
     std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge_id(
+            const unsigned N_THREADS, const unsigned BATCH_SIZE,
             const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
             const unsigned n_epochs, const unsigned n_nonts, const unsigned split_merge_cycles, const double merge_threshold, const double merge_percentage=-1.0
     ) {
@@ -600,7 +601,7 @@ public:
         std::cerr << "starting split merge training" << std::endl;
         std::cerr << "# nonts: " << n_nonts << std::endl;
 
-        return split_merge<Val>(rule_weights, rule_to_nonterminals, normalization_groups, n_epochs, nont_idx_f,
+        return split_merge<Val>(N_THREADS, BATCH_SIZE, rule_weights, rule_to_nonterminals, normalization_groups, n_epochs, nont_idx_f,
                            split_merge_cycles, n_nonts, merge_threshold, merge_percentage);
     };
 

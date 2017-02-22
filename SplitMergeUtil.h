@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <iostream>
 #include "util.h"
+#include <cmath>
 
 /*
 #ifdef NDEBUG
@@ -67,7 +68,7 @@ void fill_split(const std::vector<Val> & old_weights, std::vector<Val> & new_wei
         unsigned index = indexation(selection, dimensions);
         assert (origin_index < old_weights.size());
         assert (index < new_weights.size());
-        Val split_weight = old_weights[origin_index] * Val::to(rand_split() * pow(0.5, dim - 1));
+        Val split_weight = old_weights[origin_index] * Val::to(rand_split() * std::pow<double>(0.5, dim - 1));
         new_weights[index] = split_weight;
     } else {
         selection.push_back(0);
