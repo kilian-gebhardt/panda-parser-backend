@@ -8,6 +8,8 @@
 #include <vector>
 #include <iostream>
 #include <sstream>
+#include <queue>
+#include <set>
 #include "LCFRS.h"
 #include "LCFRS_Parser.h"
 #include "Hypergraph.h"
@@ -220,8 +222,10 @@ namespace LCFR {
 
 
     template <typename Nonterminal, typename Terminal>
-    Manage::HypergraphPtr<unsigned long> convert_trace_to_hypergraph(LCFRS<Nonterminal, Terminal> grammar
-            , std::map<PassiveItem<Nonterminal>, TraceItem<Nonterminal, Terminal>> trace){
+    Manage::HypergraphPtr<unsigned long> convert_trace_to_hypergraph
+            (
+            std::map<PassiveItem<Nonterminal>, TraceItem<Nonterminal, Terminal>> trace
+            ){
         using namespace Manage;
         using oID = unsigned long;
         // construct all nodes
@@ -251,7 +255,36 @@ namespace LCFR {
 
         return hg;
 
-    }
+    };
+
+
+
+    template <typename Nonterminal, typename Terminal>
+    std::map<PassiveItem<Nonterminal>, TraceItem<Nonterminal,Terminal>>
+        prune_trace(std::map<PassiveItem<Nonterminal>, TraceItem<Nonterminal,Terminal>> trace
+                , PassiveItem<Nonterminal> initialItem){
+
+        std::map<PassiveItem<Nonterminal>, TraceItem<Nonterminal,Terminal>> result{};
+        std::queue<PassiveItem<Nonterminal>> itemQueue{};
+        std::set<PassiveItem<Nonterminal>> done{};
+        itemQueue.push(initialItem);
+        while(!itemQueue.empty()){
+            const PassiveItem<Nonterminal> item = itemQueue.front();
+            itemQueue.pop();
+
+            if(done.find(item) != done.cend())
+                continue;
+
+            const TraceItem<Nonterminal, Terminal>& trItem = trace[item];
+            result[item] = trItem;
+            for(auto const& outgoingList : trItem.parses){
+                for(auto const& newItem : outgoingList.second)
+                    itemQueue.push(*newItem); // todo: continue here!
+            }
+        }
+
+        return result;
+    };
 
 
 } // namespace LCFR

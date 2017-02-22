@@ -10,6 +10,7 @@
 #include "LCFRS.h"
 #include "LCFRS_Parser.h"
 #include "LCFRS_util.h"
+#include "Hypergraph.h"
 
 using namespace std;
 using namespace LCFR;
@@ -75,7 +76,18 @@ int main(){
 
     print_top_trace(grammar, trace, word);
 
-    convert_trace_to_hypergraph<string, string>(grammar, trace);
+    Manage::HypergraphPtr<unsigned long> hg = convert_trace_to_hypergraph<string, string>(
+            prune_trace<string, string>(trace, PassiveItem<string>(grammar.get_initial_nont()
+                    , std::vector<Range>{Range(0L, word.size())}))
+    );
+
+    std::clog << std::endl << "Nodes in the pruned trace: " << std::endl;
+    for(auto const& elmenent : *hg){
+        std::clog << elmenent->get_id() << " ";
+    }
+
+
+
 
     return 0;
 }
