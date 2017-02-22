@@ -861,6 +861,7 @@ public:
 
         // em training
 
+        // memory allocation as prerequisite for EM training
         unsigned required_memory = total_rule_sizes(rule_weights_splitted) * (1 + N_THREADS); // *2 for rule weights and rule counts
         required_memory += max_item_size(split_dimensions, nont_idx) * 2; // *2 for inside and outside weight
 
@@ -879,6 +880,7 @@ public:
         double * root_weights_ptrs;
         unsigned allocated = convert_to_eigen(rule_weights_ptrs, rule_weights_splitted, rule_weight_tensors, root_weights_ptrs, root_weights_splitted, rule_dimensions_splitted);
 
+        // do actual EM training
         do_em_training_la(N_THREADS, BATCH_SIZE, rule_weight_tensors, rule_weights_ptrs, root_weights_ptrs, normalization_groups, n_epochs, split_dimensions,
                           rule_to_nonterminals, nont_idx);
 
@@ -1064,6 +1066,9 @@ public:
 
             inside_weight.setZero();
 
+            // witness is an incoming edge into item
+            //    - first: edge label
+            //    - second: list of source nodes
             for (const auto & witness : traces[i].at(item)) {
                 switch (witness.second.size() + 1) {
                     case 1:
@@ -1251,8 +1256,8 @@ public:
         constexpr unsigned rhs_pos2 = 2;
         const WeightVector & rhs_item_weight2 = inside_weights.at(*(witness.second[rhs_pos2 - 1]));
 
-        auto c1 = rule_weight.contract(rhs_item_weight2, Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(2, 0)}));
-        auto c2 = c1.contract(rhs_item_weight1, Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(1, 0)}));
+        auto c1 = rule_weight.contract(rhs_item_weight2, Eigen::array<Eigen::IndexPair<int>, 1>{Eigen::IndexPair<int>(2, 0)});
+        auto c2 = c1.contract(rhs_item_weight1, Eigen::array<Eigen::IndexPair<int>, 1>{Eigen::IndexPair<int>(1, 0)});
         inside_weight += c2;
     }
 
