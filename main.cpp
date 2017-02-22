@@ -359,7 +359,7 @@ int main() {
         }
     }
 
-    manager.split_merge<Double>(vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5, 50.0);
+    manager.split_merge<Double>(2, 1, vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5, 50.0);
 
     return 0;
 }

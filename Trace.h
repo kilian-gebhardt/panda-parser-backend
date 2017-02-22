@@ -15,193 +15,13 @@
 #include <functional>
 #include <boost/range/irange.hpp>
 #include <cmath>
-#include <boost/operators.hpp>
 #include <functional>
-
-class Chance {
-    std::default_random_engine generator;
-    std::normal_distribution<double> distribution;
-public:
-    double get_chance() {
-        return distribution(generator);
-    }
-};
-
-const double minus_infinity = -std::numeric_limits<double>::infinity();
-
-class LogDouble : boost::operators<LogDouble> {
-private:
-    double x;
-public:
-    const double & get_Value() const {
-        return x;
-    };
-
-    LogDouble() : x(minus_infinity) {} ;
-
-//    LogDouble(LogDouble&& o) : x(std::move(o.x)) {}
-//    LogDouble(LogDouble & o) : x(o.get_Value()) {}
-    LogDouble(const double x) : x(x) {};
-    bool operator<(const LogDouble& y) const {
-        return x < y.get_Value();
-    }
-
-    LogDouble& operator= (const LogDouble & y) {
-        x = y.get_Value();
-        return *this;
-    }
-
-/*    LogDouble& operator= (LogDouble && y) {
-        x = std::move(y.x);
-        return *this;
-    }*/
-    bool operator==(const LogDouble & y) const {
-        return x == y.get_Value();
-    }
-
-    LogDouble& operator+=(const LogDouble& y_){
-        const double y = y_.get_Value();
-
-        if (x == minus_infinity)
-            x = y;
-        else if (y == minus_infinity)
-            ;
-        // return log(exp(x) + exp(y));
-        // cf. wiki, better accuracy with very small probabilites
-        else if (x >= y)
-            x = x + log1p(exp(y - x));
-        else
-            x = y + log1p(exp(x - y));
-        return *this;
-    }
-
-    LogDouble& operator-= (const LogDouble & y_) {
-            // const double minus_infinity = std::numeric_limits<double>::infinity();
-            if (x >= y_.get_Value())
-                x += log(1 - exp(y_.get_Value() - x));
-            else
-                x = log(exp(x) - exp(y_.get_Value()));
-            return *this;
-        };
-
-    LogDouble& operator*=(const LogDouble& y_){
-        x = x + y_.get_Value();
-        return *this;
-    }
-
-    LogDouble& operator/=(const LogDouble& y_) {
-        x = x - y_.get_Value();
-        return *this;
-    }
-
-    static const LogDouble one()  {
-        return LogDouble(0);
-    }
-
-    static const LogDouble zero() {
-        return LogDouble(-std::numeric_limits<double>::infinity());
-    }
-
-    static const LogDouble to(const double x) {
-        return LogDouble(log(x));
-    }
-
-    double from() const {
-        return exp(x);
-    }
-
-    static const LogDouble add_subtract2_divide(const LogDouble base, const LogDouble add, const LogDouble sub1, const LogDouble sub2, const LogDouble div) {
-        return LogDouble(log(exp(base.get_Value())
-                          + exp(add.get_Value())
-                          - exp(sub1.get_Value())
-                          - exp(sub2.get_Value()))
-                      - div.get_Value());
-    }
-
-};
-
-
-class Double : boost::operators<Double> {
-private:
-    double x;
-    const double minus_infinity = -std::numeric_limits<double>::infinity();
-public:
-    const double & get_Value() const {
-        return x;
-    };
-    Double(const double x) : x(x) {};
-    bool operator<(const Double& y) const {
-        return x < y.get_Value();
-    }
-
-    Double() : x(0) {};
-
-    Double& operator=(const Double& y) {
-        x = y.get_Value();
-        return *this;
-    }
-
-    bool operator==(const Double & y) const {
-        return x == y.get_Value();
-    }
-
-    Double& operator+=(const Double& y_){
-        x += y_.get_Value();
-        return *this;
-    }
-
-    Double& operator-=(const Double& y_){
-        x -= y_.get_Value();
-        return *this;
-    }
-
-    Double operator-() const {
-        return Double(-x);
-    }
-
-    Double operator*=(const Double& y_){
-        x *= y_.get_Value();
-        return *this;
-    }
-
-    Double operator/=(const Double& y_) {
-        x = x / y_.get_Value();
-        return *this;
-    }
-
-    static const Double one()  {
-        return Double(1.0);
-    }
-
-    static const Double zero() {
-        return Double(0.0);
-    }
-
-    static const Double to(const double x) {
-        return Double(x);
-    }
-
-    double from() const {
-        return x;
-    }
-
-    static Double add_subtract2_divide(const Double base, const Double add, const Double sub1, const Double sub2, const Double div) {
-        return Double(((base + add - sub1) - sub2) / div);
-    }
-
-};
-
-
-
-std::ostream &operator<<(std::ostream &os, const LogDouble &log_double){
-    os << " L" << log_double.get_Value();
-    return os;
-}
-
-std::ostream &operator<<(std::ostream &os, const Double &x){
-    os << x.get_Value();
-    return os;
-}
+#include <eigen3/unsupported/Eigen/CXX11/Tensor>
+#include "EigenUtil.h"
+#include <fenv.h>
+#include <algorithm>
+#include <thread>
+#include <mutex>
 
 template <typename Nonterminal>
 class GrammarInfo {
@@ -222,11 +42,73 @@ public:
             ) {}
 };
 
-
+typedef Eigen::TensorMap<Eigen::Tensor<double, 1>> WeightVector;
 
 template <typename Nonterminal, typename Terminal, typename Position>
 class TraceManager {
 private:
+    double * start = nullptr;
+    double * next = nullptr;
+    double * max_mem = nullptr;
+    unsigned the_size = 0; // 625000; // 5MB
+
+    bool reserve_memory(unsigned size) {
+        std::cerr << "reserving " << size << std::endl;
+        if (self_malloc) {
+            if (start == next) {
+                if (start != nullptr and max_mem - start < size) {
+                    free(start);
+                }
+                if (start == nullptr or max_mem - start < size) {
+                    unsigned allocate = the_size > size ? the_size : size;
+                    std::cerr << "allocating " << allocate << std::endl;
+                    start = (double *) malloc(sizeof(double) * allocate);
+                    max_mem = start + allocate;
+                    next = start;
+                }
+                return true;
+            } else
+                return false;
+
+        } else
+            return true;
+    }
+
+    double * get_region(unsigned size) {
+        if (not self_malloc)
+            return (double*) malloc(sizeof(double) * size);
+        else {
+            if (start == nullptr) {
+                start = (double *) malloc(sizeof(double) * the_size);
+                max_mem = start + the_size;
+                next = start;
+            }
+            if (max_mem - next < size) {
+                std::cerr << "Maximum size of double storage exceeded" << std::endl;
+                std::cerr << "Required  " << size << std::endl;
+                std::cerr << "Available " << (max_mem - next) / sizeof(double) << std::endl;
+                abort();
+            }
+            double *return_ = next;
+            next = return_ + size;
+            return return_;
+        }
+    }
+
+    bool free_region(double* const ptr, const unsigned size) {
+        if (not self_malloc) {
+            free(ptr);
+            return true;
+        } else {
+            if (ptr + size == next) {
+                assert(start <= ptr);
+                next = ptr;
+                return true;
+            }
+            return false;
+        }
+    }
+
     std::vector<
             MAPTYPE<
                       ParseItem<Nonterminal, Position>
@@ -276,6 +158,10 @@ private:
     std::unordered_set<ParseItem<Nonterminal, Position>> inserted_items;
 
     const bool debug = false;
+    const bool self_malloc = true;
+
+    MAPTYPE<Nonterminal, unsigned> max_items_with_nonterminal;
+    std::vector<MAPTYPE<ParseItem<Nonterminal, Position>, WeightVector>> traces_inside_weights, traces_outside_weights;
 
 public:
     TraceManager(bool debug=false) : debug(debug) {}
@@ -366,6 +252,21 @@ public:
                     trace_reverse[*item].push_back(std::make_tuple(rule, witness_ptr, parent_ptr, i));
                 }
             }
+        }
+
+        MAPTYPE<Nonterminal, unsigned> number_of_items;
+        for (auto item : topological_order) {
+            if (number_of_items.count(item.nonterminal))
+                ++number_of_items[item.nonterminal];
+            else
+                number_of_items[item.nonterminal] = 1;
+        }
+        for (auto pair : number_of_items) {
+            if (max_items_with_nonterminal.count(pair.first))
+                // changed from max to plus
+                max_items_with_nonterminal[pair.first] = max_items_with_nonterminal.at(pair.first) + pair.second;
+            else
+                max_items_with_nonterminal[pair.first] = pair.second;
         }
     }
 
@@ -686,6 +587,7 @@ public:
 
     template<typename Val>
     std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge_id(
+            const unsigned N_THREADS, const unsigned BATCH_SIZE,
             const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
             const unsigned n_epochs, const unsigned n_nonts, const unsigned split_merge_cycles, const double merge_threshold, const double merge_percentage=-1.0
     ) {
@@ -699,12 +601,13 @@ public:
         std::cerr << "starting split merge training" << std::endl;
         std::cerr << "# nonts: " << n_nonts << std::endl;
 
-        return split_merge<Val>(rule_weights, rule_to_nonterminals, normalization_groups, n_epochs, nont_idx_f,
+        return split_merge<Val>(N_THREADS, BATCH_SIZE, rule_weights, rule_to_nonterminals, normalization_groups, n_epochs, nont_idx_f,
                            split_merge_cycles, n_nonts, merge_threshold, merge_percentage);
     };
 
     template<typename Val>
     std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge(
+            const unsigned N_THREADS, const unsigned BATCH_SIZE,
             const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
             const unsigned n_epochs, const std::map<Nonterminal, unsigned> &nont_idx, const unsigned split_merge_cycles, const double merge_threshold, const double merge_percentage=-1.0
     ) {
@@ -715,12 +618,14 @@ public:
         std::cerr << "starting split merge training" << std::endl;
         std::cerr << "# nonts: " << nont_idx.size() << std::endl;
 
-        return split_merge<Val>(rule_weights, rule_to_nonterminals, normalization_groups, n_epochs, nont_idx_f,
+        return split_merge<Val>(N_THREADS, BATCH_SIZE, rule_weights, rule_to_nonterminals, normalization_groups,
+                                n_epochs, nont_idx_f,
                            split_merge_cycles, nont_idx.size(), merge_threshold, merge_percentage);
     };
 
     template<typename Val, typename NontToIdx>
     std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> split_merge(
+            const unsigned N_THREADS, const unsigned BATCH_SIZE,
             const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
             const std::vector<std::vector<unsigned>> &normalization_groups, const unsigned n_epochs,
             const NontToIdx nont_idx, const unsigned split_merge_cycles, const unsigned n_nonts, const double merge_threshold, const double merge_percentage=-1.0
@@ -738,7 +643,7 @@ public:
         std::vector<Val> root_weights = {Val::one()};
 
         for (unsigned cycle = 0; cycle < split_merge_cycles; ++cycle) {
-            split_merge_cycle(cycle, n_epochs, epsilon
+            split_merge_cycle(N_THREADS, BATCH_SIZE, cycle, n_epochs, epsilon
                     , merge_threshold, merge_percentage, rule_to_nonterminals, normalization_groups, nont_idx, nont_dimensions
                     , rule_weights_la, root_weights);
         }
@@ -751,6 +656,7 @@ public:
 
     template<typename Val>
     std::pair<std::vector<unsigned>, std::vector<std::vector<double>>> run_split_merge_cycle(
+            const unsigned N_THREADS, const unsigned BATCH_SIZE,
             const GrammarInfo<Nonterminal> & grammar_Info,
             std::vector<unsigned> nont_dimensions,
             const std::vector<std::vector<double>> &rule_weights_la,
@@ -761,7 +667,7 @@ public:
         const double epsilon = 0.0001;
         auto rule_weights_val = doubleToVal<Val>(rule_weights_la);
         std::vector<Val> root_weights = {Val::one()};
-        split_merge_cycle(cycle, n_epochs, epsilon, merge_threshold, merge_percentage, grammar_Info.rule_to_nonterminals, grammar_Info.normalization_groups, grammar_Info.nont_idx, nont_dimensions, rule_weights_val, root_weights);
+        split_merge_cycle(N_THREADS, BATCH_SIZE, cycle, n_epochs, epsilon, merge_threshold, merge_percentage, grammar_Info.rule_to_nonterminals, grammar_Info.normalization_groups, grammar_Info.nont_idx, nont_dimensions, rule_weights_val, root_weights);
         auto rule_weights_la_after = valToDouble(rule_weights_val);
 
         return std::make_pair(nont_dimensions, rule_weights_la_after);
@@ -808,8 +714,108 @@ public:
         return rule_weights_la_unlog;
     }
 
+    template<typename Val>
+    unsigned total_rule_sizes(std::vector<std::vector<Val>> & rule_weights) const {
+        unsigned counter = 0;
+        for(const auto & rule_weight : rule_weights) {
+            counter += rule_weight.size();
+        }
+        return counter;
+    }
+
+    template<typename NontIdx>
+    unsigned max_item_size(const std::vector<unsigned> & nont_dimensions, const NontIdx nont_idx) const {
+        unsigned counter = 0;
+        for (const auto & pair : max_items_with_nonterminal) {
+            counter += pair.second * nont_dimensions.at(nont_idx(pair.first));
+        }
+        return counter;
+    }
+
+    template <typename Val>
+    unsigned convert_to_eigen(std::vector<double*> & rule_weights_ptrs, const std::vector<std::vector<Val>> & rule_weights, std::vector<RuleTensor<double>> & rule_tensors,
+    double* & root_weights_ptrs, const std::vector<Val> & root_weights, const std::vector<std::vector<unsigned>> & rule_dimensions) {
+        unsigned allocated(0);
+        unsigned rule = 0;
+        for(auto rule_weight : rule_weights) {
+            const std::vector<unsigned> & rule_dim = rule_dimensions[rule];
+            double * rule_weight_ptr = get_region(rule_weight.size());
+            const unsigned dims = rule_dim.size();
+
+            switch (dims) {
+                case 1:
+                    convert_format<1>(rule_weight_ptr, rule_dim, rule_weight, rule_tensors);
+                    break;
+                case 2:
+                    convert_format<2>(rule_weight_ptr, rule_dim, rule_weight, rule_tensors);
+                    break;
+                case 3:
+                    convert_format<3>(rule_weight_ptr, rule_dim, rule_weight, rule_tensors);
+                    break;
+                case 4:
+                    convert_format<4>(rule_weight_ptr, rule_dim, rule_weight, rule_tensors);
+                    break;
+                default:
+                    assert(false && "Rules with more than 3 RHS nonterminals are not implemented.");
+                    abort();
+            }
+            rule_weights_ptrs.push_back(rule_weight_ptr);
+            allocated += rule_weight.size();
+            ++rule;
+        }
+        root_weights_ptrs = get_region(root_weights.size());
+        allocated += root_weights.size();
+        for (unsigned i = 0; i < root_weights.size(); ++i) {
+            root_weights_ptrs[i] = root_weights[i].from();
+        }
+        return allocated;
+    }
+
+    template<typename Val>
+    void convert_from_eigen(const std::vector<double*> rule_weight_ptr, std::vector<std::vector<Val>> & rule_weights,
+    const double* root_weight_ptr, std::vector<Val> & root_weights, const std::vector<std::vector<unsigned>> & rule_dimensions, const unsigned allocated) {
+
+
+        for(unsigned rule = 0; rule < rule_weights.size(); ++rule) {
+            auto & rule_weight = rule_weights[rule];
+            const std::vector<unsigned> & rule_dim = rule_dimensions[rule];
+            const unsigned dims = rule_dim.size();
+
+            switch (dims) {
+                case 1:
+                    de_convert_format<1>(rule_weight_ptr[rule], rule_dim, rule_weight);
+                    break;
+                case 2:
+                    de_convert_format<2>(rule_weight_ptr[rule], rule_dim, rule_weight);
+                    break;
+                case 3:
+                    de_convert_format<3>(rule_weight_ptr[rule], rule_dim, rule_weight);
+                    break;
+                case 4:
+                    de_convert_format<4>(rule_weight_ptr[rule], rule_dim, rule_weight);
+                    break;
+                default:
+                    assert(false && "Rules with more than 3 RHS nonterminals are not implemented.");
+                    abort();
+            }
+        }
+        for (unsigned i = 0; i < root_weights.size(); ++i) {
+            root_weights[i] = Val::to(root_weight_ptr[i]);
+        }
+        if (self_malloc) {
+            if (not free_region(rule_weight_ptr[0], allocated))
+                abort();
+        } else {
+            for (auto ptr : rule_weight_ptr) {
+                free_region(ptr, 0);
+            }
+        }
+    }
+
+
     template<typename Val, typename NontToIdx>
-    void split_merge_cycle(const unsigned cycle, const unsigned n_epochs, double epsilon, double merge_threshold, double merge_percentage,
+    void split_merge_cycle(const unsigned N_THREADS, const unsigned BATCH_SIZE, const unsigned cycle,
+                           const unsigned n_epochs, double epsilon, double merge_threshold, double merge_percentage,
                            const std::vector<std::vector<unsigned>> &rule_to_nonterminals,
                            const std::vector<std::vector<unsigned>> &normalization_groups, NontToIdx nont_idx,
                            std::vector<unsigned> & nont_dimensions, std::vector<std::vector<Val>> & rule_weights_la,
@@ -818,6 +824,7 @@ public:
         std::vector<std::vector<Val>> rule_weights_splitted;
         std::vector<Val> root_weights_splitted;
         std::vector<std::vector<Val>> rule_weights_merged;
+        std::vector<std::vector<unsigned>> rule_dimensions_splitted;
 
         std::vector<unsigned> split_dimensions;
 
@@ -834,7 +841,15 @@ public:
                 dimensions.push_back(split_dimensions[nont]);
             }
             const std::vector<Val> split_probabilities = split_rule(rule_weight, dimensions);
-            rule_weights_splitted.push_back(split_probabilities);
+            rule_weights_splitted.emplace_back(std::move(split_probabilities));
+            if (debug) {
+                std::cerr << std::endl << "Rule prob " << i << " : { ";
+                for (const auto val : rule_weight) std::cerr << val << " ";
+                std::cerr << " } " << std::endl << "after split: { ";
+                for (const auto val : rule_weights_splitted.back()) std::cerr << val << " ";
+                std::cerr << " } " << std::endl << std::endl;
+            }
+            rule_dimensions_splitted.emplace_back(std::move(dimensions));
         }
 
         const double root_split = rand_split() * 0.5;
@@ -845,8 +860,30 @@ public:
         std::cerr << "em training after " << cycle + 1 << ". split" << std::endl;
 
         // em training
-        do_em_training_la(rule_weights_splitted, root_weights_splitted, normalization_groups, n_epochs, split_dimensions,
+
+        unsigned required_memory = total_rule_sizes(rule_weights_splitted) * (1 + N_THREADS); // *2 for rule weights and rule counts
+        required_memory += max_item_size(split_dimensions, nont_idx) * 2; // *2 for inside and outside weight
+
+        std::cerr << " Tot rule size: " << total_rule_sizes(rule_weights_splitted) << " max item size " << max_item_size(split_dimensions, nont_idx) << std::endl;
+
+        required_memory += 2 * 2; // for root weights and counts
+        if (not reserve_memory(required_memory)) {
+            std::cerr << "Could not reserve required memory." << std::endl;
+            abort();
+        }
+
+        const auto allocated_io_weights = allocate_io_weight_maps(nont_idx, split_dimensions);
+
+        std::vector<double *> rule_weights_ptrs;
+        std::vector<RuleTensor<double>> rule_weight_tensors;
+        double * root_weights_ptrs;
+        unsigned allocated = convert_to_eigen(rule_weights_ptrs, rule_weights_splitted, rule_weight_tensors, root_weights_ptrs, root_weights_splitted, rule_dimensions_splitted);
+
+        do_em_training_la(N_THREADS, BATCH_SIZE, rule_weight_tensors, rule_weights_ptrs, root_weights_ptrs, normalization_groups, n_epochs, split_dimensions,
                           rule_to_nonterminals, nont_idx);
+
+        convert_from_eigen(rule_weights_ptrs, rule_weights_splitted, root_weights_ptrs, root_weights_splitted, rule_dimensions_splitted, allocated);
+        rule_weight_tensors.clear();
 
         for (auto rule_weights_ : rule_weights_splitted) {
             for (auto rule_weight : rule_weights_) {
@@ -858,7 +895,7 @@ public:
         }
 
         // determine merges
-        const auto merge_info = merge_prepare(rule_weights_splitted, root_weights_splitted, split_dimensions,
+        const auto merge_info = merge_prepare(N_THREADS, BATCH_SIZE, rule_weights_splitted, root_weights_splitted, split_dimensions,
                                               rule_to_nonterminals, nont_idx, Val::to(merge_threshold), merge_percentage);
 
 
@@ -879,6 +916,8 @@ public:
             std::cerr << std::endl;
         }
 
+        std::vector<std::vector<unsigned>> rule_dimensions_merged;
+
         // merging
         for (unsigned i = 0; i < rule_weights_splitted.size(); ++i) {
             std::vector<unsigned> old_dimensions;
@@ -895,13 +934,27 @@ public:
             rule_weights_merged.push_back(
                     merge_rule(rule_weights_splitted[i], old_dimensions, new_dimensions, merges,
                                lhn_merge_factors));
+            rule_dimensions_merged.emplace_back(std::move(new_dimensions));
         }
 
         rule_weights_splitted.clear();
 
         // em training
-        do_em_training_la(rule_weights_merged, root_weights, normalization_groups, n_epochs, new_nont_dimensions,
+//        shrink_io_weight_maps(nont_idx, new_nont_dimensions);
+        free_io_weight_maps(allocated_io_weights.first, allocated_io_weights.second);
+        const auto allocated_io_weights2 = allocate_io_weight_maps(nont_idx, new_nont_dimensions);
+
+        // conversion
+        std::vector<double *> rule_weights_merged_ptrs;
+        double * root_weights_merged_ptrs;
+        allocated = convert_to_eigen(rule_weights_merged_ptrs, rule_weights_merged, rule_weight_tensors, root_weights_merged_ptrs, root_weights, rule_dimensions_merged);
+
+        do_em_training_la(N_THREADS, BATCH_SIZE, rule_weight_tensors, rule_weights_merged_ptrs, root_weights_merged_ptrs, normalization_groups, n_epochs, new_nont_dimensions,
                           rule_to_nonterminals, nont_idx);
+
+        convert_from_eigen(rule_weights_merged_ptrs, rule_weights_merged, root_weights_merged_ptrs, root_weights, rule_dimensions_merged, allocated);
+        rule_weight_tensors.clear();
+
 
         for (auto rule_weights_ : rule_weights_merged) {
             for (auto rule_weight : rule_weights_) {
@@ -912,18 +965,90 @@ public:
             }
         }
 
+        free_io_weight_maps(allocated_io_weights2.first, allocated_io_weights2.second);
+
         // create valid state after split/merge cycle
         nont_dimensions = new_nont_dimensions;
         rule_weights_la = rule_weights_merged;
     }
 
-    template<typename Val, typename NontToIdx>
-    std::pair<MAPTYPE<ParseItem < Nonterminal, Position>, std::vector<Val>>,
-    MAPTYPE<ParseItem < Nonterminal, Position>, std::vector<Val>>>
-    io_weights_la(const std::vector<std::vector<Val>> &rules, const std::vector<unsigned> &nont_dimensions,
-                  const std::vector<std::vector<unsigned>> rule_id_to_nont_ids, const NontToIdx nont_idx,
-                  const std::vector<Val> & root,
-                  const unsigned i) const {
+    template<typename NontToIdx>
+    std::pair<double*, unsigned> allocate_io_weight_maps(const NontToIdx nont_idx, const std::vector<unsigned> & nont_dimensions) {
+        double * start(nullptr);
+        unsigned allocated(0);
+
+        for (unsigned i = 0; i < traces_size(); ++i) {
+            MAPTYPE<ParseItem < Nonterminal, Position>, WeightVector> inside_weights, outside_weights;
+
+            const auto &topological_order = topological_orders[i];
+            for (const auto &item : topological_order) {
+                const unsigned item_dimension = nont_dimensions[nont_idx(item.nonterminal)];
+                double *const inside_weight_ptr = get_region(item_dimension);
+                double *const outside_weight_ptr = get_region(item_dimension);
+                if (start == nullptr)
+                    start = inside_weight_ptr;
+                allocated += item_dimension * 2;
+
+                Eigen::TensorMap<Eigen::Tensor<double, 1>> inside_weight(inside_weight_ptr, item_dimension);
+                Eigen::TensorMap<Eigen::Tensor<double, 1>> outside_weight(outside_weight_ptr, item_dimension);
+                inside_weights.emplace(std::make_pair(item, std::move(inside_weight)));
+                outside_weights.emplace(std::make_pair(item, std::move(outside_weight)));
+            }
+            if (traces_inside_weights.size() != i or traces_outside_weights.size() != i)
+                abort();
+            traces_inside_weights.emplace_back(std::move(inside_weights));
+            traces_outside_weights.emplace_back(std::move(outside_weights));
+        }
+        return std::make_pair(start, allocated);
+    }
+
+    template<typename NontToIdx>
+    void shrink_io_weight_maps(const NontToIdx nont_idx, const std::vector<unsigned> & nont_dimensions) {
+        for (unsigned i = 0; i < traces_size(); ++i) {
+            MAPTYPE<ParseItem < Nonterminal, Position>, WeightVector> & inside_weights = traces_inside_weights[i];
+            MAPTYPE<ParseItem < Nonterminal, Position>, WeightVector> & outside_weights = traces_outside_weights[i];
+            MAPTYPE<ParseItem < Nonterminal, Position>, WeightVector> inside_weights_new, outside_weights_new;
+            const auto &topological_order = topological_orders[i];
+            for (const auto &item : topological_order) {
+                const unsigned item_dimension = nont_dimensions[nont_idx(item.nonterminal)];
+                double *const inside_weight_ptr = inside_weights.at(item).data();
+                double *const outside_weight_ptr = outside_weights.at(item).data();
+
+                Eigen::TensorMap<Eigen::Tensor<double, 1>> inside_weight(inside_weight_ptr, item_dimension);
+                Eigen::TensorMap<Eigen::Tensor<double, 1>> outside_weight(outside_weight_ptr, item_dimension);
+                inside_weights_new.emplace(std::make_pair(item, std::move(inside_weight)));
+                outside_weights_new.emplace(std::make_pair(item, std::move(outside_weight)));
+            }
+            traces_inside_weights[i] = inside_weights_new;
+            traces_outside_weights[i] = outside_weights_new;
+        }
+    }
+
+    void free_io_weight_maps(double * const start, unsigned allocated) {
+        if (self_malloc) {
+            if (not free_region(start, allocated))
+                abort();
+            traces_inside_weights.clear();
+            traces_outside_weights.clear();
+        } else {
+            for (unsigned i = 0; i < traces_size(); ++i) {
+                MAPTYPE<ParseItem < Nonterminal, Position>, WeightVector> & inside_weights = traces_inside_weights[i];
+                MAPTYPE<ParseItem < Nonterminal, Position>, WeightVector> & outside_weights = traces_outside_weights[i];
+                const auto &topological_order = topological_orders[i];
+                for (const auto &item : topological_order) {
+                    free(inside_weights.at(item).data());
+                    free(outside_weights.at(item).data());
+                }
+            }
+        }
+        traces_inside_weights.clear();
+        traces_outside_weights.clear();
+    }
+
+    inline void io_weights_la(
+            const std::vector<RuleTensor<double>> & rules,
+            const WeightVector & root,
+            const unsigned i) {
 
 
         // TODO implement for general case (== no topological order) approximation of inside weights
@@ -932,131 +1057,277 @@ public:
         const auto & topological_order = topological_orders[i];
 
         // computation of inside weights
-        MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<Val>> inside_weights;
-        std::vector<unsigned> rule_dim;
-        std::vector<std::vector<Val>> nont_vectors;
-        for (const auto & item : topological_order) {
-            inside_weights[item] = std::vector<Val>(nont_dimensions[nont_idx(item.nonterminal)], Val::zero());
-            std::vector<Val> & inside_weight = inside_weights[item];
-            for (const auto & witness : traces[i].at(item)) {
-                // nont_vectors.reserve(witness.second.size());
-                for (auto nont : rule_id_to_nont_ids[witness.first->id]) {
-                    rule_dim.push_back(nont_dimensions[nont]);
-                }
-                for (const auto & dep_item : witness.second) {
-                    nont_vectors.push_back(inside_weights.at(*dep_item));
-                }
-//                inside_weight = zipWith<Val>(std::plus<Val>(), inside_weight,
-//                                        compute_inside_weights(rules[witness.first->id], nont_vectors,
-//                                                               rule_dim));
-                std::transform(
-                          std::begin(inside_weight)
-                        , std::end(inside_weight)
-                        , std::begin(compute_inside_weights(rules[witness.first->id], nont_vectors, rule_dim))
-                        , std::begin(inside_weight)
-                        , std::plus<Val>()
-                        );
+        MAPTYPE<ParseItem < Nonterminal, Position>, WeightVector> & inside_weights = traces_inside_weights[i];
 
-                rule_dim.clear();
-                nont_vectors.clear();
+        for (const auto & item : topological_order) {
+            Eigen::TensorMap<Eigen::Tensor<double, 1>> & inside_weight = inside_weights.at(item);
+
+            inside_weight.setZero();
+
+            for (const auto & witness : traces[i].at(item)) {
+                switch (witness.second.size() + 1) {
+                    case 1:
+                        inside_weight_step1(inside_weight, witness, rules);
+                        break;
+                    case 2:
+                        inside_weight_step2(inside_weights, inside_weight, witness, rules);
+                        break;
+                    case 3:
+                        inside_weight_step3(inside_weights, inside_weight, witness, rules);
+                        break;
+                    case 4:
+                        inside_weight_step<4>(inside_weights, inside_weight, witness, rules);
+                        break;
+                    default:
+                        std::cerr<< "Rules with more than 3 RHS nonterminals are not implemented." << std::endl;
+                        abort();
+                }
+            }
+            if (debug) {
+                std::cerr << "inside weight " << item << std::endl;
+                std::cerr << inside_weight << std::endl;
             }
         }
 
         // TODO implement for general case (== no topological order) solution by gauss jordan
-        MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<Val>> outside_weights;
-        std::vector<std::vector<Val>> relevant_inside_weights;
-        for (int j = topological_order.size() - 1; j >= 0; --j) {
-            const ParseItem<Nonterminal, Position> & item = topological_order[j];
-            outside_weights[item] = std::vector<Val>(nont_dimensions[nont_idx(item.nonterminal)], Val::zero());
-            std::vector<Val> & outside_weight = outside_weights[item];
+        MAPTYPE<ParseItem < Nonterminal, Position>, WeightVector> & outside_weights = traces_outside_weights[i];
+
+        for (auto i_ptr = topological_order.rbegin();  i_ptr != topological_order.rend(); ++i_ptr) {
+            const ParseItem<Nonterminal, Position> & item = *i_ptr;
+
+            Eigen::TensorMap<Eigen::Tensor<double, 1>> & outside_weight = outside_weights.at(item);
 
             if (item == goals[i])
-//                outside_weight = zipWith<Val>(std::plus<Val>(), outside_weight, root);
-                std::transform(
-                          std::begin(outside_weight)
-                        , std::end(outside_weight)
-                        , std::begin(root)
-                        , std::begin(outside_weight)
-                        , std::plus<Val>());
+                outside_weight = root;
+            else
+                outside_weight.setZero();
 
             if (traces_reverse[i].count(item)) {
                 for (const auto &witness : traces_reverse[i].at(item)) {
-                    const auto &rule = *(std::get<0>(witness));
-                    const auto &siblings = *(std::get<1>(witness));
-                    const auto &parent = *(std::get<2>(witness));
-                    const unsigned position = std::get<3>(witness);
-
-                    rule_dim.push_back(nont_dimensions[nont_idx(parent.nonterminal)]);
-
-                    for (unsigned sib_position = 0; sib_position < siblings.size(); ++sib_position) {
-                        const auto & rhs_item = siblings[sib_position];
-
-                        rule_dim.push_back(nont_dimensions[nont_idx(rhs_item->nonterminal)]);
-                        if (sib_position == position)
-                            relevant_inside_weights.push_back(std::vector<Val>(rule_dim.back(), Val::one()));
-                        else
-                            relevant_inside_weights.push_back(inside_weights[*rhs_item]);
+                    switch (std::get<1>(witness)->size() + 1) {
+                        /*case 1:
+                            outside_weight_step<1>(rules, nont_dimensions, nont_idx, inside_weights, outside_weights, outside_weight, witness);
+                            break;*/
+                        case 2:
+                            outside_weight_step2(rules, outside_weights, outside_weight, witness);
+                            break;
+                        case 3:
+                            outside_weight_step3(rules, inside_weights, outside_weights, outside_weight, witness);
+                            break;
+                        case 4:
+                            outside_weight_step<4>(rules, inside_weights, outside_weights, outside_weight, witness);
+                            break;
+                        default:
+                            std::cerr<< "Rules with more than 3 RHS nonterminals are not implemented." << std::endl;
+                            abort();
                     }
-
-                    const std::vector<Val> new_weights
-                            = compute_outside_weights(
-                                    rules[rule.id]
-                                    , outside_weights[parent]
-                                    , relevant_inside_weights
-                                    , rule_dim
-                                    , position);
-
-                    std::transform(outside_weight.begin(), outside_weight.end(), new_weights.begin(), outside_weight.begin(), std::plus<Val>());
-                    //                  outside_weight = zipWith<Val>( std::plus<Val>()
-                    //                               , outside_weight
-                    //                               , new_weights);
-                    rule_dim.clear();
-                    relevant_inside_weights.clear();
                 }
             }
+            if (debug && false) std::cerr << "outside weight " << item << std::endl << outside_weight << std::endl;
+        }
+    }
+
+#include "aux.h"
+
+
+    template<int rule_rank, typename Witness>
+    void outside_weight_step(const std::vector<RuleTensor<double>> &rules,
+                             const MAPTYPE<ParseItem < Nonterminal, Position>, WeightVector> & inside_weights,
+                             const MAPTYPE<ParseItem<Nonterminal, Position>, WeightVector> & outside_weights,
+                             WeightVector & outside_weight,
+                             const Witness & witness) const {
+        const auto &rule = *(std::get<0>(witness));
+        const auto &siblings = *(std::get<1>(witness));
+        const auto &parent = *(std::get<2>(witness));
+        const unsigned position = std::get<3>(witness);
+
+
+        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight
+                = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[rule.id]);
+        const Eigen::array<long, rule_rank> & rule_dim = rule_weight.dimensions();
+        Eigen::array<long, rule_rank> rshape_dim;
+        Eigen::array<long, rule_rank> broad_dim;
+
+        for (unsigned i = 0; i < rule_rank; ++i) {
+            rshape_dim[i] = 1;
+            broad_dim[i] = rule_dim[i];
         }
 
-        return std::make_pair(inside_weights, outside_weights);
+        const auto & parent_weight = outside_weights.at(parent);
+
+        Eigen::Tensor<double, rule_rank> rule_val = rule_weight;
+        if (debug) std::cerr << "init rule_val" << std::endl<< rule_val << std::endl << std::endl;
+
+        rshape_dim[0] = broad_dim[0];
+        broad_dim[0] = 1;
+        rule_val *= parent_weight.reshape(rshape_dim).broadcast(broad_dim);
+        if (debug) std::cerr << "rule_val" << 0 << std::endl<< rule_val << std::endl << std::endl;
+        broad_dim[0] = rule_dim[0];
+        rshape_dim[0] = 1;
+
+        for (unsigned rhs_pos = 1; rhs_pos < rule_rank; ++rhs_pos) {
+            if (rhs_pos == position + 1)
+                continue;
+
+            const Eigen::TensorMap<Eigen::Tensor<double, 1>> & item_weight = inside_weights.at(*siblings[rhs_pos - 1]);
+            if (debug) std::cerr << "inside weight " << rhs_pos << std::endl<< item_weight << std::endl << std::endl;
+            rshape_dim[rhs_pos] = broad_dim[rhs_pos];
+            broad_dim[rhs_pos] = 1;
+            rule_val *= item_weight.reshape(rshape_dim).broadcast(broad_dim);
+            if (debug) std::cerr << "int rule_val" << rhs_pos << std::endl<< rule_val << std::endl << std::endl;
+            broad_dim[rhs_pos] = rshape_dim[rhs_pos];
+            rshape_dim[rhs_pos] = 1;
+        }
+
+        Eigen::array<long, rule_rank - 1> sum_array;
+        for (unsigned i = 0; i < rule_rank - 1; ++i) {
+            if (i < position + 1)
+                sum_array[i] = i;
+            if (i >= position + 1)
+                sum_array[i] = i + 1;
+        }
+        Eigen::Tensor<double, 1> outside_weight_summand = rule_val.sum(sum_array);
+
+        if (debug) std::cerr << "final rule_val" << std::endl<< rule_val << std::endl << std::endl;
+        if (debug) std::cerr << "outside weight summand" << std::endl << outside_weight_summand << std::endl << std::endl;
+
+        outside_weight += outside_weight_summand;
+
+    }
+
+    template<typename Witness>
+    void inside_weight_step1(
+            WeightVector & inside_weight,
+            const Witness & witness,
+            const std::vector<RuleTensor<double>> &rules) const {
+        constexpr unsigned rule_rank {1};
+
+
+        if (debug)
+            std::cerr << std::endl << "Computing inside weight summand" << std::endl;
+        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[witness.first->id]);
+        if (debug)
+            std::cerr << "rule tensor " << witness.first->id << " address " << rules[witness.first->id] << std::endl << rule_weight << std::endl;
+
+        inside_weight += rule_weight;
+    }
+
+    template<typename Witness>
+    inline void inside_weight_step2(
+                            const MAPTYPE<ParseItem<Nonterminal, Position>, WeightVector> & inside_weights,
+                            WeightVector & inside_weight,
+                            const Witness & witness,
+                            const std::vector<RuleTensor<double>> &rules) const {
+        constexpr unsigned rule_rank {2};
+
+        if (debug)
+            std::cerr << std::endl << "Computing inside weight summand" << std::endl;
+        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[witness.first->id]);
+        if (debug)
+            std::cerr << "rule tensor " << witness.first->id << " address " << rules[witness.first->id] << std::endl << rule_weight << std::endl;
+
+        constexpr unsigned rhs_pos = 1;
+        const WeightVector & item_weight = inside_weights.at(*(witness.second[rhs_pos - 1]));
+        auto c1 = rule_weight.contract(item_weight, Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(1, 0)}));
+        inside_weight += c1;
+    }
+
+    template<typename Witness>
+    inline void inside_weight_step3(
+                            const MAPTYPE<ParseItem<Nonterminal, Position>, WeightVector> & inside_weights,
+                            Eigen::TensorMap<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>, 0, Eigen::MakePointer> &
+                            inside_weight, Witness & witness, const std::vector<RuleTensor<double>> &rules) const {
+        constexpr unsigned rule_rank{3};
+
+        if (debug)
+            std::cerr << std::endl << "Computing inside weight summand" << std::endl;
+        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[witness.first->id]);
+        if (debug)
+            std::cerr << "rule tensor " << witness.first->id << " address " << rules[witness.first->id] << std::endl << rule_weight << std::endl;
+
+        constexpr unsigned rhs_pos1 = 1;
+        const WeightVector & rhs_item_weight1 = inside_weights.at(*(witness.second[rhs_pos1 - 1]));
+
+        constexpr unsigned rhs_pos2 = 2;
+        const WeightVector & rhs_item_weight2 = inside_weights.at(*(witness.second[rhs_pos2 - 1]));
+
+        auto c1 = rule_weight.contract(rhs_item_weight2, Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(2, 0)}));
+        auto c2 = c1.contract(rhs_item_weight1, Eigen::array<Eigen::IndexPair<int>, 1>({Eigen::IndexPair<int>(1, 0)}));
+        inside_weight += c2;
     }
 
 
-    template <typename NontToIdx, typename Val>
+    template<int rule_rank, typename Witness>
+    void inside_weight_step(const MAPTYPE<ParseItem<Nonterminal, Position>, WeightVector> & inside_weights,
+                                WeightVector &
+                                inside_weight, Witness & witness, const std::vector<RuleTensor<double>> &rules) const {
+        if (debug)
+            std::cerr << std::endl << "Computing inside weight summand" << std::endl;
+        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[witness.first->id]);
+        const auto & rule_dim = rule_weight.dimensions();
+        if (debug)
+            std::cerr << "rule tensor " << witness.first->id << " address " << rules[witness.first->id] << std::endl << rule_weight << std::endl;
+
+
+        Eigen::Tensor<double, rule_rank> tmp_value = rule_weight;
+
+        Eigen::array<long, rule_rank> rshape_dim;
+        Eigen::array<long, rule_rank> broad_dim;
+        for (unsigned i = 0; i < rule_rank; ++i) {
+            rshape_dim[i] = 1;
+            broad_dim[i] = rule_dim[i];
+        }
+
+        for (unsigned rhs_pos = 1; rhs_pos < rule_rank; ++rhs_pos) {
+            const Eigen::TensorMap<Eigen::Tensor<double, 1>> & item_weight = inside_weights.at(*(witness.second[rhs_pos - 1]));
+            rshape_dim[rhs_pos] = broad_dim[rhs_pos];
+            broad_dim[rhs_pos] = 1;
+            tmp_value *= item_weight.reshape(rshape_dim).broadcast(broad_dim);
+            broad_dim[rhs_pos] = rshape_dim[rhs_pos];
+            rshape_dim[rhs_pos] = 1;
+        }
+
+        inside_weight += tmp_value.sum(Eigen::array<long, 1>({1}));
+
+        /*
+        nont_pos = 1;
+        for (const auto & dep_item : witness.second) {
+                    double * ptr = inside_weights.at(*dep_item);
+                    Eigen::TensorMap<Eigen::Tensor<double, 1>> rhs_weight(ptr, rule_dim[nont_pos]);
+                    if (debug)
+                        std::cerr << "rhs " << nont_pos << " inside weight " << std::endl << rhs_weight << std::endl;
+                    rhs_weights.push_back(rhs_weight);
+                    ++nont_pos;
+                }
+        if (debug)
+            std::cerr << "resulting inside weight summand " << std::endl <<  rule_probs(rule_weight, rhs_weights) << std::endl << std::endl;
+
+        inside_weight += rule_probs(rule_weight, rhs_weights);
+         */
+    }
+
+    template <typename NontToIdx>
     void do_em_training_la(
-            std::vector<std::vector<Val>> & rule_weights
-            , std::vector<Val> & the_root_weights
+            const unsigned N_THREADS
+            , const unsigned BATCH_SIZE
+            , std::vector<RuleTensor<double>> & rule_tensors
+            , std::vector<double*> & rule_weights
+            , double* const the_root_weights
             , const std::vector<std::vector<unsigned>> & normalization_groups
             , const unsigned n_epochs
             , const std::vector<unsigned> & nont_dimensions
             , const std::vector<std::vector<unsigned>> & rule_to_nont_ids
-            , const NontToIdx nont_idx
-//            , const Val zero, const Val one, const Val leaf, const Accum1 prod, const Accum2 sum, const Accum3 division
+            , const NontToIdx & nont_idx
     ){
 
+        feenableexcept(FE_DIVBYZERO | FE_INVALID| FE_OVERFLOW);
         unsigned epoch = 0;
 
-        std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
-        if (debug) {
-            for (unsigned i = 0; i < rule_weights.size(); ++i) {
-                std::cerr << i << " { ";
-                for (Val elem : rule_weights[i])
-                    std::cerr << elem.from() << " ";
-                std::cerr << " } , ";
-            }
-        }
-        std::cerr << std::endl;
-        if (debug) {
-            bool first = true;
-            std::cerr << "Root weights { ";
-            for (auto weight : the_root_weights) {
-                if (!first)
-                    std::cerr << " , ";
-                first = false;
-                std::cerr << weight.from();
-            }
-            std::cerr << " } " << std::endl;
-        }
+        const unsigned root_dimension = nont_dimensions[nont_idx(goals[0].nonterminal)];
+        unsigned rule_dimension_total = 0;
 
-        std::vector<std::vector<Val>> rule_counts;
+        std::vector<std::vector<double*>> rule_counts (N_THREADS);
+        std::vector<std::vector<RuleTensor<double>>> rule_count_tensors (N_THREADS);
         std::vector<std::vector<unsigned>> rule_dimensions;
         for (auto nont_ids : rule_to_nont_ids) {
             unsigned size = 1;
@@ -1066,310 +1337,375 @@ public:
                 size *= nont_dimensions[nont_id];
             }
             rule_dimensions.push_back(rule_dimension);
+            for (unsigned thread = 0; thread < N_THREADS; ++thread) {
+                double *ptr = get_region(size);
+                rule_dimension_total += size;
+
+                rule_counts[thread].push_back(ptr);
+
+                switch (rule_dimension.size()) {
+                    case 1:
+                        rule_count_tensors[thread].emplace_back(createTensor<1>(ptr, rule_dimension));
+                        break;
+                    case 2:
+                        rule_count_tensors[thread].emplace_back(createTensor<2>(ptr, rule_dimension));
+                        break;
+                    case 3:
+                        rule_count_tensors[thread].emplace_back(createTensor<3>(ptr, rule_dimension));
+                        break;
+                    case 4:
+                        rule_count_tensors[thread].emplace_back(createTensor<4>(ptr, rule_dimension));
+                        break;
+                    default:
+                        abort();
+                }
+            }
+
         }
+
+        Eigen::TensorMap<Eigen::Tensor<double, 1>> root_probability (the_root_weights, root_dimension);
+
+        // initialize root counts
+        double* root_count_ptr = get_region(root_dimension);
+        Eigen::TensorMap<Eigen::Tensor<double, 1>> root_count (root_count_ptr, root_dimension);
+
+        Eigen::Tensor<double, 1> trace_root_probabilities;
+        Eigen::Tensor<double, 0> trace_root_probability;
+        Eigen::Tensor<double, 0> corpus_prob_sum;
 
         while (epoch < n_epochs) {
 
+            if (self_malloc) {
+                // reset rule counts (all at once)
+                Eigen::TensorMap<Eigen::Tensor<double, 1>> rule_count(rule_counts[0][0], rule_dimension_total);
+                rule_count.setZero();
+            } else {
+                for (unsigned thread = 0; thread < N_THREADS; ++thread) {
+                    unsigned rule = 0;
+                    for (auto nont_ids : rule_to_nont_ids) {
+                        const unsigned size = calc_size(rule_dimensions[rule]);
+                        Eigen::TensorMap<Eigen::Tensor<double, 1>> rule_count(rule_counts[thread][rule], size);
+                        rule_count.setZero();
+                        ++rule;
+                    }
+                }
+            }
+
+            // reset root counts
+            root_count.setZero();
+
+            double corpus_likelihood(0.0);
+
             // expectation
-            assert (rule_counts.size() == 0);
-
-            // initialize rule counts
-            for (const auto & dims : rule_dimensions) {
-                rule_counts.push_back(std::vector<Val>(calc_size(dims), Val::zero()));
-            }
-
-            std::vector<Val> root_counts = std::vector<Val>(nont_dimensions[nont_idx(goals[0].nonterminal)], Val::zero());
-            Val corpus_likelihood = Val::one();
-
-            for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
-                auto trace = traces[trace_id];
-                if (trace.size() == 0)
-                    continue;
-
-                const auto tr_io_weight = io_weights_la(rule_weights, nont_dimensions, rule_to_nont_ids, nont_idx, the_root_weights, trace_id);
-                if (debug) {
-                    for (const auto &item : get_order(trace_id)) {
-                        std::cerr << "T: " << item << " (idx: " << nont_idx(item.nonterminal) << " )" << std::endl  ;
-
-                        for (unsigned offset = 0; offset < nont_dimensions[nont_idx(item.nonterminal)]; ++offset) {
-                            std::cerr << "    " << tr_io_weight.first.at(item)[offset] << " "
-                                      << tr_io_weight.second.at(item)[offset] << std::endl;
-
-                        }
-                    }
-                    std::cerr << std::endl;
-                }
-//
-
-                const auto trace_root_weights = zipWith<Val>(std::multiplies<Val>(), tr_io_weight.first.at(goals[trace_id]),
-                                                       tr_io_weight.second.at(goals[trace_id]));
-//                root_counts = zipWith<Val>(std::plus<Val>(), root_counts, trace_root_weights);
-                std::transform(
-                          std::begin(root_counts)
-                        , std::end(root_counts)
-                        , std::begin(trace_root_weights)
-                        , std::begin(root_counts)
-                        , std::plus<Val>());
-                corpus_likelihood *= (reduce(std::plus<Val>(), trace_root_weights, Val::zero()));
-
-                const auto instance_root_weights = tr_io_weight.first.at(goals[trace_id]);
-//                const Val instance_root_weight = reduce(std::plus<Val>(),
-//                                                        zipWith<Val>(std::multiplies<Val>(), instance_root_weights,
-//                                                                the_root_weights), Val::zero());
-                const auto tmp_result = zipWith<Val>(std::multiplies<Val>(), instance_root_weights, the_root_weights);
-                const Val instance_root_weight
-                        = std::accumulate(
-                                  std::make_move_iterator(std::begin(tmp_result))
-                                , std::make_move_iterator(std::end(tmp_result))
-                                , Val::zero()
-                                , std::plus<Val>());
-                if (debug)
-                    std::cerr << "instance root weight: " << instance_root_weight << std::endl;
-
-                for (auto & pair : trace) {
-                    const std::vector<Val> & lhn_outside_weights = tr_io_weight.second.at(pair.first);
-                    if (debug) {
-                        std::cerr << pair.first << std::endl;
-                    }
-                    for (const auto & witness : pair.second) {
-                        const int rule_id = witness.first->id;
-
-                        std::vector<std::vector<Val>> nont_weight_vectors;
-                        nont_weight_vectors.reserve(witness.second.size());
-                        for (const auto & rhs_item : witness.second) {
-                            nont_weight_vectors.push_back(tr_io_weight.first.at(*rhs_item));
-                        }
-
-                        std::vector<Val> rule_val;
-                        rule_val = compute_rule_frequency(rule_weights[rule_id], lhn_outside_weights, nont_weight_vectors, rule_dimensions[rule_id]);
-//                        rule_val = zipWithConstant<Val>(std::divides<Val>(), rule_val, instance_root_weight);
-                        std::for_each(rule_val.begin(), rule_val.end(), [&](Val& x) {x /= instance_root_weight;});
-
-                        if (debug) {
-                            std::cerr << rule_id << ": {";
-                            for (auto val : rule_val)
-                                std::cerr << val << " ";
-                            std::cerr << " }" << std::endl;
-                        }
-//                        rule_counts[rule_id] = zipWith<Val>(std::plus<Val>(), rule_counts[rule_id], rule_val);
-                        std::transform(
-                                  std::begin(rule_counts[rule_id])
-                                , std::end(rule_counts[rule_id])
-                                , std::begin(rule_val)
-                                , std::begin(rule_counts[rule_id])
-                                , std::plus<Val>()
-                                );
-                    }
-                }
-            }
-
-            if (debug) {
-                unsigned i = 0;
-                for (auto rule : rule_counts) {
-                    std::cerr << i << ": { ";
-                    for (auto count : rule) {
-                        std::cerr << count << " ";
-                    }
-                    std::cerr<<" } " << std::endl;
-                    ++i;
-                }
+            if (N_THREADS <= 1) {
+                expectation_la(rule_tensors, rule_count_tensors[0], rule_dimensions, root_probability,
+                               root_count, corpus_likelihood, 0, traces.size());
+            } else {
+                expectation_la_parallel(N_THREADS, BATCH_SIZE, rule_tensors, rule_count_tensors, rule_dimensions, root_probability,
+                                        root_count, corpus_likelihood);
             }
 
             // maximization
-            for (const std::vector<unsigned> & group : normalization_groups) {
-                const unsigned lhs_dim = rule_dimensions[group[0]][0];
-                std::vector<Val> lhs_counts = std::vector<Val>(lhs_dim, Val::zero());
-                for (const auto rule : group) {
-                    const unsigned block_size = subdim(rule_dimensions[rule]);
-                    // reduce([] (const unsigned x, const unsigned y) -> unsigned {return x * y;}, rule_dimensions[rule], (unsigned) 1, (unsigned) 1);
-                    for (unsigned lhs : boost::irange((unsigned) 0, lhs_dim)) {
-                        const typename std::vector<Val>::iterator block_start = rule_counts[rule].begin() + block_size * lhs;
-                        for (auto it = block_start; it != block_start + block_size; ++it) {
-                            lhs_counts[lhs] += (*it);
+            if (N_THREADS <= 1) {
+                unsigned nont = 0;
+                for (const std::vector<unsigned> & group : normalization_groups) {
+                    const unsigned lhs_dim = rule_dimensions[group[0]][0];
+                    maximization(lhs_dim, rule_dimensions, group, rule_counts[0], rule_weights);
+                    if (debug) {
+                        std::cerr << "rules for nonterminal " << nont << std::endl;
+                        for (auto rule : group) {
+                            std::cerr << "rule " << rule << " has probabilites: " << std::endl;
+                            std::cerr << Eigen::TensorMap<Eigen::Tensor<double, 2>>(rule_weights[rule], lhs_dim, subdim(rule_dimensions[rule])) << std::endl;
                         }
                     }
+                    ++nont;
                 }
-                if (debug) {
-                    std::cerr << " { ";
-                    for (auto count : lhs_counts) {
-                        std::cerr << count << " ";
-                    }
-                    std::cerr << " } ";
-                }
-                for (const auto rule : group) {
-                    const unsigned block_size = subdim(rule_dimensions[rule]);
-                    for (unsigned lhs : boost::irange((unsigned) 0, lhs_dim)) {
-                        if (lhs_counts[lhs] > Val::zero()) {
-                            const unsigned block_start = block_size * lhs;
-                            for (unsigned offset = block_start; offset < block_start + block_size; ++offset) {
-                                *(rule_weights[rule].begin() + offset) = (*(rule_counts[rule].begin() + offset)) / lhs_counts[lhs];
-                                if ((true || debug) && *(rule_weights[rule].begin() + offset) > Val::one()) {
-                                    std::cerr << "rule " << rule << " has prob. > 1: "
-                                                          << *(rule_weights[rule].begin() + offset)
-                                                          << " count: " << (*(rule_counts[rule].begin() + offset))
-                                                          << " norm_count " <<  lhs_counts[lhs] << std::endl;
-                                }
+            } else {
+                unsigned nont = 0;
+                std::mutex nont_mutex;
+
+                std::vector<std::thread> workers;
+                for (unsigned thread = 0; thread < N_THREADS; ++thread) {
+                    workers.push_back(std::thread([&]()
+                    {
+                        unsigned my_nont {0};
+                        unsigned max_nont {0};
+
+                        while (my_nont < normalization_groups.size()) {
+                            {
+                                std::lock_guard<std::mutex> lock(nont_mutex);
+                                my_nont = nont;
+                                max_nont = std::min<unsigned>(nont + BATCH_SIZE, normalization_groups.size());
+                                nont = max_nont;
                             }
-                        } else {
-                            if (true || debug) {
-                                const unsigned block_start = block_size * lhs;
-                                for (unsigned offset = block_start; offset < block_start + block_size; ++offset) {
-                                    if (rule_weights[rule][offset] > Val::one()) {
-                                        std::cerr << "invalid rule weight " << rule_weights[rule][offset]
-                                                    << " with 0 normalization " << lhs_counts[lhs] << std::endl;
+
+                            for ( ; my_nont < max_nont; ++my_nont) {
+                                const std::vector<unsigned> & group = normalization_groups[my_nont];
+                                const unsigned lhs_dim = rule_dimensions[group[0]][0];
+                                maximization(lhs_dim, rule_dimensions, group, rule_counts[0], rule_weights);
+                                if (debug) {
+                                    std::cerr << "rules for nonterminal " << my_nont << std::endl;
+                                    for (auto rule : group) {
+                                        std::cerr << "rule " << rule << " has probabilites: " << std::endl;
+                                        std::cerr << Eigen::TensorMap<Eigen::Tensor<double, 2>>(rule_weights[rule],
+                                                                                                lhs_dim,
+                                                                                                subdim(rule_dimensions[rule]))
+                                                  << std::endl;
                                     }
                                 }
                             }
                         }
-                    }
+                    }));
                 }
+                std::for_each(workers.begin(), workers.end(), [](std::thread &t)
+                {
+                    t.join();
+                });
             }
             if (debug) std::cerr << std::endl;
 
             epoch++;
             std::cerr <<"Epoch " << epoch << "/" << n_epochs << ": ";
-            if (debug)
-                for (unsigned i = 0; i < rule_weights.size(); ++i) {
-                    std::cerr << i << " { ";
-                    for (Val elem : rule_weights[i])
-                        std::cerr << elem.from() << " ";
-                    std::cerr << " } , ";
-                }
-            if (debug) std::cerr << std::endl;
+
 
             // maximize root weights:
-            const Val corpus_prob_sum = std::accumulate(root_counts.begin(), root_counts.end(), Val::zero(), std::plus<Val>());
-            std::cerr << "corpus prob. sum " << corpus_prob_sum.from();
+            corpus_prob_sum = root_count.sum();
+
+            // output likelihood information based on old probability assignment
+            std::cerr << "corpus prob. sum " << corpus_prob_sum;
             std::cerr << " corpus likelihood " << corpus_likelihood;
-            for (auto root_weight : the_root_weights) {
-                std::cerr << " " << root_weight << " ";
-            }
-            std::cerr << std::endl;
-            const unsigned len = the_root_weights.size();
-            the_root_weights.clear();
-            if (debug) std::cerr << "single root weights: ";
-            for (const auto weight : root_counts) {
-                if (debug) std::cerr << weight.from() << "/" << (weight / corpus_prob_sum).from() << " ";
-                the_root_weights.push_back(weight / corpus_prob_sum);
-            }
-            assert(len == the_root_weights.size());
-            std::cerr << std::endl;
+            std::cerr << " root weights: " << root_probability << std::endl;
 
-            if (debug) {
-                std::cerr << "Nont sums: ";
-                unsigned i = 0;
-                for (auto group : normalization_groups) {
-                    std::vector<Val> dim_weights = std::vector<Val>(nont_dimensions[i], Val::zero());
-                    for (auto rule_id : group) {
-                        const unsigned size = rule_weights[rule_id].size();
-                        for (unsigned weight_id = 0; weight_id < size; ++weight_id) {
-                            const unsigned index = weight_id / (size / nont_dimensions[i]);
-                            dim_weights[index] = dim_weights[index] + rule_weights[rule_id][weight_id];
-                        }
-                    }
-                    std::cerr << " { ";
-                    for (auto weight_sum : dim_weights) {
-                        std::cerr << weight_sum.from() << " ";
-                    }
-                    std::cerr << " } ";
-                    ++i;
-                }
-                std::cerr << std::endl;
-            }
-            if (debug) {
-                bool first = true;
-                std::cerr << "Root weights { ";
-                for (auto weight : the_root_weights) {
-                    if (!first)
-                        std::cerr << " , ";
-                    first = false;
-                    std::cerr << weight.from();
-                }
-                std::cerr << " } " << std::endl;
-            }
-
-            rule_counts.clear();
-            root_counts.clear();
+            // compute new root weights
+            if (corpus_prob_sum(0) > 0)
+                root_probability = root_count * (1 / corpus_prob_sum(0));
         }
+
+        if (self_malloc) {
+            if (not free_region(root_count_ptr, root_dimension))
+                abort();
+            if (not free_region(rule_counts[0][0], rule_dimension_total))
+                abort();
+        } else {
+            free_region(root_count_ptr, root_dimension);
+            for (unsigned thread = 0; thread < N_THREADS; ++ thread) {
+                for (auto ptr : rule_counts[thread]) {
+                    free_region(ptr, 0);
+                }
+            }
+        }
+        fedisableexcept(FE_DIVBYZERO | FE_INVALID| FE_OVERFLOW);
 
     }
 
-    template <typename Val, typename NontToIdx>
-    std::tuple< std::vector<std::vector<std::vector<unsigned>>>
-              , std::vector<unsigned>
-              , std::vector<std::vector<Val>>
-              >
-    merge_prepare(const std::vector<std::vector<Val>> & rule_weights
-            , const std::vector<Val> & root_weights
-            , const std::vector<unsigned> & nont_dimensions
-            , const std::vector<std::vector<unsigned>> & rule_ids_to_nont_ids
-                       , const NontToIdx nont_idx
-                       , const Val merge_threshold_
-                       , const double merge_percent = -1.0
-            ) {
+    template<typename VECTOR>
+    inline void expectation_la(const std::vector<RuleTensor<double>> &rule_tensors,
+                        std::vector<RuleTensor<double>> &rule_count_tensors,
+                        const std::vector<std::vector<unsigned int>> &rule_dimensions,
+                        const Eigen::TensorMap<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>, 0, Eigen::MakePointer> &root_probability,
+                        VECTOR &root_count,
+                        double &corpus_likelihood,
+                        const unsigned start,
+                        const unsigned end
+    ) {
+        // expectation
+        for (unsigned trace_id = start; trace_id < end; ++trace_id) {
+                auto trace = traces[trace_id];
+                if (trace.size() == 0)
+                    continue;
 
+                io_weights_la(rule_tensors, root_probability, trace_id);
 
-        // first we compute the fractions p_1, p_2
-        // with which the probabality mass is shared between merged latent states
+                const auto & inside_weights = traces_inside_weights[trace_id];
+                const auto & outside_weights = traces_outside_weights[trace_id];
 
-        // this is prepared with computing globally averaged outside weights
-        std::vector<std::vector<Val>> merge_weights_partial;
-        for (auto dim : nont_dimensions) {
-            merge_weights_partial.emplace_back(std::vector<Val>(dim, Val::zero()));
+                const Eigen::TensorMap<Eigen::Tensor<double, 1>> & root_inside_weight = inside_weights.at(goals[trace_id]);
+                const Eigen::TensorMap<Eigen::Tensor<double, 1>> & root_outside_weight = outside_weights.at(goals[trace_id]);
+
+                Eigen::Tensor<double, 1> trace_root_probabilities = root_inside_weight * root_outside_weight;
+                Eigen::Tensor<double, 0> trace_root_probability = trace_root_probabilities.sum();
+
+                if (not std::isnan(trace_root_probability(0))
+                    and not std::isinf(trace_root_probability(0))
+                    and trace_root_probability(0) > 0) {
+                    root_count += trace_root_probabilities;
+                    corpus_likelihood += log(trace_root_probability(0));
+                } else {
+                    corpus_likelihood += minus_infinity;
+                    continue;
+                }
+
+                if (debug)
+                    std::cerr << "instance root probability: " << std::endl << trace_root_probabilities << std::endl;
+
+                for (auto & pair : trace) {
+                    const WeightVector & lhn_outside_weight = outside_weights.at(pair.first);
+
+                    if (debug) {
+                        std::cerr << pair.first << std::endl << "outside weight" << std::endl << lhn_outside_weight << std::endl;
+                        std::cerr << "inside weight" << std::endl;
+                        const WeightVector & lhn_inside_weight = inside_weights.at(pair.first);
+                        std::cerr << lhn_inside_weight << std::endl;
+                    }
+                    for (const auto & witness : pair.second) {
+                        const int rule_id = witness.first->id;
+                        const unsigned rule_dim = rule_dimensions[rule_id].size();
+
+                        switch (rule_dim) {
+                            case 1:
+                                compute_rule_count1(rule_tensors[rule_id],
+                                                    lhn_outside_weight, trace_root_probability(0),
+                                                    rule_count_tensors[rule_id]);
+                                break;
+                            case 2:
+                                compute_rule_count2(rule_tensors[rule_id], witness,
+                                                      lhn_outside_weight, trace_root_probability(0),
+                                                      inside_weights,
+                                                      rule_count_tensors[rule_id]
+//                                                           rule_counts[rule_id]
+                                );
+                                break;
+                            case 3:
+                                compute_rule_count3(rule_tensors[rule_id], witness,
+                                                      lhn_outside_weight, trace_root_probability(0),
+                                                      inside_weights,
+                                                      rule_count_tensors[rule_id]
+//                                                          rule_counts[rule_id]
+                                );
+                                break;
+                            case 4:
+                                compute_rule_count<4>(rule_tensors[rule_id], witness,
+                                                      lhn_outside_weight, trace_root_probability(0),
+                                                      inside_weights,
+                                                      rule_count_tensors[rule_id]
+//                                                          rule_counts[rule_id]
+                                );
+                                break;
+                            default:
+                                std::cerr << "Rules with RHS > " << 3 << " are not implemented." << std::endl;
+                                abort();
+                        }
+                    }
+                }
+
+            }
+    }
+
+    inline void expectation_la_parallel(const unsigned THREADS, const unsigned BATCH_SIZE,
+                               const std::vector<RuleTensor<double>> &rule_tensors,
+                               std::vector<std::vector<RuleTensor<double>>> &rule_count_tensors,
+                               const std::vector<std::vector<unsigned int>> &rule_dimensions,
+                               const Eigen::TensorMap<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>, 0, Eigen::MakePointer> &root_probability,
+                               Eigen::TensorMap<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>, 0, Eigen::MakePointer> &root_count,
+                               double & corpus_likelihood) {
+
+        unsigned next_trace {0};
+        std::mutex next_trace_mutex;
+
+        std::vector<double> corpus_likelihoods(THREADS, corpus_likelihood);
+        std::vector<Eigen::Tensor<double, 1>> root_counts;
+        for (unsigned thread = 0; thread < THREADS; ++thread) {
+            Eigen::Tensor<double, 1> root_count_thread(root_count.dimension(0));
+            root_count_thread.setZero();
+            root_counts.emplace_back(std::move(root_count_thread));
         }
 
-        std::cerr << "Estimating relative frequency of annotated nonterminals." << std::endl;
+        std::vector<std::thread> workers;
+        for (unsigned thread = 0; thread < THREADS; ++thread) {
+            workers.push_back(std::thread([thread,BATCH_SIZE,this,&next_trace_mutex,&next_trace,&rule_tensors,&root_probability,&root_counts,&rule_dimensions,&corpus_likelihoods,&rule_count_tensors]() {
+                unsigned my_next_trace = 0;
+                unsigned my_last_trace = 0;
+                while (my_next_trace < traces.size()) {
+                    {
+                        std::lock_guard<std::mutex> lock(next_trace_mutex);
+                        my_next_trace = next_trace;
+                        next_trace += BATCH_SIZE;
+                        my_last_trace = std::min<unsigned>(next_trace, traces.size());
+                    }
+
+                    expectation_la(rule_tensors, rule_count_tensors[thread], rule_dimensions, root_probability,
+                                   root_counts[thread], corpus_likelihoods[thread], my_next_trace, my_last_trace);
+                }
+            }));
+        }
+
+        std::for_each(workers.begin(), workers.end(), [](std::thread &t)
+        {
+            t.join();
+        });
+
+        // collect counts, etc.
+        corpus_likelihood
+                = std::accumulate(corpus_likelihoods.begin(), corpus_likelihoods.end(), corpus_likelihood, std::plus<double>());
+        for (unsigned rule = 0; rule < rule_count_tensors[0].size(); ++ rule) {
+            for (unsigned thread = 1; thread < THREADS; ++thread) {
+                switch (rule_dimensions[rule].size()) {
+                    case 1:
+                        boost::get<Eigen::TensorMap<Eigen::Tensor<double, 1>>>(rule_count_tensors[0][rule])
+                                += boost::get<Eigen::TensorMap<Eigen::Tensor<double, 1>>>(rule_count_tensors[thread][rule]);
+                        break;
+                    case 2:
+                        boost::get<Eigen::TensorMap<Eigen::Tensor<double, 2>>>(rule_count_tensors[0][rule])
+                                += boost::get<Eigen::TensorMap<Eigen::Tensor<double, 2>>>(rule_count_tensors[thread][rule]);
+                        break;
+                    case 3:
+                        boost::get<Eigen::TensorMap<Eigen::Tensor<double, 3>>>(rule_count_tensors[0][rule])
+                                += boost::get<Eigen::TensorMap<Eigen::Tensor<double, 3>>>(rule_count_tensors[thread][rule]);
+                        break;
+                    case 4:
+                        boost::get<Eigen::TensorMap<Eigen::Tensor<double, 4>>>(rule_count_tensors[0][rule])
+                                += boost::get<Eigen::TensorMap<Eigen::Tensor<double, 4>>>(rule_count_tensors[thread][rule]);
+                        break;
+                    default:
+                        abort();
+                }
+            }
+        }
+        for (unsigned thread = 0; thread < THREADS; ++thread) {
+            root_count += root_counts[thread];
+        }
+    }
+
+    template <typename NontToIdx>
+    inline void estimateNontFreqLA(const unsigned start,
+                            const unsigned stop,
+                            const NontToIdx nont_idx,
+                        std::vector<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>> &merge_weights_partial,
+                        const std::vector<RuleTensor<double>> &rule_weight_tensors,
+                        const WeightVector &root_weight_tensor) {
         // computing in(A_x) * out(A_x) for every A ∈ N and x ∈ X_A
-        for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
-            const auto io_weight = io_weights_la(rule_weights, nont_dimensions, rule_ids_to_nont_ids, nont_idx, root_weights, trace_id);
+        for (unsigned trace_id = start; trace_id < stop; ++trace_id) {
+            io_weights_la(rule_weight_tensors, root_weight_tensor, trace_id);
+            const auto & inside_weights = traces_inside_weights[trace_id];
+            const auto & outside_weights = traces_outside_weights[trace_id];
 
             for (const auto & pair : traces[trace_id]) {
                 const ParseItem<Nonterminal, Position> & item = pair.first;
 
-                const std::vector<Val> & inside_weight = io_weight.second.at(item);
-                const std::vector<Val> & outside_weight = io_weight.second.at(item);
+                const Eigen::TensorMap<Eigen::Tensor<double, 1>> & inside_weight = inside_weights.at(item);
+                const Eigen::TensorMap<Eigen::Tensor<double, 1>> & outside_weight = outside_weights.at(item);
 
-                const auto vals = zipWith<Val>(std::multiplies<Val>(), inside_weight, outside_weight);
-                // denominator cancels out later
-                // const auto denominator = reduce<Val>(std::plus<Val>(), vals, Val::zero());
-                auto & target =  merge_weights_partial[nont_idx(item.nonterminal)];
-
-                // denominator cancels out later
-                //target = zipWith<Val>(std::plus<Val>(), target, zipWithConstant<Val>(std::divides<Val>(), vals, denominator));
-//                target = zipWith<Val>(std::plus<Val>(), target, vals);
-                std::transform(std::begin(target), std::end(target), std::make_move_iterator(std::begin(vals)), std::begin(target), std::plus<Val>());
-            }
-
-        }
-
-        std::cerr << "Computing merge factors." << std::endl;
-        // finally we compute the fractions
-        std::vector<std::vector<Val>> p;
-        for (auto las_weights : merge_weights_partial) {
-            p.emplace_back(std::vector<Val>());
-            for (unsigned i = 0; i < las_weights.size(); i = i + 2) {
-                const Val combined_weight = las_weights[i] + las_weights[i+1];
-                if (combined_weight != Val::zero()) {
-                    p.back().push_back(las_weights[i] / combined_weight);
-                    p.back().push_back(las_weights[i + 1] / combined_weight);
-                } else {
-                    p.back().push_back(Val::to(0.5));
-                    p.back().push_back(Val::to(0.5));
+                const auto vals = inside_weight * outside_weight;
+                Eigen::Tensor<double, 0> denominator = vals.sum();
+                Eigen::Tensor<double, 1> fraction = vals * (1 / denominator(0));
+                Eigen::Tensor<bool, 0> nan = fraction.isnan().any();
+                Eigen::Tensor<bool, 0> inf = fraction.isinf().any();
+                if (not nan(0) and not inf(0)){
+                    auto & target =  merge_weights_partial[nont_idx(item.nonterminal)];
+                    target += fraction;
                 }
             }
         }
+    }
 
-        std::cerr << "Computing likelihood deltas of merges." << std::endl;
-        // now we approximate the likelihood Δ of merging two latent states
-        std::vector<std::vector<Val>> merge_delta;
-        for (auto dim : nont_dimensions) {
-            merge_delta.push_back(std::vector<Val>(dim / 2, Val::one()));
-        }
+    template <typename NontToIdx, typename Val>
+    inline void computeMergeDeltas(const unsigned start, const unsigned stop, const NontToIdx nont_idx, const std::vector<std::vector<Val>> &p, std::vector<Val> &prefixes,
+                   std::vector<Val> &postfixes, const std::vector<unsigned int> &nont_dimensions,
+                   std::vector<std::vector<Val>> &merge_delta) const {
+        for (unsigned trace_id = start; trace_id < stop; ++trace_id) {
+            const MAPTYPE<ParseItem<Nonterminal, Position>, WeightVector> & inside_weights = traces_inside_weights[trace_id];
+            const MAPTYPE<ParseItem<Nonterminal, Position>, WeightVector> & outside_weights = traces_outside_weights[trace_id];
 
-        std::vector<Val> prefixes;
-        std::vector<Val> postfixes;
-        for (unsigned trace_id = 0; trace_id < traces.size(); ++trace_id) {
-            const auto io_weight = io_weights_la(rule_weights, nont_dimensions, rule_ids_to_nont_ids, nont_idx, root_weights, trace_id);
             for (const auto & pair : traces[trace_id]) {
                 const ParseItem<Nonterminal, Position> &item = pair.first;
 
@@ -1379,7 +1715,7 @@ public:
 //                    const Val in = io_weight.first.at(item)[dim];
 //                    const Val out = io_weight.second.at(item)[dim];
 //                    denominator += (in * out);
-//                    assert(! isnan(denominator.get_Value()));
+//                    assert(! std::isnan(denominator.get_Value()));
 //                }
                 const auto nont_dim = nont_dimensions[nont_idx(item.nonterminal)];
                 prefixes.resize(nont_dim / 2, Val::zero());
@@ -1387,27 +1723,27 @@ public:
                 Val denominator = Val::zero();
                 {
                     const unsigned dim = nont_dim - 2;
-                    const Val in1 = io_weight.first.at(item)[dim];
-                    const Val in2 = io_weight.first.at(item)[dim + 1];
-                    const Val out1 = io_weight.second.at(item)[dim];
-                    const Val out2 = io_weight.second.at(item)[dim + 1];
+                    const Val in1 = Val::to(inside_weights.at(item).data()[dim]);
+                    const Val in2 = Val::to(inside_weights.at(item).data()[dim + 1]);
+                    const Val out1 = Val::to(outside_weights.at(item).data()[dim]);
+                    const Val out2 = Val::to(outside_weights.at(item).data()[dim + 1]);
                     denominator += in1 * out1 + in2 * out2;
                 }
                 for (unsigned dim = 0; dim < nont_dim - 2; dim = dim + 2) {
                     {
-                        const Val in1 = io_weight.first.at(item)[dim];
-                        const Val in2 = io_weight.first.at(item)[dim + 1];
-                        const Val out1 = io_weight.second.at(item)[dim];
-                        const Val out2 = io_weight.second.at(item)[dim + 1];
+                        const Val in1 = Val::to(inside_weights.at(item).data()[dim]);
+                        const Val in2 = Val::to(inside_weights.at(item).data()[dim + 1]);
+                        const Val out1 = Val::to(outside_weights.at(item).data()[dim]);
+                        const Val out2 = Val::to(outside_weights.at(item).data()[dim + 1]);
                         prefixes[dim / 2 + 1] = prefixes[dim / 2] + in1 * out1 + in2 * out2;
                         denominator += in1 * out1 + in2 * out2;
                     }
                     {
                         const unsigned dim_ = nont_dim - dim - 2;
-                        const Val in1 = io_weight.first.at(item)[nont_dim - dim_];
-                        const Val in2 = io_weight.first.at(item)[nont_dim - dim_ + 1];
-                        const Val out1 = io_weight.second.at(item)[nont_dim - dim_];
-                        const Val out2 = io_weight.second.at(item)[nont_dim - dim_ + 1];
+                        const Val in1 = Val::to(inside_weights.at(item).data()[nont_dim - dim_]);
+                        const Val in2 = Val::to(inside_weights.at(item).data()[nont_dim - dim_ + 1]);
+                        const Val out1 = Val::to(outside_weights.at(item).data()[nont_dim - dim_]);
+                        const Val out2 = Val::to(outside_weights.at(item).data()[nont_dim - dim_ + 1]);
                         postfixes[(nont_dim - dim) / 2 - 2] = postfixes[(nont_dim - dim)/ 2] + in1 * out1 + in2 * out2;
                     }
                 }
@@ -1419,10 +1755,10 @@ public:
                     continue;
 
                 for (unsigned dim = 0; dim < nont_dimensions[nont_idx(item.nonterminal)]; dim = dim+2) {
-                    const Val in1 = io_weight.first.at(item)[dim];
-                    const Val in2 = io_weight.first.at(item)[dim+1];
-                    const Val out1 = io_weight.second.at(item)[dim];
-                    const Val out2 = io_weight.second.at(item)[dim+1];
+                    const Val in1 = Val::to(inside_weights.at(item).data()[dim]);
+                    const Val in2 = Val::to(inside_weights.at(item).data()[dim + 1]);
+                    const Val out1 = Val::to(outside_weights.at(item).data()[dim]);
+                    const Val out2 = Val::to(outside_weights.at(item).data()[dim + 1]);
                     const unsigned nont = nont_idx(item.nonterminal);
                     const Val p1 = p[nont][dim];
                     const Val p2 = p[nont][dim+1];
@@ -1433,7 +1769,7 @@ public:
 //                    const Val Q = Val::add_subtract2_divide(denominator, in_merged * out_merged, in1 * out1, in2 * out2, denominator);
                     const Val Q = (prefixes[dim / 2] + postfixes[dim / 2] + in_merged * out_merged) / denominator;
 
-                    if (isnan(Q.get_Value())) {
+                    if (std::isnan(Q.get_Value())) {
                         std::cerr << "bad fraction " << Q << " where" << std::endl;
                         std::cerr << "prefix  " << prefixes[dim/2] << std::endl;
                         std::cerr << "postfix " << postfixes[dim/2] << std::endl;
@@ -1449,15 +1785,177 @@ public:
 //                        std::cerr << "prod(in_merged, out_merged) = " << in_merged * out_merged << std::endl;
 //                        std::cerr << "prod(in1, out1) = " << in1 * out1 << std::endl;
 //                        std::cerr << "prod(in2, out2) = " << in2 * out2 << std::endl;
-                        assert(!isnan(Q.get_Value()));
+                        assert(!std::isnan(Q.get_Value()));
                     }
 
                     Val & delta = merge_delta[nont][dim / 2];
-
                     delta *= Q;
+
                 }
                 prefixes.clear();
                 postfixes.clear();
+            }
+        }
+    }
+
+
+    template <typename Val, typename NontToIdx>
+    std::tuple< std::vector<std::vector<std::vector<unsigned>>>
+              , std::vector<unsigned>
+              , std::vector<std::vector<Val>>
+              >
+    merge_prepare(
+            const unsigned N_THREADS
+            , const unsigned BATCH_SIZE
+            , const std::vector<std::vector<Val>> & rule_weights
+            , const std::vector<Val> & root_weights
+            , const std::vector<unsigned> & nont_dimensions
+            , const std::vector<std::vector<unsigned>> & rule_ids_to_nont_ids
+                       , const NontToIdx nont_idx
+                       , const Val merge_threshold_
+                       , const double merge_percent = -1.0
+            ) {
+
+
+        // first we compute the fractions p_1, p_2
+        // with which the probabality mass is shared between merged latent states
+
+        // this is prepared with computing globally averaged outside weights
+        // TODO allocate via get_region
+        std::vector<std::vector<Eigen::Tensor<double, 1>>> merge_weights_partial(N_THREADS);
+        for (auto dim : nont_dimensions) {
+            Eigen::Tensor<double, 1> merge_weight(dim);
+            merge_weight.setZero();
+            for (unsigned thread = 0; thread < N_THREADS; ++thread)
+                merge_weights_partial[thread].emplace_back(merge_weight);
+        }
+
+        // conversion
+        std::vector<double *> rule_weights_ptrs;
+        std::vector<RuleTensor<double>> rule_weight_tensors;
+        double * root_weights_ptrs;
+
+        std::vector<std::vector<unsigned>> rule_dimensions;
+        for (const auto rule : rule_ids_to_nont_ids) {
+            std::vector<unsigned> rule_dimension;
+            for (unsigned nont : rule) {
+                rule_dimension.emplace_back(nont_dimensions[nont]);
+            }
+            rule_dimensions.emplace_back(std::move(rule_dimension));
+        }
+
+        unsigned allocated = convert_to_eigen(rule_weights_ptrs, rule_weights, rule_weight_tensors, root_weights_ptrs, root_weights, rule_dimensions);
+
+        WeightVector root_weight_tensor(root_weights_ptrs, root_weights.size());
+
+        std::cerr << "Estimating relative frequency of annotated nonterminals." << std::endl;
+        if (N_THREADS <= 1)
+            estimateNontFreqLA(0, traces.size(), nont_idx, merge_weights_partial[0], rule_weight_tensors, root_weight_tensor);
+        else {
+            std::mutex next_trace_mutex;
+            unsigned next_trace {0};
+            std::vector<std::thread> workers;
+            for (unsigned thread = 0; thread < N_THREADS; ++thread) {
+                workers.push_back(std::thread([thread, this, &BATCH_SIZE, &next_trace, &next_trace_mutex, &nont_idx,
+                                                      &merge_weights_partial, &rule_weight_tensors,
+                                                      &root_weight_tensor](){
+                    unsigned my_next_trace {0};
+                    unsigned my_last_trace {0};
+                    while (my_next_trace < traces.size()) {
+                        {
+                            std::lock_guard<std::mutex> lock(next_trace_mutex);
+                            my_next_trace = next_trace;
+                            // since nonterminal freq expectation is cheaper than rule freq expectation,
+                            // we doubled the batch_size here
+                            next_trace += BATCH_SIZE * 2;
+                            my_last_trace = std::min<unsigned>(next_trace, traces.size());
+                        }
+                        estimateNontFreqLA(my_next_trace, my_last_trace, nont_idx, merge_weights_partial[thread],
+                                           rule_weight_tensors, root_weight_tensor);
+                    }
+                }));
+            }
+            std::for_each(workers.begin(), workers.end(), [](std::thread &t)
+            {
+                t.join();
+            });
+            for (unsigned nont = 0; nont < merge_weights_partial[0].size(); ++nont) {
+                for (unsigned thread = 1; thread < N_THREADS; ++thread) {
+                    merge_weights_partial[0][nont] += merge_weights_partial[0][thread];
+                }
+            }
+        }
+
+        std::cerr << "Computing merge factors." << std::endl;
+        // finally we compute the fractions
+        std::vector<std::vector<Val>> p;
+        for (auto las_weights : merge_weights_partial[0]) {
+            p.emplace_back(std::vector<Val>());
+            for (unsigned i = 0; i < las_weights.dimension(0); i = i + 2) {
+                double combined_weight = las_weights(i) + las_weights(i+1);
+                if ((not std::isnan(combined_weight)) and combined_weight > 0) {
+                    p.back().emplace_back(Val::to(las_weights(i) / combined_weight));
+                    p.back().emplace_back(Val::to(las_weights(i + 1) / combined_weight));
+                } else {
+                    p.back().emplace_back(Val::to(0.5));
+                    p.back().emplace_back(Val::to(0.5));
+                }
+            }
+        }
+
+        std::cerr << "Computing likelihood deltas of merges." << std::endl;
+        // now we approximate the likelihood Δ of merging two latent states
+        std::vector<std::vector<std::vector<Val>>> merge_delta(N_THREADS);
+        for (auto dim : nont_dimensions) {
+            for (unsigned thread {0}; thread < N_THREADS; ++thread)
+                merge_delta[thread].push_back(std::vector<Val>(dim / 2, Val::one()));
+        }
+
+        if (N_THREADS <= 1) {
+            std::vector<Val> prefixes;
+            std::vector<Val> postfixes;
+            unsigned start = 0;
+            unsigned stop = traces.size();
+            computeMergeDeltas(start, stop, nont_idx, p, prefixes, postfixes, nont_dimensions, merge_delta[0]);
+        } else {
+            std::mutex next_trace_mutex;
+            unsigned next_trace {0};
+            std::vector<std::thread> workers;
+            for (unsigned thread = 0; thread < N_THREADS; ++thread) {
+                workers.push_back(std::thread([thread, this, &next_trace_mutex, &next_trace, &BATCH_SIZE, &nont_idx, &p, &nont_dimensions, &merge_delta](){
+                    std::vector<Val> prefixes;
+                    std::vector<Val> postfixes;
+                    unsigned my_next_trace {0};
+                    unsigned my_last_trace {0};
+                    while (my_next_trace < traces.size()) {
+                        {
+                            std::lock_guard<std::mutex> lock(next_trace_mutex);
+                            my_next_trace = next_trace;
+                            next_trace += BATCH_SIZE;
+                            my_last_trace = std::min<unsigned>(next_trace, traces.size());
+                        }
+                        computeMergeDeltas(my_next_trace, my_last_trace, nont_idx, p, prefixes, postfixes, nont_dimensions, merge_delta[thread]);
+                    }
+                }));
+            }
+            std::for_each(workers.begin(), workers.end(), [](std::thread &t)
+            {
+                t.join();
+            });
+            for (unsigned nont = 0; nont < merge_delta[0].size(); ++nont) {
+                for (unsigned thread = 1; thread < N_THREADS; ++thread) {
+                    std::transform(merge_delta[0][nont].begin(), merge_delta[0][nont].end(),
+                                   merge_delta[thread][nont].begin(), merge_delta[0][nont].begin(), std::multiplies<Val>());
+                }
+            }
+        }
+
+        if (self_malloc) {
+            if (not free_region(rule_weights_ptrs[0], allocated))
+                abort();
+        } else {
+            for (auto ptr : rule_weights_ptrs) {
+                free_region(ptr, 0);
             }
         }
 
@@ -1473,7 +1971,7 @@ public:
         Val threshold = Val::zero();
         if (merge_perc) {
             // order merges according to likelihood_loss
-            for (const auto & delta : merge_delta) {
+            for (const auto & delta : merge_delta[0]) {
                 ordered_merge_weights.insert(std::end(ordered_merge_weights), std::begin(delta), std::end(delta));
             }
             std::sort(std::begin(ordered_merge_weights), std::end(ordered_merge_weights), std::greater<Val>());
@@ -1495,7 +1993,7 @@ public:
         unsigned splits = 0;
 
         if (debug) std::cerr << "merge deltas: ";
-        for (const auto & delta : merge_delta) {
+        for (const auto & delta : merge_delta[0]) {
             if (debug) std::cerr << " { ";
             merge_selection.push_back(std::vector<std::vector<unsigned>>());
             for (unsigned dim = 0; dim < nont_dimensions[nont] / 2; ++dim) {
