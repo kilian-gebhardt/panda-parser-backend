@@ -17,31 +17,40 @@ namespace Manage {
     class HyperEdge : public Info<oID> {
     private:
         const ManagerPtr<HyperEdge,oID> manager;
-        const Element<Node,oID> outgoing;
-        const std::vector<Element<Node,oID>> incoming;
+        const Element<Node,oID> target;
+        const std::vector<Element<Node,oID>> sources;
 
     public:
         HyperEdge(ID aId
                 , oID anOriginalId
                 , ManagerPtr<HyperEdge,oID> aManager
-                , Element<Node, oID> anOutg
-                , std::vector<Element<Node, oID>> anInc)
+                , Element<Node, oID> aTarget
+                , std::vector<Element<Node, oID>> someSources)
                 : Info<oID>(std::move(aId), std::move(anOriginalId))
                 , manager(std::move(aManager))
-                , outgoing(std::move(anOutg))
-                , incoming(std::move(anInc)) { }
+                , target(std::move(aTarget))
+                , sources(std::move(someSources)) { }
 
         Element<HyperEdge, oID> get_element() const noexcept {
             return Element<HyperEdge, oID>(Info<oID>::get_id(), manager);
         };
 
+        const Element<Node, oID>& get_target() const {
+            return target;
+        }
+
+        const std::vector<Element<Node, oID>> get_sources(){
+            return sources;
+        };
+
     };
+
 
     template <typename oID>
     class Node : public Info<oID>{
     private:
         std::vector<Element<HyperEdge,oID>> incoming {std::vector<Element<HyperEdge,oID>>() };
-        std::vector<std::pair<Element<HyperEdge,oID>, ID>> outgoing {std::vector<std::pair<Element<HyperEdge,oID>,ID>>() };
+        std::vector<std::pair<Element<HyperEdge,oID>, unsigned int>> outgoing;
         ManagerPtr<Node,oID> manager;
     public:
         Node(const ID aId
@@ -64,7 +73,11 @@ namespace Manage {
         }
 
         const std::vector<Element<HyperEdge,oID>>& get_incoming() const noexcept { return incoming; };
-        const std::vector<std::pair<Element<HyperEdge,oID>, ID>>& get_outgoing() const noexcept { return outgoing; };
+
+        const std::vector<std::pair<Element<HyperEdge,oID>, unsigned int>>&
+        get_outgoing() const noexcept {
+            return outgoing;
+        };
     };
 
     template <typename oID>
@@ -73,20 +86,19 @@ namespace Manage {
         ManagerPtr<HyperEdge,oID> edges{ std::make_shared<Manager<HyperEdge,oID>>() };
     public:
 
-        HyperEdge<oID>& add_hyperedge(const Element<Node,oID>& outgoing
-                , const std::vector<Element<Node, oID>>& incoming
-                , const oID oId){
-            HyperEdge<oID>& edge = edges->create(oId, outgoing, incoming);
+        HyperEdge<oID>& add_hyperedge(const Element<Node,oID>& target
+                , const std::vector<Element<Node, oID>>& sources
+                                      , const oID oId){
+            HyperEdge<oID>& edge = edges->create(oId, target, sources);
             Element<HyperEdge,oID> edgeelement = edge.get_element();
 
-            outgoing->add_incoming(edgeelement);
-            for (unsigned long i=0; i<incoming.size(); ++i ){
-                incoming[i]->add_outgoing(std::pair<Element<HyperEdge,oID>,unsigned long>(edgeelement, i));
+            target->add_incoming(edgeelement);
+            for (unsigned long i=0; i<sources.size(); ++i ){
+                sources[i]->add_outgoing(std::pair<Element<HyperEdge,oID>,unsigned long>(edgeelement, i));
             }
 
             return edge;
         }
-
     };
 
     template <typename oID>

@@ -83,7 +83,7 @@ int main(){
 
     std::clog << std::endl << "Nodes in the pruned trace: " << std::endl;
     for(auto const& elmenent : *hg){
-        std::clog << elmenent->get_id() << " ";
+        std::clog << elmenent << " ";
     }
 
 

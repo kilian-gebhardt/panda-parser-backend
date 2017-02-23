@@ -94,7 +94,7 @@ std::pair<HypergraphPtr<oID>, Element<Node, oID>>
             for(auto const& pItem : parse.second)
                 incoming.push_back(nodelist.at(*pItem));
 
-            HyperEdge<oID>& edge = hg->add_hyperedge(outgoing, incoming, parse.first->get_id());
+            HyperEdge<oID>& edge = hg->add_hyperedge(outgoing, incoming, parse.first->id);
             // todo: set infos on edge
         }
 
@@ -366,58 +366,97 @@ int main() {
     std::pair<HypergraphPtr<originalID >, Element<Node, originalID >> transformedTrace = transform_trace_to_hypergraph<originalID >(parser);
     traceManager->create(0L, transformedTrace.first, transformedTrace.second);
 
-//
-//    auto my_rule_weights = std::vector<Double>({1, 1, 1, 1, 1, 1, 1, 1, 1});
-//    auto pair = manager.io_weights(my_rule_weights, 0);
+    std::cerr << "There are " << (*traceManager)[0].get_hypergraph()->size() << " nodes in the first trace\n";
+
+    std::cerr << "Creating IO-weights...";
+    std::vector<Double> my_rule_weights{1, 1, 1, 1, 1, 1, 1, 1, 1};
+//    std::vector<Double> my_rule_weights{.2, .4, .6, .8, .5, .3, .1, .9, .7};
+    auto pair = manager.io_weights(my_rule_weights, 0);
+    auto pair2 = (*traceManager)[0].io_weights(my_rule_weights);
+    std::cerr << "Done\n Checking Inside/Outside weights";
+    {
+        auto i1 = pair.first.cbegin();
+        auto i2 = pair.first.cbegin();
+        while (i1 != pair.first.cend()) {
+            assert((*i1).second == (*i2).second);
+            ++i1;
+            ++i2;
+            std::cerr << ".";
+        }
+        auto o1 = pair.second.cbegin();
+        auto o2 = pair.second.cbegin();
+        while (o1 != pair.second.cend()) {
+            assert((*o1).second == (*o2).second);
+            ++o1;
+            ++o2;
+            std::cerr << ".";
+        }
+        std::cerr << " Correct!\n\n";
+    }
+
+
 //    for (const auto & item : manager.get_order(0)) {
 //        std::cerr << "T: " << item << " " << pair.first[item] << " " << pair.second[item] << std::endl;
 //    }
-//
-//    auto my_rule_groups = std::vector<std::vector<unsigned>>({{0}, {1}, {2}, {3}, {4, 5}, {6}, {7}, {8}});
-//
-//    auto my_rule_weights2 = std::vector<double>({1, 1, 1, 1, 0.5, 0.5, 1, 1, 1});
-//
-//    auto vec_new = manager.do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
-//
-//    for (unsigned i = 0; i < vec_new.size(); ++i) {
-//        std::cerr << vec_new[i] << " ";
-//    }
-//
-//    const std::map<std::string, unsigned> mymap = {
-//              {"S", 0}
-//            , {"A", 1}
-//            , {"B", 2}
-//            , {"C", 3}
-//            , {"D", 4}
-//            , {"E", 5}
-//            , {"F", 6}
-//            , {"G", 7}
-//    };
-//
-//    auto nont_idx2 = [&] (const std::string & nont) {
-//        return mymap.at(nont);
-//    };
-//
-//    auto rule_to_nont_idx = std::vector<std::vector<unsigned>>(9);
-//    for (auto p : sDCP.lhn_to_rule) {
-//        for (auto rule : p.second) {
-//            rule_to_nont_idx[rule->id].push_back(nont_idx2(rule->lhn));
-//            for (auto nont : rule->rhs) {
-//                rule_to_nont_idx[rule->id].push_back(nont_idx2(nont));
-//            }
-//        }
-//    }
-//    std::cerr << std::endl;
-//
-//    for (unsigned nont = 0; nont < my_rule_groups.size(); ++ nont) {
-//        const auto & group = my_rule_groups[nont];
-//        for (auto rule_id : group) {
-//            std::cerr << rule_to_nont_idx[rule_id][0] << " " << nont << std::endl;
-//            assert(rule_to_nont_idx[rule_id][0] == nont);
-//        }
-//    }
-//
+
+    std::vector<std::vector<unsigned>> my_rule_groups{{0}, {1}, {2}, {3}, {4, 5}, {6}, {7}, {8}};
+
+    std::vector<double> my_rule_weights2{1, 1, 1, 1, 0.5, 0.5, 1, 1, 1};
+
+    auto vec_new = manager.do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
+
+    auto vec_new2 = traceManager->do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
+
+
+    for (unsigned i = 0; i < vec_new.size(); ++i) {
+        assert(vec_new[i] == vec_new2[i]);
+//        std::cerr << vec_new[i] << "/" << vec_new2[i] << "  ";
+    }
+    std::cerr << "EM training: checked!\n";
+
+
+    // ############################################
+    // ############################################
+    // ############################################
+
+
+    const std::map<std::string, unsigned> mymap {
+              {"S", 0}
+            , {"A", 1}
+            , {"B", 2}
+            , {"C", 3}
+            , {"D", 4}
+            , {"E", 5}
+            , {"F", 6}
+            , {"G", 7}
+    };
+
+    auto nont_idx2 = [&] (const std::string & nont) {
+        return mymap.at(nont);
+    };
+
+    auto rule_to_nont_idx = std::vector<std::vector<unsigned>>(9);
+    for (auto p : sDCP.lhn_to_rule) {
+        for (auto rule : p.second) {
+            rule_to_nont_idx[rule->id].push_back(nont_idx2(rule->lhn));
+            for (auto nont : rule->rhs) {
+                rule_to_nont_idx[rule->id].push_back(nont_idx2(nont));
+            }
+        }
+    }
+    std::cerr << std::endl;
+
+    for (unsigned nont = 0; nont < my_rule_groups.size(); ++ nont) {
+        const auto & group = my_rule_groups[nont];
+        for (auto rule_id : group) {
+            std::cerr << rule_to_nont_idx[rule_id][0] << " " << nont << std::endl;
+            assert(rule_to_nont_idx[rule_id][0] == nont);
+        }
+    }
+
 //    manager.split_merge<Double>(2, 1, vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5, 50.0);
+//
+//    traceManager->split_merge<Double>(2, 1, vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5, 50.0);
 
     return 0;
 }

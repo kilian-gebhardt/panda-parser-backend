@@ -56,11 +56,13 @@ namespace Manage{
         inline bool operator> (const Element<InfoT, oID>& r) const noexcept {return id <= r.id; }
         inline bool operator>=(const Element<InfoT, oID>& r) const noexcept {return id <= r.id; }
 
+//        ID get_id() const noexcept {return id; }
 
         friend std::ostream& operator <<(std::ostream& o, const Element<InfoT, oID>& item){
             o << item.id;
             return o;
         }
+        friend std::hash<Element<InfoT, oID>>;
 
     };
 
@@ -71,12 +73,13 @@ namespace Manage{
         ID id;
         oID originalId;
 
+    protected:
+
+        ID get_id() const noexcept {return id; }
+
     public:
         Info(ID aId, oID anOriginalId)
         : id(std::move(aId)), originalId(std::move(anOriginalId)) {};
-
-
-        ID get_id() const noexcept {return id; }
 
         const oID& get_original_id() const noexcept {return originalId; }
 
@@ -96,7 +99,7 @@ namespace Manage{
     template <template <typename oID> typename InfoT, typename oID>
     class Manager : public std::enable_shared_from_this<Manager<InfoT,oID>> {
     private:
-        std::vector<InfoT<oID>> infos {std::vector<InfoT<oID>>() };
+        std::vector<InfoT<oID>> infos {};
 
     public:
         using value_type = Element<InfoT, oID>;
@@ -107,8 +110,8 @@ namespace Manage{
 
 
 
-              InfoT<oID>& operator[](ID id)       {return infos[id]; }
-        const InfoT<oID>& operator[](ID id) const {return infos[id]; }
+              InfoT<oID>& operator[](ID id)       {assert(id<infos.size()); return infos[id]; }
+        const InfoT<oID>& operator[](ID id) const {assert(id<infos.size()); return infos[id]; }
 
         template <typename... Cargs>
         InfoT<oID>& create(const oID anOId, Cargs... args){
@@ -122,11 +125,15 @@ namespace Manage{
             return ManagerIterator<InfoT, oID>(infos.size(), this->shared_from_this());
         }
 
-        const ManagerIterator<InfoT, oID, true> cbegin() {
+        const ManagerIterator<InfoT, oID, true> cbegin() const {
             return ManagerIterator<InfoT, oID, true>(0, this->shared_from_this());
         }
-        const ManagerIterator<InfoT, oID, true> cend() {
+        const ManagerIterator<InfoT, oID, true> cend() const {
             return ManagerIterator<InfoT, oID, true>(infos.size(), this->shared_from_this());
+        }
+
+        unsigned long size() const noexcept {
+            return infos.size();
         }
 
     };
@@ -205,7 +212,14 @@ namespace Manage{
 
 }
 
-
+namespace std {
+    template <template <typename oID> typename InfoT, typename oID>
+    struct hash<Manage::Element<InfoT, oID>> {
+        std::size_t operator()(const Manage::Element<InfoT, oID>& element) const {
+            return std::hash<ID>()(element.id);
+        }
+    };
+}
 
 
 

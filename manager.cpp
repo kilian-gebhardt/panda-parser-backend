@@ -19,10 +19,6 @@ int main(){
     Element<Node, std::string> e2 = node2.get_element();
     Node<std::string> node3 = hg->create("this");
 
-    ID id = node1.get_id();
-
-
-    std::clog << id << " " << e2 << std::endl;
 
     std::clog << e1->get_original_id();
 
