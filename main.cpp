@@ -306,7 +306,7 @@ int main() {
 
     std::cerr << "Trace manager: " << std::endl;
 
-    TraceManager<std::string, std::string, int> manager(true);
+    TraceManager<std::string, std::string, int> manager(false);
     manager.add_trace_entry(parser.get_trace(), *parser.goal, 0);
 
     auto my_rule_weights = std::vector<Double>({1, 1, 1, 1, 1, 1, 1, 1, 1});
