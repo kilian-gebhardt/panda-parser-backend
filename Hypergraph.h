@@ -45,8 +45,6 @@ namespace Manage {
     template <typename oID>
     class Node : public Info<oID>{
     private:
-//        std::vector<Element<HyperEdge<NodeT>,oID>> incoming {std::vector<Element<HyperEdge,oID>>() };
-//        std::vector<std::pair<Element<HyperEdge,oID>, unsigned int>> outgoing;
         ManagerPtr<Node<oID>> manager;
     public:
         Node(const ID aId
@@ -60,20 +58,6 @@ namespace Manage {
             return Element<Node<oID>>(Info<oID>::get_id(), manager);
         }
 
-//        void add_incoming(Element<HyperEdge,oID> inc){
-//            incoming.push_back(std::move(inc));
-//        }
-
-//        void add_outgoing(std::pair<Element<HyperEdge,oID>, ID> out){
-//            outgoing.push_back(std::move(out));
-//        }
-
-//        const std::vector<Element<HyperEdge,oID>>& get_incoming() const noexcept { return incoming; };
-//
-//        const std::vector<std::pair<Element<HyperEdge,oID>, unsigned int>>&
-//        get_outgoing() const noexcept {
-//            return outgoing;
-//        }
     };
 
     template <typename NodeT, typename HEoriginalID>

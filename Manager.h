@@ -12,10 +12,11 @@
 
 template <typename T1, typename T2>
 using MAP = typename std::map<T1, T2>;
-using ID = unsigned long;
 
 
 namespace Manage{
+
+    using ID = unsigned long;
 
     template <typename InfoT>
     class Manager;
@@ -218,7 +219,7 @@ namespace std {
     template <typename InfoT>
     struct hash<Manage::Element<InfoT>> {
         std::size_t operator()(const Manage::Element<InfoT>& element) const {
-            return std::hash<ID>()(element.id);
+            return std::hash<Manage::ID>()(element.id);
         }
     };
 }

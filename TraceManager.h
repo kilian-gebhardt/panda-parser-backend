@@ -12,14 +12,12 @@
 
 // use partly specialized Hypergraph objects
 using NodeOriginalID = unsigned long;
-using HyperedgeOriginalID = unsigned long;
+using HyperedgeOriginalID = unsigned;
 using Node = Manage::Node<NodeOriginalID>;
-template <typename InfoT> using Info = Manage::Info<InfoT>;
+
+template <typename oID> using Info = Manage::Info<oID>;
 template <typename InfoT> using Manager = Manage::Manager<InfoT>;
 template <typename InfoT> using ManagerPtr = Manage::ManagerPtr<InfoT>;
-using Hypergraph = Manage::Hypergraph<Node, HyperedgeOriginalID>;
-using HypergraphPtr = std::shared_ptr<Hypergraph>;
-using HyperEdge = Manage::HyperEdge<Node, HyperedgeOriginalID>;
 template <typename InfoT> using Element = Manage::Element<InfoT>;
 
 
@@ -28,46 +26,75 @@ template <typename T1, typename T2> using MAPTYPE = typename std::unordered_map<
 using WeightVector = Eigen::TensorMap<Eigen::Tensor<double, 1>>;
 
 
+template <typename Nonterminal>
+class TraceNode : public Info<NodeOriginalID> {
+private:
+    ManagerPtr<TraceNode<Nonterminal>> manager;
+    Nonterminal nonterminal;
+public:
+    TraceNode(Manage::ID aId
+            , const ManagerPtr<TraceNode<Nonterminal>> aManager
+            , const NodeOriginalID anOriginalID
+            , const Nonterminal& nont)
+            : Info(aId, anOriginalID)
+            , manager(aManager)
+            , nonterminal(nont) {}
 
-template <typename oID>
+    const Element<TraceNode<Nonterminal>> get_element() const noexcept {
+        return Element<TraceNode<Nonterminal>>(Info::get_id(), manager);
+    }
+
+    const Nonterminal get_nonterminal() const noexcept { return nonterminal; }
+};
+
+
+
+template<typename Nonterminal> using Hypergraph = Manage::Hypergraph<TraceNode<Nonterminal>, HyperedgeOriginalID>;
+template<typename Nonterminal> using HypergraphPtr = std::shared_ptr<Hypergraph<Nonterminal>>;
+template<typename Nonterminal> using HyperEdge = Manage::HyperEdge<TraceNode<Nonterminal>, HyperedgeOriginalID>;
+
+
+
+
+template <typename Nonterminal, typename oID>
 class TraceInfo : public Info<oID> {
 private:
-    ManagerPtr<TraceInfo<oID>> manager;
-    HypergraphPtr hypergraph;
+    ManagerPtr<TraceInfo<Nonterminal, oID>> manager;
+    HypergraphPtr<Nonterminal> hypergraph;
 
-    std::vector<Element<Node>> topologicalOrder;
-    Element<Node> goal;
+    std::vector<Element<TraceNode<Nonterminal>>> topologicalOrder;
+    Element<TraceNode<Nonterminal>> goal;
 
 public:
-    TraceInfo(const ID aId
-            , const ManagerPtr<TraceInfo<oID>> aManager
+    TraceInfo(const Manage::ID aId
+            , const ManagerPtr<TraceInfo<Nonterminal, oID>> aManager
             , const oID oid
-            , HypergraphPtr aHypergraph
-            , Element<Node> aGoal)
+            , HypergraphPtr<Nonterminal> aHypergraph
+            , Element<TraceNode<Nonterminal>> aGoal)
             : Info<oID>(std::move(aId), std::move(oid))
             , manager(std::move(aManager))
             , hypergraph(std::move(aHypergraph))
             , goal(std::move(aGoal)){ }
 
-    const Element<TraceInfo<oID>> get_element() const noexcept {
-        return Element<TraceInfo<oID>>(Info<oID>::get_id(), manager);
+    const Element<TraceInfo<Nonterminal, oID>> get_element() const noexcept {
+        return Element<TraceInfo<Nonterminal, oID>>(Info<oID>::get_id(), manager);
     };
 
-    const HypergraphPtr& get_hypergraph() const noexcept {
+    const HypergraphPtr<Nonterminal>& get_hypergraph() const noexcept {
         return hypergraph;
     }
 
-    const Element<Node>& get_goal() const noexcept {
+    const Element<TraceNode<Nonterminal>>& get_goal() const noexcept {
         return goal;
     }
 
-    const std::vector<Element<Node>>& get_topological_order(){
+    const std::vector<Element<TraceNode<Nonterminal>>>& get_topological_order(){
         if (topologicalOrder.size() == hypergraph->size())
             return topologicalOrder;
 
-        std::vector<Element<Node>> topOrder{};
+        std::vector<Element<TraceNode<Nonterminal>>> topOrder{};
         topOrder.reserve(hypergraph->size());
-        std::set<Element<Node>> visited{};
+        std::set<Element<TraceNode<Nonterminal>>> visited{};
         bool changed = true;
         while (changed) {
             changed = false;
@@ -100,13 +127,13 @@ public:
     };
 
     template <typename Val>
-    std::pair<MAPTYPE<Element<Node>, Val>
-            , MAPTYPE<Element<Node>, Val>>
+    std::pair<MAPTYPE<Element<TraceNode<Nonterminal>>, Val>
+            , MAPTYPE<Element<TraceNode<Nonterminal>>, Val>>
     io_weights(std::vector<Val>& ruleWeights){
 
         // calculate inside weigths
         // TODO: implement for general case (== no topological order) approximation of inside weights
-        MAPTYPE<Element<Node>, Val> inside{};
+        MAPTYPE<Element<TraceNode<Nonterminal>>, Val> inside{};
         for(const auto& node : get_topological_order()){
             inside[node] = Val::zero();
             for(const auto& incomingEdge : hypergraph->get_incoming_edges(node)){
@@ -119,7 +146,7 @@ public:
         }
 
         // calculate outside weights
-        MAPTYPE<Element<Node>, Val> outside{};
+        MAPTYPE<Element<TraceNode<Nonterminal>>, Val> outside{};
         for(auto nodeIterator = get_topological_order().crbegin(); nodeIterator != get_topological_order().crend(); ++nodeIterator){
             Val val = Val::zero();
             if(*nodeIterator == goal)
@@ -148,8 +175,8 @@ public:
 
 
 
-template <typename Nonterminal, typename Terminal>
-class TraceManager2 : public Manager<TraceInfo<unsigned long>> {
+template <typename Nonterminal, typename Terminal, typename TraceID>
+class TraceManager2 : public Manager<TraceInfo<Nonterminal, TraceID>> {
 private:
 
 public:
@@ -242,8 +269,8 @@ public:
 
 
 };
-template <typename Nonterminal, typename Terminal>
-using TraceManagerPtr = std::shared_ptr<TraceManager2<Nonterminal, Terminal>>;
+template <typename Nonterminal, typename Terminal, typename TraceID>
+using TraceManagerPtr = std::shared_ptr<TraceManager2<Nonterminal, Terminal, TraceID>>;
 
 
 
