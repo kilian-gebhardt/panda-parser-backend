@@ -76,10 +76,10 @@ int main(){
 
     print_top_trace(grammar, trace, word);
 
-    Manage::HypergraphPtr<unsigned long> hg = convert_trace_to_hypergraph<string, string>(
+    Manage::HypergraphPtr<Manage::Node<unsigned long>, unsigned long> hg {convert_trace_to_hypergraph<string, string>(
             prune_trace<string, string>(trace, PassiveItem<string>(grammar.get_initial_nont()
                     , std::vector<Range>{Range(0L, word.size())}))
-    );
+    )};
 
     std::clog << std::endl << "Nodes in the pruned trace: " << std::endl;
     for(auto const& elmenent : *hg){

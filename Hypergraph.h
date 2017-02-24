@@ -9,37 +9,33 @@
 
 namespace Manage {
 
-
-    template <typename oID>
-    class Node; // forward declaration
-
-    template <typename oID>
+    template <typename NodeT, typename oID>
     class HyperEdge : public Info<oID> {
     private:
-        const ManagerPtr<HyperEdge,oID> manager;
-        const Element<Node,oID> target;
-        const std::vector<Element<Node,oID>> sources;
+        const ManagerPtr<HyperEdge<NodeT, oID>> manager;
+        const Element<NodeT> target;
+        const std::vector<Element<NodeT>> sources;
 
     public:
         HyperEdge(ID aId
+                , ManagerPtr<HyperEdge<NodeT, oID>> aManager
                 , oID anOriginalId
-                , ManagerPtr<HyperEdge,oID> aManager
-                , Element<Node, oID> aTarget
-                , std::vector<Element<Node, oID>> someSources)
+                , Element<NodeT> aTarget
+                , std::vector<Element<NodeT>> someSources)
                 : Info<oID>(std::move(aId), std::move(anOriginalId))
                 , manager(std::move(aManager))
                 , target(std::move(aTarget))
                 , sources(std::move(someSources)) { }
 
-        Element<HyperEdge, oID> get_element() const noexcept {
-            return Element<HyperEdge, oID>(Info<oID>::get_id(), manager);
+        Element<HyperEdge<NodeT, oID>> get_element() const noexcept {
+            return Element<HyperEdge<NodeT, oID>>(Info<oID>::get_id(), manager);
         };
 
-        const Element<Node, oID>& get_target() const {
+        const Element<NodeT>& get_target() const {
             return target;
         }
 
-        const std::vector<Element<Node, oID>> get_sources(){
+        const std::vector<Element<NodeT>> get_sources(){
             return sources;
         };
 
@@ -49,63 +45,76 @@ namespace Manage {
     template <typename oID>
     class Node : public Info<oID>{
     private:
-        std::vector<Element<HyperEdge,oID>> incoming {std::vector<Element<HyperEdge,oID>>() };
-        std::vector<std::pair<Element<HyperEdge,oID>, unsigned int>> outgoing;
-        ManagerPtr<Node,oID> manager;
+//        std::vector<Element<HyperEdge<NodeT>,oID>> incoming {std::vector<Element<HyperEdge,oID>>() };
+//        std::vector<std::pair<Element<HyperEdge,oID>, unsigned int>> outgoing;
+        ManagerPtr<Node<oID>> manager;
     public:
         Node(const ID aId
-                , const oID& anOriginalId
-                , const ManagerPtr<Node,oID> aManager)
+                , const ManagerPtr<Node<oID>> aManager
+                , const oID& anOriginalId)
                 : Info<oID>(std::move(aId)
                 , std::move(anOriginalId))
                 , manager(std::move(aManager)) { }
 
-        const Element<Node, oID> get_element() const noexcept {
-            return Element<Node, oID>(Info<oID>::get_id(), manager);
-        };
-
-        void add_incoming(Element<HyperEdge,oID> inc){
-            incoming.push_back(std::move(inc));
+        const Element<Node<oID>> get_element() const noexcept {
+            return Element<Node<oID>>(Info<oID>::get_id(), manager);
         }
 
-        void add_outgoing(std::pair<Element<HyperEdge,oID>, ID> out){
-            outgoing.push_back(std::move(out));
-        }
+//        void add_incoming(Element<HyperEdge,oID> inc){
+//            incoming.push_back(std::move(inc));
+//        }
 
-        const std::vector<Element<HyperEdge,oID>>& get_incoming() const noexcept { return incoming; };
+//        void add_outgoing(std::pair<Element<HyperEdge,oID>, ID> out){
+//            outgoing.push_back(std::move(out));
+//        }
 
-        const std::vector<std::pair<Element<HyperEdge,oID>, unsigned int>>&
-        get_outgoing() const noexcept {
-            return outgoing;
-        };
+//        const std::vector<Element<HyperEdge,oID>>& get_incoming() const noexcept { return incoming; };
+//
+//        const std::vector<std::pair<Element<HyperEdge,oID>, unsigned int>>&
+//        get_outgoing() const noexcept {
+//            return outgoing;
+//        }
     };
 
-    template <typename oID>
-    class Hypergraph : public Manager<Node,oID> {
+    template <typename NodeT, typename HEoriginalID>
+    class Hypergraph : public Manager<NodeT> {
     private:
-        ManagerPtr<HyperEdge,oID> edges{ std::make_shared<Manager<HyperEdge,oID>>() };
+        ManagerPtr<HyperEdge<NodeT, HEoriginalID>> edges{ std::make_shared<Manager<HyperEdge<NodeT,HEoriginalID>>>() };
+        std::map<Element<NodeT>, std::vector<Element<HyperEdge<NodeT, HEoriginalID>>>> incoming_edges;
+        std::map<Element<NodeT>, std::vector<std::pair<Element<HyperEdge<NodeT, HEoriginalID>>, unsigned int>>> outgoing_edges;
     public:
 
-        HyperEdge<oID>& add_hyperedge(const Element<Node,oID>& target
-                , const std::vector<Element<Node, oID>>& sources
-                                      , const oID oId){
-            HyperEdge<oID>& edge = edges->create(oId, target, sources);
-            Element<HyperEdge,oID> edgeelement = edge.get_element();
+        HyperEdge<NodeT, HEoriginalID>& add_hyperedge(const Element<NodeT>& target
+                , const std::vector<Element<NodeT>>& sources
+                , const HEoriginalID oId){
+            HyperEdge<NodeT, HEoriginalID>& edge = edges->create(oId, target, sources);
+            Element<HyperEdge<NodeT, HEoriginalID>> edgeelement = edge.get_element();
 
-            target->add_incoming(edgeelement);
+            incoming_edges[target].push_back(edgeelement);
             for (unsigned long i=0; i<sources.size(); ++i ){
-                sources[i]->add_outgoing(std::pair<Element<HyperEdge,oID>,unsigned long>(edgeelement, i));
+                outgoing_edges[sources[i]].push_back(std::make_pair(edgeelement, i));
             }
 
             return edge;
         }
+
+
+        const std::vector<Element<HyperEdge<NodeT, HEoriginalID>>>& get_incoming_edges(Element<NodeT> e) const {
+            return incoming_edges.at(e);
+        }
+
+
+        const std::vector<std::pair<Element<HyperEdge<NodeT, HEoriginalID>>, unsigned int>> get_outgoing_edges(Element<NodeT> e) const {
+            if(outgoing_edges.count(e))
+                return outgoing_edges.at(e);
+            else
+                return {};
+        }
+
     };
 
-    template <typename oID>
-    using HypergraphPtr = std::shared_ptr<Hypergraph<oID>>;
-
-
-
+    template <typename NodeT, typename HEoriginalID>
+    using HypergraphPtr = std::shared_ptr<Hypergraph<NodeT, HEoriginalID>>;
 
 
 }
