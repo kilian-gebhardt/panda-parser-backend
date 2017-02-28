@@ -91,8 +91,8 @@ std::pair<HypergraphPtr<std::string>, Element<TraceNode<std::string>>>
             for(auto const& pItem : parse.second)
                 incoming.push_back(nodelist.at(*pItem));
 
-            HyperEdge<Nonterminal>& edge = hg->add_hyperedge(outgoing, incoming, parse.first->id);
-            // todo: set infos on edge
+            /*HyperEdge<Nonterminal>& edge = */ hg->add_hyperedge(outgoing, incoming, parse.first->id);
+            // set optional infos on edge here
         }
 
     }
@@ -425,7 +425,7 @@ int main() {
             , {"D", 4}
             , {"E", 5}
             , {"F", 6}
-            , {"G", 7}e
+            , {"G", 7}
     };
 
     auto nont_idx2 = [&] (const std::string & nont) {

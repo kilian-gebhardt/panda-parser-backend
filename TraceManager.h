@@ -986,7 +986,7 @@ public:
 
             // expectation
             if (N_THREADS <= 1) {
-                expectation_la(rule_tensors, rule_count_tensors[0], rule_dimensions, root_probability,
+                expectation_la(rule_tensors, rule_count_tensors[0], root_probability,
                                root_count, corpus_likelihood, this->cbegin(), this->cend());
             } else {
                 expectation_la_parallel(N_THREADS, BATCH_SIZE, rule_tensors, rule_count_tensors, rule_dimensions, root_probability,
@@ -1090,7 +1090,6 @@ public:
     template<typename VECTOR>
     inline void expectation_la(const std::vector<RuleTensor<double>> &rule_tensors
             , std::vector<RuleTensor<double>> &rule_count_tensors
-            , const std::vector<std::vector<unsigned int>> &rule_dimensions
             , const Eigen::TensorMap<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>, 0, Eigen::MakePointer> &root_probability
             , VECTOR &root_count
             , double &corpus_likelihood
@@ -1205,7 +1204,7 @@ public:
 
         std::vector<std::thread> workers;
         for (unsigned thread = 0; thread < THREADS; ++thread) {
-            workers.push_back(std::thread([thread,BATCH_SIZE,this,&next_trace_mutex,&next_trace,&rule_tensors,&root_probability,&root_counts,&rule_dimensions,&corpus_likelihoods,&rule_count_tensors]() {
+            workers.push_back(std::thread([thread,BATCH_SIZE,this,&next_trace_mutex,&next_trace,&rule_tensors,&root_probability,&root_counts,&corpus_likelihoods,&rule_count_tensors]() {
                 while (next_trace < this->cend()) {
                     TraceIterator my_next_trace;
                     TraceIterator my_last_trace;
@@ -1216,7 +1215,7 @@ public:
                         my_last_trace = std::min<TraceIterator>(next_trace, this->cend());
                     }
 
-                    expectation_la(rule_tensors, rule_count_tensors[thread], rule_dimensions, root_probability,
+                    expectation_la(rule_tensors, rule_count_tensors[thread], root_probability,
                                    root_counts[thread], corpus_likelihoods[thread], my_next_trace, my_last_trace);
                 }
             }));
