@@ -484,7 +484,6 @@ public:
     std::vector<std::vector<unsigned>> rule_to_nonterminals;
     std::vector<std::vector<unsigned>> normalization_groups;
 
-
     GrammarInfo2(
             const std::function<unsigned(Nonterminal)> nont_idx
             , const std::vector<std::vector<unsigned>> rule_to_nonterminals
@@ -559,7 +558,31 @@ public:
 
     TraceManager2(const bool debug = false) : debug(debug) {}
 
-    // Hook on create
+    // todo: Hook on create?
+
+
+
+    // Functions for Cython interface
+
+    GrammarInfo2<unsigned>* grammar_info_id(const std::vector<std::vector<unsigned>> &rule_to_nonterminals) {
+        auto nont_idx_f = [](const unsigned nont) -> unsigned { return nont; };
+        return new GrammarInfo2<Nonterminal>(nont_idx_f, rule_to_nonterminals);
+    }
+
+    std::vector<std::vector<double>> lift_doubles(const std::vector<double>& rule_weights) const {
+        std::vector<std::vector< double >> rule_weights_la;
+        for (const double &rule_weight : rule_weights) {
+            rule_weights_la.emplace_back(1, rule_weight);
+        }
+        return rule_weights_la;
+    }
+
+
+
+
+    //
+    // EM-Training
+    //
 
 
     template<typename Val>
@@ -652,10 +675,42 @@ public:
 
     template<typename Val>
     std::pair<std::vector<unsigned>, std::vector<std::vector<double>>>
+    run_split_merge_cycle(
+            const unsigned N_THREADS
+            , const unsigned BATCH_SIZE
+            , const GrammarInfo2<Nonterminal>& grammar_Info
+            , std::vector<unsigned> nont_dimensions
+            , const std::vector<std::vector<double>> &rule_weights_la
+            , const unsigned n_epochs
+            , const unsigned n_nonts
+            , const double merge_threshold
+            , const double merge_percentage
+            , const unsigned cycle
+    ) {
+        const double epsilon = 0.0001;
+        auto rule_weights_val = double_to_val<Val>(rule_weights_la);
+        std::vector<Val> root_weights = {Val::one()};
+        split_merge_cycle(N_THREADS, BATCH_SIZE, cycle, n_epochs, epsilon, merge_threshold, merge_percentage, grammar_Info.rule_to_nonterminals, grammar_Info.normalization_groups, grammar_Info.nont_idx, nont_dimensions, rule_weights_val, root_weights);
+        auto rule_weights_la_after = val_to_double(rule_weights_val);
+
+        return std::make_pair(nont_dimensions, rule_weights_la_after);
+    };
+
+
+
+
+    template<typename Val>
+    std::pair<std::vector<unsigned>, std::vector<std::vector<double>>>
     split_merge(
-            const unsigned N_THREADS, const unsigned BATCH_SIZE,
-            const std::vector<double> &rule_weights, const std::vector<std::vector<unsigned>>& rule2nonterminals,
-            const unsigned noEpochs, const std::map<Nonterminal, unsigned>& nont_idx, const unsigned split_merge_cycles, const double merge_threshold, const double merge_percentage=-1.0
+            const unsigned N_THREADS
+            , const unsigned BATCH_SIZE
+            , const std::vector<double> &rule_weights
+            , const std::vector<std::vector<unsigned>>& rule2nonterminals
+            , const unsigned noEpochs
+            , const std::map<Nonterminal, unsigned>& nont_idx
+            , const unsigned split_merge_cycles
+            , const double merge_threshold
+            , const double merge_percentage=-1.0
     ) {
         std::function<unsigned(Nonterminal)> nont_idx_f = [&](const Nonterminal nont) -> unsigned { return nont_idx.at(nont);};
         GrammarInfo2<Nonterminal> grammarInfo(nont_idx_f, rule2nonterminals);
@@ -1924,6 +1979,19 @@ public:
         }
     }
 
+
+
+    template<typename Val>
+    std::vector<std::vector<Val>> double_to_val(const std::vector<std::vector<double>> &rule_weights_double) const {
+        std::vector<std::vector<Val>> rule_weights_val;
+        for (const auto & weights : rule_weights_double) {
+            rule_weights_val.push_back(std::vector<Val>());
+            for (const double & weight : weights) {
+                rule_weights_val.back().push_back(Val::to(weight));
+            }
+        }
+        return rule_weights_val;
+    }
 
     template<typename Val>
     std::vector<std::vector<double>> val_to_double(const std::vector<std::vector<Val>> &rule_weights_la) const {
