@@ -23,6 +23,9 @@ namespace Manage{
 
     template <typename InfoT>
     using ManagerPtr = std::shared_ptr<Manager<InfoT>>;
+    template <typename InfoT>
+    using ConstManagerPtr = std::shared_ptr<const Manager<InfoT>>;
+
 
     template <typename InfoT>
     class Element {
@@ -127,10 +130,10 @@ namespace Manage{
             return ManagerIterator<InfoT>(infos.size(), this->shared_from_this());
         }
 
-        const ManagerIterator<InfoT, true> cbegin() {
+        ManagerIterator<InfoT, true> cbegin() { //const { // todo: this should be const!
             return ManagerIterator<InfoT, true>(0, this->shared_from_this());
         }
-        const ManagerIterator<InfoT, true> cend() {
+        ManagerIterator<InfoT, true> cend() { //const { // todo: this should be const!
             return ManagerIterator<InfoT, true>(infos.size(), this->shared_from_this());
         }
 
@@ -146,6 +149,7 @@ namespace Manage{
     private:
         unsigned long index;
         ManagerPtr<InfoT> manager;
+        // typename std::conditional<isConst, ConstManagerPtr<InfoT>, ManagerPtr<InfoT>>::type manager;
     public:
         using difference_type = long;
         using value_type = Element<InfoT>;
@@ -154,9 +158,11 @@ namespace Manage{
         using iterator_category = std::random_access_iterator_tag;
 
         ManagerIterator(): index(0) {}
-        ManagerIterator(unsigned long i, const ManagerPtr<InfoT>& m): index(i), manager(m) {}
+//        ManagerIterator(unsigned long i, typename std::conditional<isConst, ConstManagerPtr<InfoT>, ManagerPtr<InfoT>>::type m): index(i), manager(m) {}
+        ManagerIterator(unsigned long i, ManagerPtr<InfoT> m): index(i), manager(m) {}
         ManagerIterator(const ManagerIterator<InfoT, isConst>& mit): index(mit.index), manager(mit.manager) {}
         // todo: enable implicit conversion of non-const iterator to const iterator
+
 
         bool operator==(const ManagerIterator<InfoT, isConst>& mit) const noexcept {return mit.index == index; }
         bool operator!=(const ManagerIterator<InfoT, isConst>& mit) const noexcept {return !(*this == mit); }

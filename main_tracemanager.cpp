@@ -425,7 +425,7 @@ int main() {
             , {"D", 4}
             , {"E", 5}
             , {"F", 6}
-            , {"G", 7}
+            , {"G", 7}e
     };
 
     auto nont_idx2 = [&] (const std::string & nont) {
@@ -451,9 +451,9 @@ int main() {
         }
     }
 
-//    manager.split_merge<Double>(2, 1, vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5, 50.0);
-//
-//    traceManager->split_merge<Double>(2, 1, vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5, 50.0);
+    manager.split_merge<Double>(2, 1, vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5, 50.0);
+
+    traceManager->split_merge<Double>(2, 1, vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5, 50.0);
 
     return 0;
 }

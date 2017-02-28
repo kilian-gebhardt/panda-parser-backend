@@ -8,6 +8,7 @@
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 #include "Manager.h"
 #include "Hypergraph.h"
+#include "StorageManager.h"
 
 
 using WeightVector = Eigen::TensorMap<Eigen::Tensor<double, 1>>;
@@ -31,7 +32,6 @@ template <typename InfoT> using Manager = Manage::Manager<InfoT>;
 template <typename InfoT> using ManagerPtr = Manage::ManagerPtr<InfoT>;
 template <typename InfoT> using ConstManagerIterator = Manage::ManagerIterator<InfoT, true>;
 template <typename InfoT> using Element = Manage::Element<InfoT>;
-
 
 
 template <typename Nonterminal>
@@ -294,7 +294,6 @@ public:
         target_weight += c1;
     }
 
-    template<typename Witness>
     inline void inside_weight_step3(
             const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights
             , WeightVector& target_weight
@@ -542,6 +541,8 @@ public:
 
 template <typename Nonterminal, typename Terminal, typename TraceID>
 class TraceManager2 : public Manager<TraceInfo<Nonterminal, TraceID>> {
+    using TraceIterator = ConstManagerIterator<TraceInfo<Nonterminal, TraceID>>;
+
 private:
     const bool debug;
 
@@ -690,27 +691,36 @@ public:
         std::vector<Val> root_weights {Val::one()};
 
         for (unsigned cycle = 0; cycle < split_merge_cycles; ++cycle) {
-            split_merge_cycle(N_THREADS, BATCH_SIZE, cycle, n_epochs, epsilon
+            auto result = split_merge_cycle(N_THREADS, BATCH_SIZE, cycle, n_epochs, epsilon
                     , merge_threshold, merge_percentage, rule_to_nonterminals, normalization_groups, nont_idx, nont_dimensions
                     , rule_weights_la, root_weights);
+            nont_dimensions = result.first;
+            rule_weights_la = result.second;
         }
 
-        std::vector<std::vector<double>> rule_weights_la_unlog = valToDouble(rule_weights_la);
+        std::vector<std::vector<double>> rule_weights_la_unlog = val_to_double(rule_weights_la);
 
         return std::make_pair(nont_dimensions, rule_weights_la_unlog);
-
     }
 
 
 
     template<typename Val, typename NontToIdx>
-    void
-    split_merge_cycle(const unsigned N_THREADS, const unsigned BATCH_SIZE, const unsigned cycle
-            , const unsigned n_epochs, double epsilon, double merge_threshold, double merge_percentage
+    std::pair<std::vector<unsigned>, std::vector<std::vector<Val>>>
+    split_merge_cycle(
+            const unsigned N_THREADS
+            , const unsigned BATCH_SIZE
+            , const unsigned cycle
+            , const unsigned n_epochs
+            , double epsilon
+            , double merge_threshold
+            , double merge_percentage
             , const std::vector<std::vector<unsigned>> &rule_to_nonterminals
-            , const std::vector<std::vector<unsigned>> &normalization_groups, NontToIdx nont_idx
-            , std::vector<unsigned> & nont_dimensions, std::vector<std::vector<Val>> & rule_weights_la
-            , std::vector<Val> & root_weights
+            , const std::vector<std::vector<unsigned>> &normalization_groups
+            , const NontToIdx nont_idx
+            , const std::vector<unsigned> & nont_dimensions
+            , const std::vector<std::vector<Val>> & rule_weights_la
+            , std::vector<Val> root_weights
     ){
         std::vector<std::vector<Val>> rule_weights_splitted;
         rule_weights_splitted.reserve(rule_weights_la.size());
@@ -749,9 +759,6 @@ public:
         const double root_split = rand_split() * 0.5;
         root_weights_splitted = {Val::to(root_split) * Val::one(), Val::to(1 - root_split) * Val::one()};
 
-
-        // todo: review: Why do you clear rule weights created in another function and given by reference?
-        rule_weights_la.clear();
 
         std::cerr << "em training after " << cycle + 1 << ". split" << std::endl;
 
@@ -832,7 +839,7 @@ public:
             rule_weights_merged.push_back(
                     merge_rule(rule_weights_splitted[i], old_dimensions, new_dimensions, merges,
                                lhn_merge_factors));
-            rule_dimensions_merged.emplace_back(std::move(new_dimensions));
+            rule_dimensions_merged.push_back(std::move(new_dimensions));
         }
 
         rule_weights_splitted.clear();
@@ -865,9 +872,8 @@ public:
 
         free_io_weight_maps(allocated_io_weights2.first, allocated_io_weights2.second);
 
-        // create valid state after split/merge cycle
-        nont_dimensions = new_nont_dimensions;
-        rule_weights_la = rule_weights_merged;
+
+        return std::make_pair(new_nont_dimensions, rule_weights_merged);
     }
 
 
@@ -906,7 +912,7 @@ public:
         feenableexcept(FE_DIVBYZERO | FE_INVALID| FE_OVERFLOW);
         unsigned epoch = 0;
 
-        const unsigned root_dimension = nont_dimensions[nont_idx(begin()->get_goal())];
+        const unsigned root_dimension = nont_dimensions[nont_idx(this->cbegin()->get_goal()->get_nonterminal())]; // todo: this info has to be in GrammarInfo
         unsigned rule_dimension_total = 0;
 
         std::vector<std::vector<double*>> rule_counts (N_THREADS);
@@ -981,7 +987,7 @@ public:
             // expectation
             if (N_THREADS <= 1) {
                 expectation_la(rule_tensors, rule_count_tensors[0], rule_dimensions, root_probability,
-                               root_count, corpus_likelihood, 0, traces.size());
+                               root_count, corpus_likelihood, this->cbegin(), this->cend());
             } else {
                 expectation_la_parallel(N_THREADS, BATCH_SIZE, rule_tensors, rule_count_tensors, rule_dimensions, root_probability,
                                         root_count, corpus_likelihood);
@@ -1009,35 +1015,35 @@ public:
                 std::vector<std::thread> workers;
                 for (unsigned thread = 0; thread < N_THREADS; ++thread) {
                     workers.push_back(std::thread([&]()
-                                                  {
-                                                      unsigned my_nont {0};
-                                                      unsigned max_nont {0};
+                          {
+                              unsigned my_nont {0};
+                              unsigned max_nont {0};
 
-                                                      while (my_nont < normalization_groups.size()) {
-                                                          {
-                                                              std::lock_guard<std::mutex> lock(nont_mutex);
-                                                              my_nont = nont;
-                                                              max_nont = std::min<unsigned>(nont + BATCH_SIZE, normalization_groups.size());
-                                                              nont = max_nont;
-                                                          }
+                              while (my_nont < normalization_groups.size()) {
+                                  {
+                                      std::lock_guard<std::mutex> lock(nont_mutex);
+                                      my_nont = nont;
+                                      max_nont = std::min<unsigned>(nont + BATCH_SIZE, normalization_groups.size());
+                                      nont = max_nont;
+                                  }
 
-                                                          for ( ; my_nont < max_nont; ++my_nont) {
-                                                              const std::vector<unsigned> & group = normalization_groups[my_nont];
-                                                              const unsigned lhs_dim = rule_dimensions[group[0]][0];
-                                                              maximization(lhs_dim, rule_dimensions, group, rule_counts[0], rule_weights);
-                                                              if (debug) {
-                                                                  std::cerr << "rules for nonterminal " << my_nont << std::endl;
-                                                                  for (auto rule : group) {
-                                                                      std::cerr << "rule " << rule << " has probabilites: " << std::endl;
-                                                                      std::cerr << Eigen::TensorMap<Eigen::Tensor<double, 2>>(rule_weights[rule],
-                                                                                                                              lhs_dim,
-                                                                                                                              subdim(rule_dimensions[rule]))
-                                                                                << std::endl;
-                                                                  }
-                                                              }
-                                                          }
-                                                      }
-                                                  }));
+                                  for ( ; my_nont < max_nont; ++my_nont) {
+                                      const std::vector<unsigned> & group = normalization_groups[my_nont];
+                                      const unsigned lhs_dim = rule_dimensions[group[0]][0];
+                                      maximization(lhs_dim, rule_dimensions, group, rule_counts[0], rule_weights);
+                                      if (debug) {
+                                          std::cerr << "rules for nonterminal " << my_nont << std::endl;
+                                          for (auto rule : group) {
+                                              std::cerr << "rule " << rule << " has probabilites: " << std::endl;
+                                              std::cerr << Eigen::TensorMap<Eigen::Tensor<double, 2>>(rule_weights[rule],
+                                                                                                      lhs_dim,
+                                                                                                      subdim(rule_dimensions[rule]))
+                                                        << std::endl;
+                                          }
+                                      }
+                                  }
+                              }
+                          }));
                 }
                 std::for_each(workers.begin(), workers.end(), [](std::thread &t)
                 {
@@ -1064,15 +1070,15 @@ public:
         }
 
         if (self_malloc) {
-            if (not free_region(root_count_ptr, root_dimension))
+            if (not storageManager.free_region(root_count_ptr, root_dimension))
                 abort();
-            if (not free_region(rule_counts[0][0], rule_dimension_total))
+            if (not storageManager.free_region(rule_counts[0][0], rule_dimension_total))
                 abort();
         } else {
-            free_region(root_count_ptr, root_dimension);
+            storageManager.free_region(root_count_ptr, root_dimension);
             for (unsigned thread = 0; thread < N_THREADS; ++ thread) {
                 for (auto ptr : rule_counts[thread]) {
-                    free_region(ptr, 0);
+                    storageManager.free_region(ptr, 0);
                 }
             }
         }
@@ -1088,11 +1094,11 @@ public:
             , const Eigen::TensorMap<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>, 0, Eigen::MakePointer> &root_probability
             , VECTOR &root_count
             , double &corpus_likelihood
-            , const ConstManagerIterator<TraceInfo<Nonterminal, TraceID>> start
-            , const ConstManagerIterator<TraceInfo<Nonterminal, TraceID>> end
+            , const TraceIterator start
+            , const TraceIterator end
     ) {
         // expectation
-        for (auto traceIterator = start; traceIterator != end; ++traceIterator) {
+        for (auto traceIterator = start; traceIterator < end; ++traceIterator) {
             const auto& trace = *traceIterator;
             if (trace->get_hypergraph()->size() == 0)
                 continue;
@@ -1125,7 +1131,7 @@ public:
             if (debug)
                 std::cerr << "instance root probability: " << std::endl << trace_root_probabilities << std::endl;
 
-            for (auto& node : *(trace->get_hypergraph())) {
+            for (const Element<TraceNode<Nonterminal>>& node : *(trace->get_hypergraph())) {
                 const WeightVector& lhn_outside_weight = outside_weights.at(node);
 
                 if (debug) {
@@ -1134,7 +1140,7 @@ public:
                     const WeightVector & lhn_inside_weight = inside_weights.at(node);
                     std::cerr << lhn_inside_weight << std::endl;
                 }
-                for (const auto& edge : node->get_incoming_edges()) {
+                for (const auto& edge : trace->get_hypergraph()->get_incoming_edges(node)) {
                     const int rule_id = edge->get_original_id();
                     const size_t rule_dim = edge->get_sources().size() + 1;
 
@@ -1175,15 +1181,18 @@ public:
         }
     }
 
-    inline void expectation_la_parallel(const unsigned THREADS, const unsigned BATCH_SIZE,
-                                        const std::vector<RuleTensor<double>> &rule_tensors,
-                                        std::vector<std::vector<RuleTensor<double>>> &rule_count_tensors,
-                                        const std::vector<std::vector<unsigned int>> &rule_dimensions,
-                                        const Eigen::TensorMap<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>, 0, Eigen::MakePointer> &root_probability,
-                                        Eigen::TensorMap<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>, 0, Eigen::MakePointer> &root_count,
-                                        double & corpus_likelihood) {
+    inline void expectation_la_parallel(
+            const unsigned THREADS
+            , const unsigned BATCH_SIZE
+            , const std::vector<RuleTensor<double>> &rule_tensors
+            , std::vector<std::vector<RuleTensor<double>>> &rule_count_tensors
+            , const std::vector<std::vector<unsigned int>> &rule_dimensions
+            , const WeightVector& root_probability
+            , WeightVector& root_count
+            , double & corpus_likelihood)
+    {
 
-        unsigned next_trace {0};
+        TraceIterator next_trace {this->cbegin()};
         std::mutex next_trace_mutex;
 
         std::vector<double> corpus_likelihoods(THREADS, corpus_likelihood);
@@ -1191,20 +1200,20 @@ public:
         for (unsigned thread = 0; thread < THREADS; ++thread) {
             Eigen::Tensor<double, 1> root_count_thread(root_count.dimension(0));
             root_count_thread.setZero();
-            root_counts.emplace_back(std::move(root_count_thread));
+            root_counts.push_back(std::move(root_count_thread));
         }
 
         std::vector<std::thread> workers;
         for (unsigned thread = 0; thread < THREADS; ++thread) {
             workers.push_back(std::thread([thread,BATCH_SIZE,this,&next_trace_mutex,&next_trace,&rule_tensors,&root_probability,&root_counts,&rule_dimensions,&corpus_likelihoods,&rule_count_tensors]() {
-                unsigned my_next_trace = 0;
-                unsigned my_last_trace = 0;
-                while (my_next_trace < traces.size()) {
+                while (next_trace < this->cend()) {
+                    TraceIterator my_next_trace;
+                    TraceIterator my_last_trace;
                     {
                         std::lock_guard<std::mutex> lock(next_trace_mutex);
                         my_next_trace = next_trace;
                         next_trace += BATCH_SIZE;
-                        my_last_trace = std::min<unsigned>(next_trace, traces.size());
+                        my_last_trace = std::min<TraceIterator>(next_trace, this->cend());
                     }
 
                     expectation_la(rule_tensors, rule_count_tensors[thread], rule_dimensions, root_probability,
@@ -1213,10 +1222,7 @@ public:
             }));
         }
 
-        std::for_each(workers.begin(), workers.end(), [](std::thread &t)
-        {
-            t.join();
-        });
+        std::for_each(workers.begin(), workers.end(), [](std::thread &t) {t.join();} );
 
         // collect counts, etc.
         corpus_likelihood
@@ -1274,7 +1280,7 @@ public:
 
     inline void compute_rule_count2(
             const RuleTensor<double> & rule_weight_tensor
-            , Element<HyperEdge<Nonterminal>>& edge
+            , const Element<HyperEdge<Nonterminal>>& edge
             , const Eigen::TensorMap<Eigen::Tensor<double, 1>>& lhn_outside_weight
             , const double trace_root_probability
             , const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights
@@ -1302,7 +1308,7 @@ public:
 
     inline void compute_rule_count3(
             const RuleTensor<double> & rule_weight_tensor
-            , Element<HyperEdge<Nonterminal>>& edge
+            , const Element<HyperEdge<Nonterminal>>& edge
             , const Eigen::TensorMap<Eigen::Tensor<double, 1>>& lhn_outside_weight
             , const double trace_root_probability
             , const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights
@@ -1333,7 +1339,7 @@ public:
     template<int rule_dim>
     inline void compute_rule_count(
             const RuleTensor<double> & rule_weight_tensor
-            , Element<HyperEdge<Nonterminal>>& edge
+            , const Element<HyperEdge<Nonterminal>>& edge
             , const Eigen::TensorMap<Eigen::Tensor<double, 1>>& lhn_outside_weight
             , const double trace_root_probability
             , const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights
@@ -1415,14 +1421,14 @@ public:
         unsigned allocated(0);
 
         traces_inside_weights.clear();
-        traces_inside_weights.reserve(size());
+        traces_inside_weights.reserve(this->size());
         traces_outside_weights.clear();
-        traces_outside_weights.reserve(size());
+        traces_outside_weights.reserve(this->size());
 
         for (const auto& trace : *this) {
             MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector> inside_weights, outside_weights;
 
-            for (const auto& node : *(trace->get_hypergraph()) {
+            for (const auto& node : *(trace->get_hypergraph())) {
                 const unsigned item_dimension = nont_dimensions[nont_idx(node->get_nonterminal())];
                 double *const inside_weight_ptr = storageManager.get_region(item_dimension);
                 double *const outside_weight_ptr = storageManager.get_region(item_dimension);
@@ -1440,6 +1446,400 @@ public:
         }
         return std::make_pair(start, allocated);
     }
+
+
+    void free_io_weight_maps(double * const start, unsigned allocated) {
+        if (self_malloc) {
+            if (not storageManager.free_region(start, allocated))
+                abort();
+            traces_inside_weights.clear();
+            traces_outside_weights.clear();
+        } else {
+            for (TraceIterator traceIterator = this->cbegin(); traceIterator < this->cend(); ++traceIterator) {
+                MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights = traces_inside_weights[traceIterator - this->cbegin()];
+                MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& outside_weights = traces_outside_weights[traceIterator - this->cbegin()];
+                for (const auto &pair : inside_weights) {
+                    free(pair.second.data());
+                }
+                for (const auto &pair : outside_weights) {
+                    free(pair.second.data());
+                }
+            }
+        }
+        traces_inside_weights.clear();
+        traces_outside_weights.clear();
+    }
+
+
+
+    template <typename Val, typename NontToIdx>
+    std::tuple< std::vector<std::vector<std::vector<unsigned>>>
+            , std::vector<unsigned>
+            , std::vector<std::vector<Val>>
+    >
+    merge_prepare(
+            const unsigned N_THREADS
+            , const unsigned BATCH_SIZE
+            , const std::vector<std::vector<Val>> & rule_weights
+            , const std::vector<Val> & root_weights
+            , const std::vector<unsigned> & nont_dimensions
+            , const std::vector<std::vector<unsigned>> & rule_ids_to_nont_ids
+            , const NontToIdx nont_idx
+            , const Val merge_threshold_
+            , const double merge_percent = -1.0
+    ) {
+
+
+        // first we compute the fractions p_1, p_2
+        // with which the probabality mass is shared between merged latent states
+
+        // this is prepared with computing globally averaged outside weights
+        // TODO allocate via get_region
+        std::vector<std::vector<Eigen::Tensor<double, 1>>> merge_weights_partial(N_THREADS);
+        for (auto dim : nont_dimensions) {
+            Eigen::Tensor<double, 1> merge_weight(dim);
+            merge_weight.setZero();
+            for (unsigned thread = 0; thread < N_THREADS; ++thread)
+                merge_weights_partial[thread].emplace_back(merge_weight);
+        }
+
+        // conversion
+        std::vector<double *> rule_weights_ptrs;
+        std::vector<RuleTensor<double>> rule_weight_tensors;
+        double * root_weights_ptrs;
+
+        std::vector<std::vector<unsigned>> rule_dimensions;
+        for (const auto rule : rule_ids_to_nont_ids) {
+            std::vector<unsigned> rule_dimension;
+            for (unsigned nont : rule) {
+                rule_dimension.emplace_back(nont_dimensions[nont]);
+            }
+            rule_dimensions.emplace_back(std::move(rule_dimension));
+        }
+
+        unsigned allocated = convert_to_eigen(rule_weights_ptrs, rule_weights, rule_weight_tensors, root_weights_ptrs, root_weights, rule_dimensions);
+
+        WeightVector root_weight_tensor(root_weights_ptrs, root_weights.size());
+
+        std::cerr << "Estimating relative frequency of annotated nonterminals." << std::endl;
+        if (N_THREADS <= 1)
+            estimateNontFreqLA(this->cbegin(), this->cend(), nont_idx, merge_weights_partial[0], rule_weight_tensors, root_weight_tensor);
+        else {
+            std::mutex next_trace_mutex;
+            TraceIterator nextTrace = this->cbegin();
+            std::vector<std::thread> workers;
+            for (unsigned thread = 0; thread < N_THREADS; ++thread) {
+                workers.push_back(std::thread([thread, this, &BATCH_SIZE, &nextTrace, &next_trace_mutex, &nont_idx,
+                                                      &merge_weights_partial, &rule_weight_tensors,
+                                                      &root_weight_tensor](){
+                    while (nextTrace < this->cend()) {
+                        TraceIterator my_next_trace;
+                        TraceIterator my_last_trace;
+                        {
+                            std::lock_guard<std::mutex> lock(next_trace_mutex);
+                            my_next_trace = nextTrace;
+                            // since nonterminal freq expectation is cheaper than rule freq expectation,
+                            // we doubled the batch_size here
+                            nextTrace += BATCH_SIZE * 2;
+                            my_last_trace = std::min<TraceIterator>(nextTrace, this->cend());
+                        }
+                        estimateNontFreqLA(my_next_trace, my_last_trace, nont_idx, merge_weights_partial[thread],
+                                           rule_weight_tensors, root_weight_tensor);
+                    }
+                }));
+            }
+            std::for_each(workers.begin(), workers.end(), [](std::thread &t)
+            {
+                t.join();
+            });
+            for (unsigned nont = 0; nont < merge_weights_partial[0].size(); ++nont) {
+                for (unsigned thread = 1; thread < N_THREADS; ++thread) {
+                    merge_weights_partial[0][nont] += merge_weights_partial[0][thread];
+                }
+            }
+        }
+
+        std::cerr << "Computing merge factors." << std::endl;
+        // finally we compute the fractions
+        std::vector<std::vector<Val>> p;
+        for (auto las_weights : merge_weights_partial[0]) {
+            p.emplace_back(std::vector<Val>());
+            for (unsigned i = 0; i < las_weights.dimension(0); i = i + 2) {
+                double combined_weight = las_weights(i) + las_weights(i+1);
+                if ((not std::isnan(combined_weight)) and combined_weight > 0) {
+                    p.back().push_back(Val::to(las_weights(i) / combined_weight));
+                    p.back().push_back(Val::to(las_weights(i + 1) / combined_weight));
+                } else {
+                    p.back().push_back(Val::to(0.5));
+                    p.back().push_back(Val::to(0.5));
+                }
+            }
+        }
+
+        std::cerr << "Computing likelihood deltas of merges." << std::endl;
+        // now we approximate the likelihood Δ of merging two latent states
+        std::vector<std::vector<std::vector<Val>>> merge_delta(N_THREADS);
+        for (auto dim : nont_dimensions) {
+            for (unsigned thread {0}; thread < N_THREADS; ++thread)
+                merge_delta[thread].emplace_back(dim / 2, Val::one());
+        }
+
+        if (N_THREADS <= 1) {
+            std::vector<Val> prefixes;
+            std::vector<Val> postfixes;
+            computeMergeDeltas(this->cbegin(), this->cend(), nont_idx, p, prefixes, postfixes, nont_dimensions, merge_delta[0]);
+        } else {
+            std::mutex next_trace_mutex;
+            TraceIterator next_trace = this->cbegin();
+            std::vector<std::thread> workers;
+            for (unsigned thread = 0; thread < N_THREADS; ++thread) {
+                workers.push_back(std::thread([thread, this, &next_trace_mutex, &next_trace, &BATCH_SIZE, &nont_idx, &p, &nont_dimensions, &merge_delta](){
+                    std::vector<Val> prefixes;
+                    std::vector<Val> postfixes;
+                    while (next_trace < this->cend()) {
+                        TraceIterator my_next_trace;
+                        TraceIterator my_last_trace;
+                        {
+                            std::lock_guard<std::mutex> lock(next_trace_mutex);
+                            my_next_trace = next_trace;
+                            next_trace += BATCH_SIZE;
+                            my_last_trace = std::min<TraceIterator >(next_trace, this->cend());
+                        }
+                        computeMergeDeltas(my_next_trace, my_last_trace, nont_idx, p, prefixes, postfixes, nont_dimensions, merge_delta[thread]);
+                    }
+                }));
+            }
+            std::for_each(workers.begin(), workers.end(), [](std::thread &t)
+            {
+                t.join();
+            });
+            for (unsigned nont = 0; nont < merge_delta[0].size(); ++nont) {
+                for (unsigned thread = 1; thread < N_THREADS; ++thread) {
+                    std::transform(merge_delta[0][nont].begin(), merge_delta[0][nont].end(),
+                                   merge_delta[thread][nont].begin(), merge_delta[0][nont].begin(), std::multiplies<Val>());
+                }
+            }
+        }
+
+        if (self_malloc) {
+            if (not storageManager.free_region(rule_weights_ptrs[0], allocated))
+                abort();
+        } else {
+            for (auto ptr : rule_weights_ptrs) {
+                storageManager.free_region(ptr, 0);
+            }
+        }
+
+        const bool merge_perc = merge_percent >= 0.0 && merge_percent <= 100.0;
+
+        std::cerr << "Selecting merges ";
+        if (merge_perc)
+            std::cerr << "best " << merge_percent << " % " ;
+        else
+            std::cerr << "above threshold " << merge_threshold_;
+        std::cerr << std::endl;
+        std::vector<Val> ordered_merge_weights;
+        Val threshold = Val::zero();
+        if (merge_perc) {
+            // order merges according to likelihood_loss
+            for (const auto & delta : merge_delta[0]) {
+                ordered_merge_weights.insert(std::end(ordered_merge_weights), std::begin(delta), std::end(delta));
+            }
+            std::sort(std::begin(ordered_merge_weights), std::end(ordered_merge_weights), std::greater<Val>());
+            unsigned index = (unsigned)( merge_percent / 100.0 * ordered_merge_weights.size());
+            if (index > ordered_merge_weights.size())
+                index = ordered_merge_weights.size() - 1;
+
+            if (true || debug) std::cerr << "index for ordered merges " << index << " / " << ordered_merge_weights.size() << std::endl;
+
+            threshold = ordered_merge_weights[index];
+        }
+
+        const Val merge_threshold = ! merge_perc ? merge_threshold_ : threshold;
+        // evaluate Δ and build merge table accordingly
+        std::vector<std::vector<std::vector<unsigned>>> merge_selection;
+        std::vector<unsigned> new_nont_dimensions;
+        unsigned nont = 0;
+        unsigned merges = 0;
+        unsigned splits = 0;
+
+        if (debug) std::cerr << "merge deltas: ";
+        for (const auto & delta : merge_delta[0]) {
+            if (debug) std::cerr << " { ";
+            merge_selection.push_back(std::vector<std::vector<unsigned>>());
+            for (unsigned dim = 0; dim < nont_dimensions[nont] / 2; ++dim) {
+                if (debug) std::cerr << delta[dim].from() << " ";
+                if (delta[dim] >= merge_threshold - Val::to(0.00001)
+                    // always merge if Δ >= 1
+                    || delta[dim] >= Val::one() - Val::to(0.00001)
+                    // always merge initial symbol
+                    || nont_idx(this->cbegin()->get_goal()->get_nonterminal()) == nont) { // todo: this info should be in GrammarInfo
+                    merge_selection.back().emplace_back();
+                    merge_selection.back().back().push_back(dim * 2);
+                    merge_selection.back().back().push_back(dim * 2 + 1);
+                    ++merges;
+                } else {
+                    merge_selection.back().emplace_back(1, dim * 2 );
+                    merge_selection.back().emplace_back(1, dim * 2 + 1);
+                    ++splits;
+                }
+            }
+            if (debug) std::cerr << " } ";
+            ++nont;
+            new_nont_dimensions.push_back(merge_selection.back().size());
+        }
+        if (debug) std::cerr << std::endl;
+
+        std::cerr << "Merging " << merges << " of " << merges + splits << " splits. Merge threshold is " << merge_threshold << std::endl;
+
+        return std::make_tuple(merge_selection, new_nont_dimensions, p);
+    }
+
+
+    template <typename NontToIdx>
+    inline void estimateNontFreqLA(
+            const TraceIterator start
+            , const TraceIterator stop
+            , const NontToIdx nont_idx
+            , std::vector<Eigen::Tensor<double, 1, 0, Eigen::DenseIndex>> &merge_weights_partial
+            , const std::vector<RuleTensor<double>> &rule_weight_tensors
+            , const WeightVector &root_weight_tensor)
+    {
+        // computing in(A_x) * out(A_x) for every A ∈ N and x ∈ X_A
+        for (TraceIterator traceIterator = start; traceIterator < stop; ++traceIterator) {
+            traceIterator->io_weights_la(
+                    rule_weight_tensors
+                    , root_weight_tensor
+                    , traces_inside_weights[traceIterator - this->cbegin()]
+                    , traces_outside_weights[traceIterator - this->cbegin()]
+            );
+
+            const auto & inside_weights = traces_inside_weights[traceIterator - this->cbegin()];
+            const auto & outside_weights = traces_outside_weights[traceIterator - this->cbegin()];
+
+            for (const Element<TraceNode<Nonterminal>>& node : *(traceIterator->get_hypergraph()) ) {
+
+                const Eigen::TensorMap<Eigen::Tensor<double, 1>> & inside_weight = inside_weights.at(node);
+                const Eigen::TensorMap<Eigen::Tensor<double, 1>> & outside_weight = outside_weights.at(node);
+
+                const auto vals = inside_weight * outside_weight;
+                Eigen::Tensor<double, 0> denominator = vals.sum();
+                Eigen::Tensor<double, 1> fraction = vals * (1 / denominator(0));
+                Eigen::Tensor<bool, 0> nan = fraction.isnan().any();
+                Eigen::Tensor<bool, 0> inf = fraction.isinf().any();
+                if (not nan(0) and not inf(0)){
+                    auto & target =  merge_weights_partial[nont_idx(node->get_nonterminal())];
+                    target += fraction;
+                }
+            }
+        }
+    }
+
+
+    template <typename NontToIdx, typename Val>
+    inline void computeMergeDeltas(
+            const TraceIterator start
+            , const TraceIterator stop
+            , const NontToIdx nont_idx
+            , const std::vector<std::vector<Val>> &p
+            , std::vector<Val> &prefixes
+            , std::vector<Val> &postfixes
+            , const std::vector<unsigned int> &nont_dimensions
+            , std::vector<std::vector<Val>> &merge_delta
+    ) {//const { // todo: this should be const
+        for (TraceIterator trace_id = start; trace_id < stop; ++trace_id) {
+            const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights = traces_inside_weights[trace_id - this->cbegin()];
+            const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& outside_weights = traces_outside_weights[trace_id - this->cbegin()];
+
+            for (const Element<TraceNode<Nonterminal>>& node : *(trace_id->get_hypergraph())) {
+
+                const auto nont_dim = nont_dimensions[nont_idx(node->get_nonterminal())];
+                prefixes.resize(nont_dim / 2, Val::zero());
+                postfixes.resize(nont_dim / 2, Val::zero());
+                Val denominator = Val::zero();
+                {
+                    const unsigned dim = nont_dim - 2;
+                    const Val in1 = Val::to(inside_weights.at(node).data()[dim]);
+                    const Val in2 = Val::to(inside_weights.at(node).data()[dim + 1]);
+                    const Val out1 = Val::to(outside_weights.at(node).data()[dim]);
+                    const Val out2 = Val::to(outside_weights.at(node).data()[dim + 1]);
+                    denominator += in1 * out1 + in2 * out2;
+                }
+                for (unsigned dim = 0; dim < nont_dim - 2; dim = dim + 2) {
+                    {
+                        const Val in1 = Val::to(inside_weights.at(node).data()[dim]);
+                        const Val in2 = Val::to(inside_weights.at(node).data()[dim + 1]);
+                        const Val out1 = Val::to(outside_weights.at(node).data()[dim]);
+                        const Val out2 = Val::to(outside_weights.at(node).data()[dim + 1]);
+                        prefixes[dim / 2 + 1] = prefixes[dim / 2] + in1 * out1 + in2 * out2;
+                        denominator += in1 * out1 + in2 * out2;
+                    }
+                    {
+                        const unsigned dim_ = nont_dim - dim - 2;
+                        const Val in1 = Val::to(inside_weights.at(node).data()[nont_dim - dim_]);
+                        const Val in2 = Val::to(inside_weights.at(node).data()[nont_dim - dim_ + 1]);
+                        const Val out1 = Val::to(outside_weights.at(node).data()[nont_dim - dim_]);
+                        const Val out2 = Val::to(outside_weights.at(node).data()[nont_dim - dim_ + 1]);
+                        postfixes[(nont_dim - dim) / 2 - 2] = postfixes[(nont_dim - dim)/ 2] + in1 * out1 + in2 * out2;
+                    }
+                }
+
+                // inside weight of some nodes can be zero in certain LA-dimensions
+                // since LA-rule weights may converge to zero
+                // we ignore those dimensions in Δ computation
+                if (denominator == Val::zero())
+                    continue;
+
+                for (unsigned dim = 0; dim < nont_dimensions[nont_idx(node->get_nonterminal())]; dim = dim+2) {
+                    const Val in1 = Val::to(inside_weights.at(node).data()[dim]);
+                    const Val in2 = Val::to(inside_weights.at(node).data()[dim + 1]);
+                    const Val out1 = Val::to(outside_weights.at(node).data()[dim]);
+                    const Val out2 = Val::to(outside_weights.at(node).data()[dim + 1]);
+                    const unsigned nont = nont_idx(node->get_nonterminal());
+                    const Val p1 = p[nont][dim];
+                    const Val p2 = p[nont][dim+1];
+
+                    const Val out_merged = out1 + out2;
+                    const Val in_merged = (p1 * in1) + (p2 * in2);
+
+//                    const Val Q = Val::add_subtract2_divide(denominator, in_merged * out_merged, in1 * out1, in2 * out2, denominator);
+                    const Val Q = (prefixes[dim / 2] + postfixes[dim / 2] + in_merged * out_merged) / denominator;
+
+                    if (std::isnan(Q.get_Value())) {
+                        std::cerr << "bad fraction " << Q << " where" << std::endl;
+                        std::cerr << "prefix  " << prefixes[dim/2] << std::endl;
+                        std::cerr << "postfix " << postfixes[dim/2] << std::endl;
+                        std::cerr << "merged  " << in_merged * out_merged << std::endl;
+                        std::cerr << "denom   " << denominator << std::endl;
+
+//                        Val nominator = denominator;
+//                        nominator = nominator + (in_merged * out_merged);
+//                        nominator = nominator - (in1 * out1);
+//                        nominator = nominator - (in2 * out2);
+//                        // const Val Q2 = nominator / denominator;
+//                        std::cerr << "bad fraction " << nominator << " / " << denominator << " = " << Q << std::endl;
+//                        std::cerr << "prod(in_merged, out_merged) = " << in_merged * out_merged << std::endl;
+//                        std::cerr << "prod(in1, out1) = " << in1 * out1 << std::endl;
+//                        std::cerr << "prod(in2, out2) = " << in2 * out2 << std::endl;
+                        assert(!std::isnan(Q.get_Value()));
+                    }
+
+                    Val & delta = merge_delta[nont][dim / 2];
+                    delta *= Q;
+
+                }
+                prefixes.clear();
+                postfixes.clear();
+            }
+        }
+    }
+
+
+
+
+
+
+
 
 
 
@@ -1526,89 +1926,24 @@ public:
     }
 
 
+    template<typename Val>
+    std::vector<std::vector<double>> val_to_double(const std::vector<std::vector<Val>> &rule_weights_la) const {
+        std::vector<std::vector<double>> rule_weights_la_unlog;
+        for (const auto & weights : rule_weights_la) {
+            rule_weights_la_unlog.push_back(std::vector<double>());
+            for (const Val & weight : weights) {
+                rule_weights_la_unlog.back().push_back(weight.from());
+            }
+        }
+        return rule_weights_la_unlog;
+    }
+
+
 
 
 };
 template <typename Nonterminal, typename Terminal, typename TraceID>
 using TraceManagerPtr = std::shared_ptr<TraceManager2<Nonterminal, Terminal, TraceID>>;
-
-
-
-
-
-
-class StorageManager {
-private:
-    bool self_malloc;
-    double * start = nullptr;
-    double * next = nullptr;
-    double * max_mem = nullptr;
-    unsigned the_size = 0; // 625000; // 5MB
-
-
-public:
-    StorageManager(bool selfmal = false): self_malloc(selfmal) {}
-
-
-    bool reserve_memory(unsigned size) {
-        if(!self_malloc)
-            return true;
-
-        std::cerr << "reserving " << size << std::endl;
-        if (start == next) {
-            if (start != nullptr and max_mem - start < size) {
-                free(start);
-            }
-            if (start == nullptr or max_mem - start < size) {
-                unsigned allocate = the_size > size ? the_size : size;
-                std::cerr << "allocating " << allocate << std::endl;
-                start = (double *) malloc(sizeof(double) * allocate);
-                max_mem = start + allocate;
-                next = start;
-            }
-            return true;
-        } else
-            return false;
-    }
-
-    double * get_region(unsigned size) {
-        if (not self_malloc)
-            return (double*) malloc(sizeof(double) * size);
-        else {
-            if (start == nullptr) {
-                start = (double *) malloc(sizeof(double) * the_size);
-                max_mem = start + the_size;
-                next = start;
-            }
-            if (max_mem - next < size) {
-                std::cerr << "Maximum size of double storage exceeded" << std::endl;
-                std::cerr << "Required  " << size << std::endl;
-                std::cerr << "Available " << (max_mem - next) / sizeof(double) << std::endl;
-                abort();
-            }
-            double *return_ = next;
-            next = return_ + size;
-            return return_;
-        }
-    }
-
-    bool free_region(double* const ptr, const unsigned size) {
-        if (not self_malloc) {
-            free(ptr);
-            return true;
-        } else {
-            if (ptr + size == next) {
-                assert(start <= ptr);
-                next = ptr;
-                return true;
-            }
-            return false;
-        }
-    }
-
-};
-
-
 
 
 
