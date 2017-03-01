@@ -63,35 +63,39 @@ std::shared_ptr<HybridTree<std::string, int>> build_hybrid_tree(bool lcfrs) {
 };
 
 
-std::pair<HypergraphPtr<std::string>, Element<TraceNode<std::string>>>
-    transform_trace_to_hypergraph(const SDCPParser<std::string, std::string, int> &parser){
-    using Nonterminal = std::string;
+template <typename Nonterminal>
+std::pair<HypergraphPtr<Nonterminal>, Element<Node<Nonterminal>>>
+    transform_trace_to_hypergraph(
+            const SDCPParser<std::string, std::string, int> &parser
+            , std::vector<Nonterminal> nodeLabels
+            , std::vector<EdgeLabelT> edgeLabels
+    ){
     using Terminal = std::string;
     using Position = int;
 
-    HypergraphPtr<Nonterminal > hg {std::make_shared<Hypergraph<Nonterminal>>()};
-
     const MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<std::pair<std::shared_ptr<Rule<Nonterminal, Terminal>>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>> >>>>& trace(parser.get_trace());
 
+    HypergraphPtr<Nonterminal > hg {std::make_shared<Hypergraph<Nonterminal>>(nodeLabels, edgeLabels)};
+
     // construct all nodes
-    auto nodelist = std::map<ParseItem<Nonterminal, Position>, Element<TraceNode<Nonterminal>>>();
+    auto nodelist = std::map<ParseItem<Nonterminal, Position>, Element<Node<Nonterminal>>>();
     for (auto const& item : trace) {
-        TraceNode<Nonterminal> n = hg->create(0, item.first.nonterminal); // no old id available, using 0
+        Element<Node<Nonterminal>> n = hg->create(item.first.nonterminal);
         // todo: set infos on n
-        nodelist.emplace(item.first, n.get_element());
+        nodelist.emplace(item.first, n);
     }
 
     // construct hyperedges
     for (auto const& item : trace) {
-        Element<TraceNode<Nonterminal >> outgoing = nodelist.at(item.first);
-        std::vector<Element<TraceNode<Nonterminal>>> incoming;
+        Element<Node<Nonterminal >> outgoing = nodelist.at(item.first);
+        std::vector<Element<Node<Nonterminal>>> incoming;
         for(auto const& parse : item.second){
             incoming.clear();
             incoming.reserve(parse.second.size());
             for(auto const& pItem : parse.second)
                 incoming.push_back(nodelist.at(*pItem));
 
-            /*HyperEdge<Nonterminal>& edge = */ hg->add_hyperedge(outgoing, incoming, parse.first->id);
+            /*Element<HyperEdge<Nonterminal>>& edge = */ hg->add_hyperedge(parse.first->id, outgoing, incoming);
             // set optional infos on edge here
         }
 
@@ -355,12 +359,17 @@ int main() {
 // Markus: modifications begin:
 // #############################
 
+
+    std::vector<std::string> nodeLabels {"S", "A", "B", "C", "D", "E", "F", "G"};
+    std::vector<EdgeLabelT> edgeLabels {rule1.id, rule2.id, rule3.id, rule4.id, rule5.id, rule6.id, rule7.id, rule8.id, rule9.id};
+
+
     TraceManager<std::string, std::string, int> manager(false);
     TraceManagerPtr<std::string, std::string, unsigned long> traceManager {std::make_shared<TraceManager2<std::string, std::string, unsigned long>>() };
 
     manager.add_trace_entry(parser.get_trace(), *parser.goal, 0);
 
-    std::pair<HypergraphPtr<std::string>, Element<TraceNode<std::string>>> transformedTrace {transform_trace_to_hypergraph(parser) };
+    std::pair<HypergraphPtr<std::string>, Element<Node<std::string>>> transformedTrace {transform_trace_to_hypergraph<std::string>(parser, nodeLabels, edgeLabels) };
     traceManager->create(0L, transformedTrace.first, transformedTrace.second);
 
     std::cerr << "There are " << (*traceManager)[0].get_hypergraph()->size() << " nodes in the first trace\n";

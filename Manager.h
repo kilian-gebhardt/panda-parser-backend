@@ -16,24 +16,24 @@ using MAP = typename std::map<T1, T2>;
 
 namespace Manage{
 
-    using ID = unsigned long;
+    using ID = size_t;
 
     template <typename InfoT>
-    class Manager;
+    class Manager; // forward reference
 
     template <typename InfoT>
-    using ManagerPtr = std::shared_ptr<Manager<InfoT>>;
+    using ManagerPtr = std::shared_ptr<Manager<InfoT>>; // forward reference
     template <typename InfoT>
-    using ConstManagerPtr = std::shared_ptr<const Manager<InfoT>>;
+    using ConstManagerPtr = std::shared_ptr<const Manager<InfoT>>; // forward reference
 
 
     template <typename InfoT, bool isConst = false>
     class Element {
-    private:
-        ID id;
-//        ManagerPtr<InfoT> manager;
         using ManagerType = typename std::conditional<isConst, ConstManagerPtr<InfoT>, ManagerPtr<InfoT>>::type;
         using PointerType = typename std::conditional<isConst, const InfoT*, InfoT*>::type;
+
+    private:
+        ID id;
         ManagerType manager;
     public:
         Element(ID aId, ManagerType aManager): id(aId), manager(aManager) {};
@@ -46,8 +46,6 @@ namespace Manage{
         inline bool operator> (const Element<InfoT, isConst>& r) const noexcept {return id <= r.id; }
         inline bool operator>=(const Element<InfoT, isConst>& r) const noexcept {return id <= r.id; }
 
-//        ID get_id() const noexcept {return id; }
-
         friend std::ostream& operator <<(std::ostream& o, const Element<InfoT, isConst>& item){
             o << item.id;
             return o;
@@ -56,31 +54,6 @@ namespace Manage{
         friend std::hash<Element<InfoT>>;
         friend std::hash<Element<InfoT, true>>;
     };
-
-
-    template <typename oID>
-    class Info {
-    private:
-        ID id;
-        oID originalId;
-
-    protected:
-
-        ID get_id() const noexcept {return id; }
-
-    public:
-        Info(ID aId, oID anOriginalId)
-        : id(std::move(aId)), originalId(std::move(anOriginalId)) {};
-
-        const oID& get_original_id() const noexcept {return originalId; }
-
-        friend std::ostream& operator <<(std::ostream& o, const Info<oID>& item){
-            o << "<" << item.id << ">";
-            return o;
-        }
-    };
-
-
 
 
     template <typename InfoT, bool isconst = false>
@@ -105,10 +78,10 @@ namespace Manage{
         const InfoT& operator[](ID id) const {assert(id<infos.size()); return infos[id]; }
 
         template <typename... Cargs>
-        InfoT& create( Cargs... args){
+        value_type create( Cargs... args){
             const ID id = infos.size();
             infos.emplace_back(id, this->shared_from_this(), std::forward<Cargs>(args)...);
-            return infos[id];
+            return infos[id].get_element();
         }
 
         ManagerIterator<InfoT> begin() {return ManagerIterator<InfoT>(0, this->shared_from_this()); }
@@ -158,9 +131,7 @@ namespace Manage{
         bool operator>(const ManagerIterator<InfoT, isConst>& mit) const noexcept {return !(*this <= mit); }
         bool operator>=(const ManagerIterator<InfoT, isConst>& mit) const noexcept {return !(*this < mit); }
 
-//        value_type operator*() const {return Element<InfoT>(index, manager); }
         value_type operator*() {return typename std::conditional<isConst, Element<InfoT, true>, Element<InfoT>>::type(index, manager); }
-//        value_type operator->() const {return Element<InfoT>(index, manager); }
         value_type operator->() {return typename std::conditional<isConst, Element<InfoT, true>, Element<InfoT>>::type(index, manager); }
 
         ManagerIterator<InfoT, isConst>& operator++() { // ++i

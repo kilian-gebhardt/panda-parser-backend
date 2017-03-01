@@ -23,87 +23,76 @@ using RuleTensor = typename boost::variant<
 >;
 
 // use partly specialized Hypergraph objects
-using NodeOriginalID = unsigned long;
-using HyperedgeOriginalID = unsigned;
-using Node = Manage::Node<NodeOriginalID>;
 
-template <typename oID> using Info = Manage::Info<oID>;
+
+//using NodeOriginalID = unsigned long;
+using EdgeLabelT = size_t;
+
+
+template <typename NodeLabelT> using Node = Manage::Node<NodeLabelT>;
+template <typename NodeLabelT> using HyperEdge = Manage::HyperEdge<Node<NodeLabelT>, EdgeLabelT>;
 template <typename InfoT> using Manager = Manage::Manager<InfoT>;
 template <typename InfoT> using ManagerPtr = Manage::ManagerPtr<InfoT>;
 template <typename InfoT> using ConstManagerIterator = Manage::ManagerIterator<InfoT, true>;
 template <typename InfoT> using Element = Manage::Element<InfoT>;
 
 
-template <typename Nonterminal>
-class TraceNode : public Info<NodeOriginalID> {
-private:
-    ManagerPtr<TraceNode<Nonterminal>> manager;
-    Nonterminal nonterminal;
-public:
-    TraceNode(Manage::ID aId
-            , const ManagerPtr<TraceNode<Nonterminal>> aManager
-            , const NodeOriginalID anOriginalID
-            , const Nonterminal& nont)
-            : Info(aId, anOriginalID)
-            , manager(aManager)
-            , nonterminal(nont) {}
-
-    const Element<TraceNode<Nonterminal>> get_element() const noexcept {
-        return Element<TraceNode<Nonterminal>>(Info::get_id(), manager);
-    }
-
-    const Nonterminal get_nonterminal() const noexcept { return nonterminal; }
-};
-
-
-
-template<typename Nonterminal> using Hypergraph = Manage::Hypergraph<TraceNode<Nonterminal>, HyperedgeOriginalID>;
+template<typename Nonterminal> using Hypergraph = Manage::Hypergraph<Nonterminal, EdgeLabelT>;
 template<typename Nonterminal> using HypergraphPtr = std::shared_ptr<Hypergraph<Nonterminal>>;
-template<typename Nonterminal> using HyperEdge = Manage::HyperEdge<TraceNode<Nonterminal>, HyperedgeOriginalID>;
 
 
 
 
 
 template <typename Nonterminal, typename oID>
-class TraceInfo : public Info<oID> {
+class Trace {
 private:
-    ManagerPtr<TraceInfo<Nonterminal, oID>> manager;
+    Manage::ID id;
+    ManagerPtr<Trace<Nonterminal, oID>> manager;
+    oID originalID;
     HypergraphPtr<Nonterminal> hypergraph;
+    Element<Node<Nonterminal>> goal;
 
-    mutable std::vector<Element<TraceNode<Nonterminal>>> topologicalOrder;
-    Element<TraceNode<Nonterminal>> goal;
+    mutable std::vector<Element<Node<Nonterminal>>> topologicalOrder;
 
 public:
-    TraceInfo(const Manage::ID aId
-            , const ManagerPtr<TraceInfo<Nonterminal, oID>> aManager
+    Trace(const Manage::ID aId
+            , const ManagerPtr<Trace<Nonterminal, oID>> aManager
             , const oID oid
             , HypergraphPtr<Nonterminal> aHypergraph
-            , Element<TraceNode<Nonterminal>> aGoal)
-            : Info<oID>(std::move(aId), std::move(oid))
+            , Element<Node<Nonterminal>> aGoal
+    )
+            : id(aId)
             , manager(std::move(aManager))
+            , originalID(std::move(oid))
             , hypergraph(std::move(aHypergraph))
-            , goal(std::move(aGoal)){ }
+            , goal(std::move(aGoal))
+    { }
 
-    const Element<TraceInfo<Nonterminal, oID>> get_element() const noexcept {
-        return Element<TraceInfo<Nonterminal, oID>>(Info<oID>::get_id(), manager);
+
+    const Element<Trace<Nonterminal, oID>> get_element() const noexcept {
+        return Element<Trace<Nonterminal, oID>>(get_id(), manager);
     };
+
+    Manage::ID get_id() const noexcept {return id; }
+
+    const oID get_original_id() const noexcept {return originalID; }
 
     const HypergraphPtr<Nonterminal>& get_hypergraph() const noexcept {
         return hypergraph;
     }
 
-    const Element<TraceNode<Nonterminal>>& get_goal() const noexcept {
+    const Element<Node<Nonterminal>>& get_goal() const noexcept {
         return goal;
     }
 
-    const std::vector<Element<TraceNode<Nonterminal>>>& get_topological_order() const {
+    const std::vector<Element<Node<Nonterminal>>>& get_topological_order() const {
         if (topologicalOrder.size() == hypergraph->size())
             return topologicalOrder;
 
-        std::vector<Element<TraceNode<Nonterminal>>> topOrder{};
+        std::vector<Element<Node<Nonterminal>>> topOrder{};
         topOrder.reserve(hypergraph->size());
-        std::set<Element<TraceNode<Nonterminal>>> visited{};
+        std::set<Element<Node<Nonterminal>>> visited{};
         bool changed = true;
         while (changed) {
             changed = false;
@@ -136,17 +125,17 @@ public:
     };
 
     template <typename Val>
-    std::pair<MAPTYPE<Element<TraceNode<Nonterminal>>, Val>
-            , MAPTYPE<Element<TraceNode<Nonterminal>>, Val>>
+    std::pair<MAPTYPE<Element<Node<Nonterminal>>, Val>
+            , MAPTYPE<Element<Node<Nonterminal>>, Val>>
     io_weights(std::vector<Val>& ruleWeights) const {
 
         // calculate inside weigths
         // TODO: implement for general case (== no topological order) approximation of inside weights
-        MAPTYPE<Element<TraceNode<Nonterminal>>, Val> inside{};
+        MAPTYPE<Element<Node<Nonterminal>>, Val> inside{};
         for(const auto& node : get_topological_order()){
             inside[node] = Val::zero();
             for(const auto& incomingEdge : hypergraph->get_incoming_edges(node)){
-                Val val(ruleWeights[incomingEdge->get_original_id()]);
+                Val val(ruleWeights[incomingEdge->get_label_id()]);
                 for(const auto& sourceNode : incomingEdge->get_sources())
                     val *= inside.at(sourceNode);
 
@@ -155,14 +144,14 @@ public:
         }
 
         // calculate outside weights
-        MAPTYPE<Element<TraceNode<Nonterminal>>, Val> outside{};
+        MAPTYPE<Element<Node<Nonterminal>>, Val> outside{};
         for(auto nodeIterator = get_topological_order().crbegin(); nodeIterator != get_topological_order().crend(); ++nodeIterator){
             Val val = Val::zero();
             if(*nodeIterator == goal)
                 val += Val::one();
             for(const auto outgoing : hypergraph->get_outgoing_edges(*nodeIterator)){
                 Val valOutgoing = outside.at(outgoing.first->get_target());
-                valOutgoing *= ruleWeights[outgoing.first->get_original_id()];
+                valOutgoing *= ruleWeights[outgoing.first->get_label_id()];
                 const auto& incomingNodes(outgoing.first->get_sources());
                 for(unsigned int pos = 0; pos < incomingNodes.size(); ++pos){
                     if(pos != outgoing.second)
@@ -181,8 +170,8 @@ public:
     inline void io_weights_la(
             const std::vector<RuleTensor<double>> & rules
             , const WeightVector & root
-            , MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights
-            , MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& outside_weights
+            , MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& inside_weights
+            , MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& outside_weights
     ) const {
 
         // TODO implement for general case (== no topological order) approximation of inside weights
@@ -223,7 +212,7 @@ public:
 
         // TODO implement for general case (== no topological order) solution by gauss jordan
         for (auto node_iterator = get_topological_order().rbegin();  node_iterator != get_topological_order().rend(); ++node_iterator) {
-            const Element<TraceNode<Nonterminal>>& node = *node_iterator;
+            const Element<Node<Nonterminal>>& node = *node_iterator;
 
             WeightVector& outside_weight = outside_weights.at(node);
 
@@ -268,7 +257,7 @@ public:
         constexpr unsigned rule_rank {1};
 
 //      std::cerr << std::endl << "Computing inside weight summand" << std::endl;
-        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[edge->get_original_id()]);
+        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[edge->get_label_id()]);
 
 //        std::cerr << "rule tensor " << edge->get_original_id() << " address " << rules[edge->get_original_id()] << std::endl << rule_weight << std::endl;
         target_weight += rule_weight;
@@ -276,7 +265,7 @@ public:
 
 
     inline void inside_weight_step2(
-            const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights
+            const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& inside_weights
             , WeightVector & target_weight
             , const Element<HyperEdge<Nonterminal>>& edge
             , const std::vector<RuleTensor<double>> &rules
@@ -284,7 +273,7 @@ public:
         constexpr unsigned rule_rank {2};
 
 //        std::cerr << std::endl << "Computing inside weight summand" << std::endl;
-        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[edge->get_original_id()]);
+        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[edge->get_label_id()]);
 
 //        std::cerr << "rule tensor " << edge->get_original_id() << " address " << rules[edge->get_original_id()] << std::endl << rule_weight << std::endl;
 
@@ -295,7 +284,7 @@ public:
     }
 
     inline void inside_weight_step3(
-            const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights
+            const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& inside_weights
             , WeightVector& target_weight
             , const Element<HyperEdge<Nonterminal>>& edge
             , const std::vector<RuleTensor<double>> &rules
@@ -304,7 +293,7 @@ public:
 
 
 //        std::cerr << std::endl << "Computing inside weight summand" << std::endl;
-        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[edge->get_original_id()]);
+        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[edge->get_label_id()]);
 
 //        std::cerr << "rule tensor " << edge->get_original_id() << " address " << rules[edge->get_original_id()] << std::endl << rule_weight << std::endl;
 
@@ -322,14 +311,14 @@ public:
 
     template<int rule_rank>
     void inside_weight_step(
-            const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights
+            const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& inside_weights
             , WeightVector& target_weight
             , const Element<HyperEdge<Nonterminal>>& edge
             , const std::vector<RuleTensor<double>> &rules
     ) const {
 
 //        std::cerr << std::endl << "Computing inside weight summand" << std::endl;
-        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[edge->get_original_id()]);
+        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[edge->get_label_id()]);
         const auto & rule_dim = rule_weight.dimensions();
 
 //        std::cerr << "rule tensor " << edge->get_original_id() << " address " << rules[edge->get_original_id()] << std::endl << rule_weight << std::endl;
@@ -359,7 +348,7 @@ public:
 
     inline void outside_weight_step2(
             const std::vector<RuleTensor<double>>&rules
-            , const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& outside_weights
+            , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& outside_weights
             , WeightVector & outside_weight
             , const std::pair<Element<HyperEdge<Nonterminal>>, unsigned int>& outgoing
     ) const {
@@ -367,7 +356,7 @@ public:
         const auto& parent = outgoing.first->get_target();
         constexpr unsigned rule_rank {2};
 
-        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[outgoing.first->get_original_id()]);
+        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[outgoing.first->get_label_id()]);
         const Eigen::TensorMap<Eigen::Tensor<double, 1>> & parent_weight = outside_weights.at(parent);
 
         auto outside_weight_summand = rule_weight.contract(parent_weight, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)});
@@ -378,8 +367,8 @@ public:
 
     inline void outside_weight_step3(
             const std::vector<RuleTensor<double>> &rules
-            , const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights
-            , const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& outside_weights
+            , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& inside_weights
+            , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& outside_weights
             , WeightVector & outside_weight
             , const std::pair<Element<HyperEdge<Nonterminal>>, unsigned int>& outgoing
     ) const {
@@ -389,7 +378,7 @@ public:
         constexpr unsigned rule_rank {3};
 
 
-        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[outgoing.first->get_original_id()]);
+        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[outgoing.first->get_label_id()]);
         const Eigen::TensorMap<Eigen::Tensor<double, 1>> & parent_weight = outside_weights.at(parent);
         const Eigen::TensorMap<Eigen::Tensor<double, 1>> & rhs_weight = inside_weights.at(siblings[position == 0 ? 1 : 0]);
 
@@ -403,8 +392,8 @@ public:
     template<int rule_rank>
     void outside_weight_step(
             const std::vector<RuleTensor<double>> &rules
-            , const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights
-            , const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& outside_weights
+            , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& inside_weights
+            , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& outside_weights
             , WeightVector & outside_weight
             , const std::pair<Element<HyperEdge<Nonterminal>>, unsigned int>& outgoing
     ) const {
@@ -412,7 +401,7 @@ public:
         const auto &parent = outgoing.first->get_target();
         const unsigned position = outgoing.second;
 
-        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[outgoing.first->get_original_id()]);
+        const Eigen::TensorMap<Eigen::Tensor<double, rule_rank>> & rule_weight = boost::get<Eigen::TensorMap<Eigen::Tensor<double, rule_rank>>>(rules[outgoing.first->get_label_id()]);
         const Eigen::array<long, rule_rank> & rule_dim = rule_weight.dimensions();
         Eigen::array<long, rule_rank> rshape_dim;
         Eigen::array<long, rule_rank> broad_dim;
@@ -539,8 +528,8 @@ public:
 
 
 template <typename Nonterminal, typename Terminal, typename TraceID>
-class TraceManager2 : public Manager<TraceInfo<Nonterminal, TraceID>> {
-    using TraceIterator = ConstManagerIterator<TraceInfo<Nonterminal, TraceID>>;
+class TraceManager2 : public Manager<Trace<Nonterminal, TraceID>> {
+    using TraceIterator = ConstManagerIterator<Trace<Nonterminal, TraceID>>;
 
 private:
     const bool debug;
@@ -550,8 +539,8 @@ private:
 
     MAPTYPE<Nonterminal, unsigned int> noOfItemsPerNonterminal;
 
-    std::vector<MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>> traces_inside_weights;
-    std::vector<MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>> traces_outside_weights;
+    std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> traces_inside_weights;
+    std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> traces_outside_weights;
 
 
 public:
@@ -627,11 +616,11 @@ public:
 //                    if(node->get_incoming().size() > 1)
 //                        std::cerr << "Size is greater ";
                     for (const auto& edge : trace->get_hypergraph()->get_incoming_edges(node)) {
-                        Val val = lhnOutsideWeight * ruleWeights[edge->get_original_id()] / rootInsideWeight;
+                        Val val = lhnOutsideWeight * ruleWeights[edge->get_label_id()] / rootInsideWeight;
                         for (const auto& sourceNode : edge->get_sources()) {
                             val = val * trIOweights.first.at(sourceNode);
                         }
-                        ruleCounts[edge->get_original_id()] += val;
+                        ruleCounts[edge->get_label_id()] += val;
                     }
                 }
             }
@@ -967,7 +956,7 @@ public:
         feenableexcept(FE_DIVBYZERO | FE_INVALID| FE_OVERFLOW);
         unsigned epoch = 0;
 
-        const unsigned root_dimension = nont_dimensions[nont_idx(this->cbegin()->get_goal()->get_nonterminal())]; // todo: this info has to be in GrammarInfo
+        const unsigned root_dimension = nont_dimensions[nont_idx(this->cbegin()->get_goal()->get_label())]; // todo: this info has to be in GrammarInfo
         unsigned rule_dimension_total = 0;
 
         std::vector<std::vector<double*>> rule_counts (N_THREADS);
@@ -1185,7 +1174,7 @@ public:
             if (debug)
                 std::cerr << "instance root probability: " << std::endl << trace_root_probabilities << std::endl;
 
-            for (const Element<TraceNode<Nonterminal>>& node : *(trace->get_hypergraph())) {
+            for (const Element<Node<Nonterminal>>& node : *(trace->get_hypergraph())) {
                 const WeightVector& lhn_outside_weight = outside_weights.at(node);
 
                 if (debug) {
@@ -1195,7 +1184,7 @@ public:
                     std::cerr << lhn_inside_weight << std::endl;
                 }
                 for (const auto& edge : trace->get_hypergraph()->get_incoming_edges(node)) {
-                    const int rule_id = edge->get_original_id();
+                    const int rule_id = edge->get_label_id();
                     const size_t rule_dim = edge->get_sources().size() + 1;
 
                     switch (rule_dim) {
@@ -1337,7 +1326,7 @@ public:
             , const Element<HyperEdge<Nonterminal>>& edge
             , const Eigen::TensorMap<Eigen::Tensor<double, 1>>& lhn_outside_weight
             , const double trace_root_probability
-            , const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights
+            , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& inside_weights
             , RuleTensor<double> & rule_count_tensor
     ) {
         constexpr unsigned rule_rank {2};
@@ -1365,7 +1354,7 @@ public:
             , const Element<HyperEdge<Nonterminal>>& edge
             , const Eigen::TensorMap<Eigen::Tensor<double, 1>>& lhn_outside_weight
             , const double trace_root_probability
-            , const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights
+            , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& inside_weights
             , RuleTensor<double> & rule_count_tensor
     ) {
         constexpr unsigned rule_rank {3};
@@ -1396,7 +1385,7 @@ public:
             , const Element<HyperEdge<Nonterminal>>& edge
             , const Eigen::TensorMap<Eigen::Tensor<double, 1>>& lhn_outside_weight
             , const double trace_root_probability
-            , const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights
+            , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& inside_weights
             , RuleTensor<double> & rule_count_tensor
     ) {
 
@@ -1462,7 +1451,7 @@ public:
         noOfItemsPerNonterminal.clear();
         for(const auto& trace : *this){
             for(const auto& node : *(trace->get_hypergraph())){
-                ++noOfItemsPerNonterminal[node->get_nonterminal()];
+                ++noOfItemsPerNonterminal[node->get_label()];
             }
         }
     }
@@ -1480,10 +1469,10 @@ public:
         traces_outside_weights.reserve(this->size());
 
         for (const auto& trace : *this) {
-            MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector> inside_weights, outside_weights;
+            MAPTYPE<Element<Node<Nonterminal>>, WeightVector> inside_weights, outside_weights;
 
             for (const auto& node : *(trace->get_hypergraph())) {
-                const unsigned item_dimension = nont_dimensions[nont_idx(node->get_nonterminal())];
+                const unsigned item_dimension = nont_dimensions[nont_idx(node->get_label())];
                 double *const inside_weight_ptr = storageManager.get_region(item_dimension);
                 double *const outside_weight_ptr = storageManager.get_region(item_dimension);
                 if (start == nullptr)
@@ -1510,8 +1499,8 @@ public:
             traces_outside_weights.clear();
         } else {
             for (TraceIterator traceIterator = this->cbegin(); traceIterator < this->cend(); ++traceIterator) {
-                MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights = traces_inside_weights[traceIterator - this->cbegin()];
-                MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& outside_weights = traces_outside_weights[traceIterator - this->cbegin()];
+                MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& inside_weights = traces_inside_weights[traceIterator - this->cbegin()];
+                MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& outside_weights = traces_outside_weights[traceIterator - this->cbegin()];
                 for (const auto &pair : inside_weights) {
                     free(pair.second.data());
                 }
@@ -1727,7 +1716,7 @@ public:
                     // always merge if Δ >= 1
                     || delta[dim] >= Val::one() - Val::to(0.00001)
                     // always merge initial symbol
-                    || nont_idx(this->cbegin()->get_goal()->get_nonterminal()) == nont) { // todo: this info should be in GrammarInfo
+                    || nont_idx(this->cbegin()->get_goal()->get_label()) == nont) { // todo: this info should be in GrammarInfo
                     merge_selection.back().emplace_back();
                     merge_selection.back().back().push_back(dim * 2);
                     merge_selection.back().back().push_back(dim * 2 + 1);
@@ -1771,7 +1760,7 @@ public:
             const auto & inside_weights = traces_inside_weights[traceIterator - this->cbegin()];
             const auto & outside_weights = traces_outside_weights[traceIterator - this->cbegin()];
 
-            for (const Element<TraceNode<Nonterminal>>& node : *(traceIterator->get_hypergraph()) ) {
+            for (const Element<Node<Nonterminal>>& node : *(traceIterator->get_hypergraph()) ) {
 
                 const Eigen::TensorMap<Eigen::Tensor<double, 1>> & inside_weight = inside_weights.at(node);
                 const Eigen::TensorMap<Eigen::Tensor<double, 1>> & outside_weight = outside_weights.at(node);
@@ -1782,7 +1771,7 @@ public:
                 Eigen::Tensor<bool, 0> nan = fraction.isnan().any();
                 Eigen::Tensor<bool, 0> inf = fraction.isinf().any();
                 if (not nan(0) and not inf(0)){
-                    auto & target =  merge_weights_partial[nont_idx(node->get_nonterminal())];
+                    auto & target =  merge_weights_partial[nont_idx(node->get_label())];
                     target += fraction;
                 }
             }
@@ -1802,12 +1791,12 @@ public:
             , std::vector<std::vector<Val>> &merge_delta
     ) const {
         for (TraceIterator trace_id = start; trace_id < stop; ++trace_id) {
-            const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights = traces_inside_weights[trace_id - this->cbegin()];
-            const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& outside_weights = traces_outside_weights[trace_id - this->cbegin()];
+            const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& inside_weights = traces_inside_weights[trace_id - this->cbegin()];
+            const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& outside_weights = traces_outside_weights[trace_id - this->cbegin()];
 
-            for (const Element<TraceNode<Nonterminal>>& node : *(trace_id->get_hypergraph())) {
+            for (const Element<Node<Nonterminal>>& node : *(trace_id->get_hypergraph())) {
 
-                const auto nont_dim = nont_dimensions[nont_idx(node->get_nonterminal())];
+                const auto nont_dim = nont_dimensions[nont_idx(node->get_label())];
                 prefixes.resize(nont_dim / 2, Val::zero());
                 postfixes.resize(nont_dim / 2, Val::zero());
                 Val denominator = Val::zero();
@@ -1844,12 +1833,12 @@ public:
                 if (denominator == Val::zero())
                     continue;
 
-                for (unsigned dim = 0; dim < nont_dimensions[nont_idx(node->get_nonterminal())]; dim = dim+2) {
+                for (unsigned dim = 0; dim < nont_dimensions[nont_idx(node->get_label())]; dim = dim+2) {
                     const Val in1 = Val::to(inside_weights.at(node).data()[dim]);
                     const Val in2 = Val::to(inside_weights.at(node).data()[dim + 1]);
                     const Val out1 = Val::to(outside_weights.at(node).data()[dim]);
                     const Val out2 = Val::to(outside_weights.at(node).data()[dim + 1]);
-                    const unsigned nont = nont_idx(node->get_nonterminal());
+                    const unsigned nont = nont_idx(node->get_label());
                     const Val p1 = p[nont][dim];
                     const Val p2 = p[nont][dim+1];
 

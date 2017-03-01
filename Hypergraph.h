@@ -9,27 +9,41 @@
 
 namespace Manage {
 
-    template <typename NodeT, typename oID>
-    class HyperEdge : public Info<oID> {
+    template <typename NodeT, typename LabelT>
+    class HyperEdge {
     private:
-        const ManagerPtr<HyperEdge<NodeT, oID>> manager;
+        const ID id;
+        const ManagerPtr<HyperEdge<NodeT, LabelT>> manager;
+        const LabelT label;
+        const size_t labelID;
         const Element<NodeT> target;
         const std::vector<Element<NodeT>> sources;
 
+    protected:
+        ID get_id() const noexcept {return id; }
+
     public:
         HyperEdge(ID aId
-                , ManagerPtr<HyperEdge<NodeT, oID>> aManager
-                , oID anOriginalId
+                , ManagerPtr<HyperEdge<NodeT, LabelT>> aManager
+                , LabelT aLabel
+                , size_t aLabelId
                 , Element<NodeT> aTarget
-                , std::vector<Element<NodeT>> someSources)
-                : Info<oID>(std::move(aId), std::move(anOriginalId))
+                , std::vector<Element<NodeT>> someSources
+        )
+                : id(aId)
+                , label(std::move(aLabel))
+                , labelID(aLabelId)
                 , manager(std::move(aManager))
                 , target(std::move(aTarget))
                 , sources(std::move(someSources)) { }
 
-        Element<HyperEdge<NodeT, oID>> get_element() const noexcept {
-            return Element<HyperEdge<NodeT, oID>>(Info<oID>::get_id(), manager);
+        Element<HyperEdge<NodeT, LabelT>> get_element() const noexcept {
+            return Element<HyperEdge<NodeT, LabelT>>(get_id(), manager);
         };
+
+
+        const LabelT get_label() const noexcept {return label; }
+        size_t get_label_id() const noexcept {return labelID; }
 
         const Element<NodeT>& get_target() const {
             return target;
@@ -42,53 +56,96 @@ namespace Manage {
     };
 
 
-    template <typename oID>
-    class Node : public Info<oID>{
+    template <typename LabelT>
+    class Node {
     private:
-        ManagerPtr<Node<oID>> manager;
+        ID id;
+        ManagerPtr<Node<LabelT>> manager;
+        LabelT label;
+        size_t labelID;
+
+    protected:
+        ID get_id() const noexcept {return id; }
+
     public:
         Node(const ID aId
-                , const ManagerPtr<Node<oID>> aManager
-                , const oID& anOriginalId)
-                : Info<oID>(std::move(aId)
-                , std::move(anOriginalId))
-                , manager(std::move(aManager)) { }
+                , const ManagerPtr<Node<LabelT>> aManager
+                , const LabelT& aLabel
+                , size_t aLabelId
+        )
+                : id(aId)
+                , manager(std::move(aManager))
+                , label(aLabel)
+                , labelID(aLabelId)
+        { }
 
-        const Element<Node<oID>> get_element() const noexcept {
-            return Element<Node<oID>>(Info<oID>::get_id(), manager);
+        const Element<Node<LabelT>> get_element() const noexcept {
+            return Element<Node<LabelT>>(get_id(), manager);
         }
 
+        const LabelT get_label() const noexcept {return label; }
+        size_t get_label_id() const noexcept {return labelID; }
     };
 
-    template <typename NodeT, typename HEoriginalID>
-    class Hypergraph : public Manager<NodeT> {
+
+
+    template <typename NodeLabelT, typename EdgeLabelT>
+    class Hypergraph : public Manager<Node<NodeLabelT>> {
     private:
-        ManagerPtr<HyperEdge<NodeT, HEoriginalID>> edges{ std::make_shared<Manager<HyperEdge<NodeT,HEoriginalID>>>() };
-        std::map<Element<NodeT>, std::vector<Element<HyperEdge<NodeT, HEoriginalID>>>> incoming_edges;
-        std::map<Element<NodeT>, std::vector<std::pair<Element<HyperEdge<NodeT, HEoriginalID>>, unsigned int>>> outgoing_edges;
+        std::vector<NodeLabelT> nodeLabels;
+        std::vector<EdgeLabelT> edgeLabels;
+
+        ManagerPtr<HyperEdge<Node<NodeLabelT>, EdgeLabelT>> edges {std::make_shared<Manager<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>>() };
+        std::map<Element<Node<NodeLabelT>>, std::vector<Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>>> incoming_edges;
+        std::map<Element<Node<NodeLabelT>>, std::vector<std::pair<Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>, size_t>>> outgoing_edges;
+
     public:
+        Hypergraph(
+                std::vector<NodeLabelT> nlabels
+                , std::vector<EdgeLabelT> elabels
+        )
+                : nodeLabels(nlabels)
+                , edgeLabels(elabels)
+        {}
 
-        HyperEdge<NodeT, HEoriginalID>& add_hyperedge(const Element<NodeT>& target
-                , const std::vector<Element<NodeT>>& sources
-                , const HEoriginalID oId){
-            HyperEdge<NodeT, HEoriginalID>& edge = edges->create(oId, target, sources);
-            Element<HyperEdge<NodeT, HEoriginalID>> edgeelement = edge.get_element();
 
-            incoming_edges[target].push_back(edgeelement);
-            for (unsigned long i=0; i<sources.size(); ++i ){
-                outgoing_edges[sources[i]].push_back(std::make_pair(edgeelement, i));
+        Element<Node<NodeLabelT>> create(
+                NodeLabelT nLabel
+        ){
+            size_t nLabelId = std::distance(nodeLabels.cbegin(), std::find(nodeLabels.cbegin(), nodeLabels.cend(), nLabel));
+            return Manager<Node<NodeLabelT>>::create(nLabel, nLabelId);
+        }
+
+
+        Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>
+        add_hyperedge(
+                const EdgeLabelT edgeLabel
+                , const Element<Node<NodeLabelT>>& target
+                , const std::vector<Element<Node<NodeLabelT>>>& sources
+        ){
+            size_t edgeLabelId = std::distance(edgeLabels.cbegin(), std::find(edgeLabels.cbegin(), edgeLabels.cend(), edgeLabel));
+
+            Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>> edge = edges->create(edgeLabel, edgeLabelId, target, sources);
+
+            incoming_edges[target].push_back(edge);
+            for (size_t i=0; i<sources.size(); ++i ){
+                outgoing_edges[sources[i]].push_back(std::make_pair(edge, i));
             }
 
             return edge;
         }
 
 
-        const std::vector<Element<HyperEdge<NodeT, HEoriginalID>>>& get_incoming_edges(Element<NodeT> e) const {
+        const std::vector<Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>>&
+        get_incoming_edges(Element<Node<NodeLabelT>> e)
+        const {
             return incoming_edges.at(e);
         }
 
 
-        const std::vector<std::pair<Element<HyperEdge<NodeT, HEoriginalID>>, unsigned int>> get_outgoing_edges(Element<NodeT> e) const {
+        const std::vector<std::pair<Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>, size_t>>
+        get_outgoing_edges(Element<Node<NodeLabelT>> e)
+        const {
             if(outgoing_edges.count(e))
                 return outgoing_edges.at(e);
             else
@@ -96,9 +153,8 @@ namespace Manage {
         }
 
     };
-
-    template <typename NodeT, typename HEoriginalID>
-    using HypergraphPtr = std::shared_ptr<Hypergraph<NodeT, HEoriginalID>>;
+    template <typename NodeLabelT, typename EdgeLabelT>
+    using HypergraphPtr = std::shared_ptr<Hypergraph<NodeLabelT, EdgeLabelT>>;
 
 
 }
