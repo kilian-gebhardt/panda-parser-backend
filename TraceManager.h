@@ -71,7 +71,7 @@ private:
     ManagerPtr<TraceInfo<Nonterminal, oID>> manager;
     HypergraphPtr<Nonterminal> hypergraph;
 
-    std::vector<Element<TraceNode<Nonterminal>>> topologicalOrder;
+    mutable std::vector<Element<TraceNode<Nonterminal>>> topologicalOrder;
     Element<TraceNode<Nonterminal>> goal;
 
 public:
@@ -97,7 +97,7 @@ public:
         return goal;
     }
 
-    const std::vector<Element<TraceNode<Nonterminal>>>& get_topological_order(){
+    const std::vector<Element<TraceNode<Nonterminal>>>& get_topological_order() const {
         if (topologicalOrder.size() == hypergraph->size())
             return topologicalOrder;
 
@@ -138,7 +138,7 @@ public:
     template <typename Val>
     std::pair<MAPTYPE<Element<TraceNode<Nonterminal>>, Val>
             , MAPTYPE<Element<TraceNode<Nonterminal>>, Val>>
-    io_weights(std::vector<Val>& ruleWeights){
+    io_weights(std::vector<Val>& ruleWeights) const {
 
         // calculate inside weigths
         // TODO: implement for general case (== no topological order) approximation of inside weights
@@ -183,7 +183,7 @@ public:
             , const WeightVector & root
             , MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights
             , MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& outside_weights
-    ){
+    ) const {
 
         // TODO implement for general case (== no topological order) approximation of inside weights
         // computation of inside weights
@@ -1800,7 +1800,7 @@ public:
             , std::vector<Val> &postfixes
             , const std::vector<unsigned int> &nont_dimensions
             , std::vector<std::vector<Val>> &merge_delta
-    ) {//const { // todo: this should be const
+    ) const {
         for (TraceIterator trace_id = start; trace_id < stop; ++trace_id) {
             const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& inside_weights = traces_inside_weights[trace_id - this->cbegin()];
             const MAPTYPE<Element<TraceNode<Nonterminal>>, WeightVector>& outside_weights = traces_outside_weights[trace_id - this->cbegin()];

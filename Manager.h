@@ -27,48 +27,34 @@ namespace Manage{
     using ConstManagerPtr = std::shared_ptr<const Manager<InfoT>>;
 
 
-    template <typename InfoT>
+    template <typename InfoT, bool isConst = false>
     class Element {
     private:
         ID id;
-        ManagerPtr<InfoT> manager;
-
+//        ManagerPtr<InfoT> manager;
+        using ManagerType = typename std::conditional<isConst, ConstManagerPtr<InfoT>, ManagerPtr<InfoT>>::type;
+        using PointerType = typename std::conditional<isConst, const InfoT*, InfoT*>::type;
+        ManagerType manager;
     public:
-        Element(ID aId, ManagerPtr<InfoT> aManager): id(aId), manager(aManager) {};
-        Element(const Element<InfoT>& e): id(e.id), manager(e.manager) {};
-        Element(Element<InfoT>&& e): id(std::move(e.id)), manager(std::move(e.manager)) {};
+        Element(ID aId, ManagerType aManager): id(aId), manager(aManager) {};
 
-        Element<InfoT> operator=(const Element<InfoT>& other){
-            if(this != &other) {
-                id = other.id;
-                manager = other.manager;
-            }
-            return *this;
-        };
-        Element<InfoT> operator=(Element<InfoT>&& other){
-            if(this != &other) {
-                id = std::exchange(other.id, 0);
-                manager = std::move(other.manager);
-            }
-            return *this;
-        };
-
-        InfoT* operator->() const {return &((*manager)[id]); }
-        inline bool operator==(const Element<InfoT>& r) const noexcept {return id == r.id; }
-        inline bool operator!=(const Element<InfoT>& r) const noexcept {return id != r.id; }
-        inline bool operator< (const Element<InfoT>& r) const noexcept {return id < r.id; }
-        inline bool operator<=(const Element<InfoT>& r) const noexcept {return id <= r.id; }
-        inline bool operator> (const Element<InfoT>& r) const noexcept {return id <= r.id; }
-        inline bool operator>=(const Element<InfoT>& r) const noexcept {return id <= r.id; }
+        PointerType operator->() const {return &((*manager)[id]); }
+        inline bool operator==(const Element<InfoT, isConst>& r) const noexcept {return id == r.id; }
+        inline bool operator!=(const Element<InfoT, isConst>& r) const noexcept {return id != r.id; }
+        inline bool operator< (const Element<InfoT, isConst>& r) const noexcept {return id < r.id; }
+        inline bool operator<=(const Element<InfoT, isConst>& r) const noexcept {return id <= r.id; }
+        inline bool operator> (const Element<InfoT, isConst>& r) const noexcept {return id <= r.id; }
+        inline bool operator>=(const Element<InfoT, isConst>& r) const noexcept {return id <= r.id; }
 
 //        ID get_id() const noexcept {return id; }
 
-        friend std::ostream& operator <<(std::ostream& o, const Element<InfoT>& item){
+        friend std::ostream& operator <<(std::ostream& o, const Element<InfoT, isConst>& item){
             o << item.id;
             return o;
         }
-        friend std::hash<Element<InfoT>>;
 
+        friend std::hash<Element<InfoT>>;
+        friend std::hash<Element<InfoT, true>>;
     };
 
 
@@ -130,10 +116,10 @@ namespace Manage{
             return ManagerIterator<InfoT>(infos.size(), this->shared_from_this());
         }
 
-        ManagerIterator<InfoT, true> cbegin() { //const { // todo: this should be const!
+        ManagerIterator<InfoT, true> cbegin() const {
             return ManagerIterator<InfoT, true>(0, this->shared_from_this());
         }
-        ManagerIterator<InfoT, true> cend() { //const { // todo: this should be const!
+        ManagerIterator<InfoT, true> cend() const {
             return ManagerIterator<InfoT, true>(infos.size(), this->shared_from_this());
         }
 
@@ -148,18 +134,19 @@ namespace Manage{
     class ManagerIterator {
     private:
         unsigned long index;
-        ManagerPtr<InfoT> manager;
-        // typename std::conditional<isConst, ConstManagerPtr<InfoT>, ManagerPtr<InfoT>>::type manager;
+//        ManagerPtr<InfoT> manager;
+        using ManagerType = typename std::conditional<isConst, ConstManagerPtr<InfoT>, ManagerPtr<InfoT>>::type;
+         ManagerType manager;
     public:
         using difference_type = long;
-        using value_type = Element<InfoT>;
-        using pointer = typename std::conditional<isConst, const Element<InfoT>*, Element<InfoT>* >::type;
-        using reference = typename std::conditional<isConst, const Element<InfoT>, Element<InfoT>>::type;
+        using value_type = typename std::conditional<isConst, const Element<InfoT, true>, Element<InfoT> >::type;
+        using pointer = typename std::conditional<isConst, const Element<InfoT, true>*, Element<InfoT>* >::type;
+        using reference = typename std::conditional<isConst, const Element<InfoT, true>, Element<InfoT>>::type;
         using iterator_category = std::random_access_iterator_tag;
 
         ManagerIterator(): index(0) {}
-//        ManagerIterator(unsigned long i, typename std::conditional<isConst, ConstManagerPtr<InfoT>, ManagerPtr<InfoT>>::type m): index(i), manager(m) {}
-        ManagerIterator(unsigned long i, ManagerPtr<InfoT> m): index(i), manager(m) {}
+        ManagerIterator(unsigned long i, typename std::conditional<isConst, ConstManagerPtr<InfoT>, ManagerPtr<InfoT>>::type m): index(i), manager(m) {}
+//        ManagerIterator(unsigned long i, ManagerPtr<InfoT> m): index(i), manager(m) {}
         ManagerIterator(const ManagerIterator<InfoT, isConst>& mit): index(mit.index), manager(mit.manager) {}
         // todo: enable implicit conversion of non-const iterator to const iterator
 
@@ -171,19 +158,23 @@ namespace Manage{
         bool operator>(const ManagerIterator<InfoT, isConst>& mit) const noexcept {return !(*this <= mit); }
         bool operator>=(const ManagerIterator<InfoT, isConst>& mit) const noexcept {return !(*this < mit); }
 
-        value_type operator*() const {return Element<InfoT>(index, manager); }
-        value_type operator->() const {return Element<InfoT>(index, manager); }
+//        value_type operator*() const {return Element<InfoT>(index, manager); }
+        value_type operator*() {return typename std::conditional<isConst, Element<InfoT, true>, Element<InfoT>>::type(index, manager); }
+//        value_type operator->() const {return Element<InfoT>(index, manager); }
+        value_type operator->() {return typename std::conditional<isConst, Element<InfoT, true>, Element<InfoT>>::type(index, manager); }
 
-        ManagerIterator<InfoT, isConst> operator++() { // ++i
-            return ManagerIterator<InfoT, isConst>(++index, manager);
+        ManagerIterator<InfoT, isConst>& operator++() { // ++i
+            ++index;
+            return *this;
         }
         ManagerIterator<InfoT, isConst>& operator++(int) { // i++
             auto result = ManagerIterator<InfoT, isConst>(index, manager);
             ++index;
             return result;
         }
-        ManagerIterator<InfoT, isConst> operator--() { // ++i
-            return ManagerIterator<InfoT, isConst>(--index, manager);
+        ManagerIterator<InfoT, isConst> operator--() { // --i
+            --index;
+            return *this;
         }
         ManagerIterator<InfoT, isConst>& operator--(int) { // i++
             auto result = ManagerIterator<InfoT, isConst>(index, manager);
@@ -208,7 +199,8 @@ namespace Manage{
         }
 
         reference operator[](const difference_type i) const {
-            return Element<InfoT>(index + i, manager);
+//            return Element<InfoT>(index + i, manager);
+            return typename std::conditional<isConst, Element<InfoT, true>, Element<InfoT>>::type(index + i, manager);
         }
 
 
@@ -222,9 +214,9 @@ namespace Manage{
 }
 
 namespace std {
-    template <typename InfoT>
-    struct hash<Manage::Element<InfoT>> {
-        std::size_t operator()(const Manage::Element<InfoT>& element) const {
+    template <typename InfoT, bool isConst>
+    struct hash<Manage::Element<InfoT, isConst>> {
+        std::size_t operator()(const Manage::Element<InfoT, isConst>& element) const {
             return std::hash<Manage::ID>()(element.id);
         }
     };
