@@ -11,6 +11,8 @@
 #include <vector>
 #include "Trace.h"
 #include "TraceManager.h"
+#include "TrainingCommon.h"
+#include "TrainerFactory.h"
 
 
 std::shared_ptr<HybridTree<std::string, int>> build_hybrid_tree(bool lcfrs) {
@@ -63,36 +65,39 @@ std::shared_ptr<HybridTree<std::string, int>> build_hybrid_tree(bool lcfrs) {
 };
 
 
-template <typename Nonterminal>
+template<typename Nonterminal>
 std::pair<HypergraphPtr<Nonterminal>, Element<Node<Nonterminal>>>
-    transform_trace_to_hypergraph(
-            const SDCPParser<std::string, std::string, int> &parser
-            , std::vector<Nonterminal> nodeLabels
-            , std::vector<EdgeLabelT> edgeLabels
-    ){
+transform_trace_to_hypergraph(
+        const SDCPParser<std::string, std::string, int> &parser
+        , std::vector<Nonterminal> nodeLabels
+        , std::vector<EdgeLabelT> edgeLabels
+) {
     using Terminal = std::string;
     using Position = int;
 
-    const MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<std::pair<std::shared_ptr<Rule<Nonterminal, Terminal>>, std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>> >>>>& trace(parser.get_trace());
+    const MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<std::pair<std::shared_ptr<Rule<Nonterminal, Terminal>>
+                                                                          , std::vector<std::shared_ptr<ParseItem<
+                    Nonterminal
+                    , Position>> >>>> &trace(parser.get_trace());
 
-    HypergraphPtr<Nonterminal > hg {std::make_shared<Hypergraph<Nonterminal>>(nodeLabels, edgeLabels)};
+    HypergraphPtr<Nonterminal> hg{std::make_shared<Hypergraph<Nonterminal>>(nodeLabels, edgeLabels)};
 
     // construct all nodes
     auto nodelist = std::map<ParseItem<Nonterminal, Position>, Element<Node<Nonterminal>>>();
-    for (auto const& item : trace) {
+    for (auto const &item : trace) {
         Element<Node<Nonterminal>> n = hg->create(item.first.nonterminal);
         // todo: set infos on n
         nodelist.emplace(item.first, n);
     }
 
     // construct hyperedges
-    for (auto const& item : trace) {
+    for (auto const &item : trace) {
         Element<Node<Nonterminal >> outgoing = nodelist.at(item.first);
         std::vector<Element<Node<Nonterminal>>> incoming;
-        for(auto const& parse : item.second){
+        for (auto const &parse : item.second) {
             incoming.clear();
             incoming.reserve(parse.second.size());
-            for(auto const& pItem : parse.second)
+            for (auto const &pItem : parse.second)
                 incoming.push_back(nodelist.at(*pItem));
 
             /*Element<HyperEdge<Nonterminal>>& edge = */ hg->add_hyperedge(parse.first->id, outgoing, incoming);
@@ -104,8 +109,82 @@ std::pair<HypergraphPtr<Nonterminal>, Element<Node<Nonterminal>>>
     return std::make_pair(hg, nodelist.at(*parser.goal));
 };
 
+template<long max_dim>
+inline void convert_format_no_creation(const std::vector<double> & weights,
+        Trainer::RuleTensor<double> & tensor){
+    auto tensor_raw = boost::get<Trainer::RuleTensorRaw<double, max_dim>>(tensor);
 
+    Eigen::array<long, max_dim> weight_position;
+    for(unsigned dim = 0; dim < max_dim; ++dim) {
+        weight_position[dim] = -1;
+    }
 
+    unsigned dim = 0;
+    auto weight_it = weights.begin();
+
+    while (dim < max_dim) {
+        if (dim == max_dim - 1 and weight_position[dim] + 1 < tensor_raw.dimension(dim)) {
+            ++weight_position[dim];
+            assert(weight_it != weights.end());
+            tensor_raw(weight_position) =  *weight_it;
+            ++weight_it;
+        } else if (weight_position[dim] + 1 == tensor_raw.dimension(dim)) {
+            if (dim > 0) {
+                for (unsigned dim_ = dim; dim_ < max_dim; ++dim_) {
+                    weight_position[dim_] = -1;
+                }
+                --dim;
+            }
+            else
+                break;
+        } else if (weight_position[dim] + 1 < tensor_raw.dimension(dim)) {
+            ++weight_position[dim];
+            ++dim;
+        }
+    }
+
+    if(weight_it != weights.end()) {
+        std::cerr << "conversion error.";
+        abort();
+    }
+}
+
+template <typename Nonterminal>
+unsigned convert_to_eigen(
+        const std::vector<std::vector<double>> &rule_weights
+        , std::vector<Trainer::RuleTensor<double>> &rule_tensors
+        , double * & root_weights_ptrs
+        , const std::vector<double> &root_weights
+        , const std::vector<size_t> &nonterminal_splits
+        , StorageManager &storageManager
+        , const GrammarInfo2<Nonterminal> & grammarInfo
+) {
+    unsigned allocated(0);
+    unsigned rule = 0;
+    for (auto rule_weight : rule_weights) {
+        auto rule_tensor = storageManager.create_uninitialized_tensor(rule, grammarInfo, nonterminal_splits);
+        const unsigned dims = grammarInfo.rule_to_nonterminals[rule].size();
+
+        switch (dims) {
+            case 1: convert_format_no_creation<1>(rule_weight, rule_tensor); break;
+            case 2: convert_format_no_creation<2>(rule_weight, rule_tensor); break;
+            case 3: convert_format_no_creation<3>(rule_weight, rule_tensor); break;
+            case 4: convert_format_no_creation<4>(rule_weight, rule_tensor); break;
+            default:
+                assert(false && "Rules with more than 3 RHS nonterminals are not implemented.");
+                abort();
+        }
+        rule_tensors.push_back(rule_tensor);
+        allocated += rule_weight.size();
+        ++rule;
+    }
+    root_weights_ptrs = storageManager.get_region(root_weights.size());
+    allocated += root_weights.size();
+    for (unsigned i = 0; i < root_weights.size(); ++i) {
+        root_weights_ptrs[i] = root_weights[i];
+    }
+    return allocated;
+}
 
 
 int main() {
@@ -143,7 +222,7 @@ int main() {
     rule1.inside_attributes.push_back(arg1v);
 
     // build rhs
-    STerm <std::string> arg2;
+    STerm<std::string> arg2;
     arg2.emplace_back(Variable(2, 2));
     std::vector<STerm<std::string>> arg2v;
     arg2v.push_back(arg2);
@@ -156,9 +235,9 @@ int main() {
     // constructing LCFRS part
     if (lcfrs) {
         rule1.next_word_function_argument();
-        rule1.add_var_to_word_function(1,1);
+        rule1.add_var_to_word_function(1, 1);
         rule1.add_terminal_to_word_function("is");
-        rule1.add_var_to_word_function(2,1);
+        rule1.add_var_to_word_function(2, 1);
         rule1.add_terminal_to_word_function(".");
     }
     assert (sDCP.add_rule(rule1));
@@ -197,9 +276,9 @@ int main() {
     // build lhs
     std::vector<STerm<std::string>> r3_arg1v;
     STerm<std::string> r3_arg_0_1;
-    r3_arg_0_1.push_back(Variable(1,1));
+    r3_arg_0_1.push_back(Variable(1, 1));
     STerm<std::string> r3_arg_0_2;
-    r3_arg_0_2.push_back(Variable(2,1));
+    r3_arg_0_2.push_back(Variable(2, 1));
     r3_arg1v.push_back(r3_arg_0_1);
     r3_arg1v.push_back(r3_arg_0_2);
     rule3.inside_attributes.push_back(r3_arg1v);
@@ -208,9 +287,9 @@ int main() {
     // constructing LCFRS part
     if (lcfrs) {
         rule3.next_word_function_argument();
-        rule3.add_var_to_word_function(1,1);
-        rule3.add_var_to_word_function(2,1);
-        rule3.add_var_to_word_function(1,2);
+        rule3.add_var_to_word_function(1, 1);
+        rule3.add_var_to_word_function(2, 1);
+        rule3.add_var_to_word_function(1, 2);
     }
     assert (sDCP.add_rule(rule3));
     // Rule 3 end
@@ -264,7 +343,7 @@ int main() {
     rule6.lhn = "D";
     rule6.set_id(5);
     // build lhs
-    rule6.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, Variable(1, 1))));
+    rule6.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, Variable(1, 1))));
     // build rhs
     rule6.rhs.push_back("F");
     rule6.inside_attributes.push_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, Variable(2, 1))));
@@ -281,7 +360,13 @@ int main() {
     Rule<std::string, std::string> rule7;
     rule7.set_id(6);
     rule7.lhn = "E";
-    rule7.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, Term<std::string>("the", 0))));
+    rule7.inside_attributes.emplace_back(
+            std::vector<STerm<std::string>>(
+                    1, STerm<std::string>(
+                            1, Term<std::string>(
+                                    "the"
+                                    , 0
+                            ))));
     if (lcfrs) {
         rule7.next_word_function_argument();
         rule7.add_terminal_to_word_function("the");
@@ -293,7 +378,7 @@ int main() {
     rule8.lhn = "F";
     auto term8 = Term<std::string>("on", 0);
     term8.children.push_back(Variable(1, 1));
-    rule8.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, term8)));
+    rule8.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, term8)));
     rule8.rhs.push_back("G");
     rule8.inside_attributes.push_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, Variable(0, 1))));
     if (lcfrs) {
@@ -301,7 +386,7 @@ int main() {
         rule8.add_terminal_to_word_function("on");
         //rule8.add_var_to_word_function(1,1);
         rule8.next_word_function_argument();
-        rule8.add_var_to_word_function(1,1);
+        rule8.add_var_to_word_function(1, 1);
     }
     assert (sDCP.add_rule(rule8));
 
@@ -310,7 +395,7 @@ int main() {
     rule9.lhn = "G";
     auto term9 = Term<std::string>("issue", 0);
     term9.children.push_back(Variable(0, 1));
-    rule9.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, term9)));
+    rule9.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, term9)));
     if (lcfrs) {
         // rule9.next_word_function_argument();
         rule9.next_word_function_argument();
@@ -321,10 +406,7 @@ int main() {
     std::cerr << sDCP;
 
 
-
-
-
-    for (auto & rule : {rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9}){
+    for (auto &rule : {rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9}) {
         std::cerr << rule.lhn << " " << rule.irank(0) << " " << rule.srank(0) << std::endl;
     }
 
@@ -360,16 +442,19 @@ int main() {
 // #############################
 
 
-    std::vector<std::string> nodeLabels {"S", "A", "B", "C", "D", "E", "F", "G"};
-    std::vector<EdgeLabelT> edgeLabels {rule1.id, rule2.id, rule3.id, rule4.id, rule5.id, rule6.id, rule7.id, rule8.id, rule9.id};
+    std::vector<std::string> nodeLabels{"S", "A", "B", "C", "D", "E", "F", "G"};
+    std::vector<EdgeLabelT> edgeLabels{rule1.id, rule2.id, rule3.id, rule4.id, rule5.id, rule6.id, rule7.id, rule8.id,
+                                       rule9.id};
 
 
     TraceManager<std::string, std::string, int> manager(false);
-    TraceManagerPtr<std::string, std::string, unsigned long> traceManager {std::make_shared<TraceManager2<std::string, std::string, unsigned long>>() };
+    TraceManagerPtr<std::string, unsigned long> traceManager{
+            std::make_shared<TraceManager2<std::string, unsigned long>>()};
 
     manager.add_trace_entry(parser.get_trace(), *parser.goal, 0);
 
-    std::pair<HypergraphPtr<std::string>, Element<Node<std::string>>> transformedTrace {transform_trace_to_hypergraph<std::string>(parser, nodeLabels, edgeLabels) };
+    std::pair<HypergraphPtr<std::string>, Element<Node<std::string>>> transformedTrace{
+            transform_trace_to_hypergraph<std::string>(parser, nodeLabels, edgeLabels)};
     traceManager->create(0L, transformedTrace.first, transformedTrace.second);
 
     std::cerr << "There are " << (*traceManager)[0].get_hypergraph()->size() << " nodes in the first trace\n";
@@ -405,13 +490,23 @@ int main() {
 //        std::cerr << "T: " << item << " " << pair.first[item] << " " << pair.second[item] << std::endl;
 //    }
 
-    std::vector<std::vector<unsigned>> my_rule_groups{{0}, {1}, {2}, {3}, {4, 5}, {6}, {7}, {8}};
+    std::vector<std::vector<unsigned>> my_rule_groups{{0},
+                                                      {1},
+                                                      {2},
+                                                      {3},
+                                                      {4, 5},
+                                                      {6},
+                                                      {7},
+                                                      {8}};
 
     std::vector<double> my_rule_weights2{1, 1, 1, 1, 0.5, 0.5, 1, 1, 1};
 
     auto vec_new = manager.do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
 
-    auto vec_new2 = traceManager->do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
+    auto trainerFactory = Trainer::TrainerFactory();
+    Trainer::EMTrainer<std::string, unsigned long> emTrainer = trainerFactory.build_em_trainer(traceManager);
+    auto vec_new2 = emTrainer.do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
+//    auto vec_new2 = traceManager->do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
 
 
     for (unsigned i = 0; i < vec_new.size(); ++i) {
@@ -426,18 +521,18 @@ int main() {
     // ############################################
 
 
-    const std::map<std::string, unsigned> mymap {
-              {"S", 0}
-            , {"A", 1}
-            , {"B", 2}
-            , {"C", 3}
-            , {"D", 4}
-            , {"E", 5}
-            , {"F", 6}
-            , {"G", 7}
+    const std::map<std::string, unsigned> mymap{
+            {"S", 0},
+            {"A", 1},
+            {"B", 2},
+            {"C", 3},
+            {"D", 4},
+            {"E", 5},
+            {"F", 6},
+            {"G", 7}
     };
 
-    auto nont_idx2 = [&] (const std::string & nont) {
+    auto nont_idx2 = [&](const std::string &nont) {
         return mymap.at(nont);
     };
 
@@ -452,8 +547,8 @@ int main() {
     }
     std::cerr << std::endl;
 
-    for (unsigned nont = 0; nont < my_rule_groups.size(); ++ nont) {
-        const auto & group = my_rule_groups[nont];
+    for (unsigned nont = 0; nont < my_rule_groups.size(); ++nont) {
+        const auto &group = my_rule_groups[nont];
         for (auto rule_id : group) {
             std::cerr << rule_to_nont_idx[rule_id][0] << " " << nont << std::endl;
             assert(rule_to_nont_idx[rule_id][0] == nont);
@@ -462,7 +557,45 @@ int main() {
 
     manager.split_merge<Double>(2, 1, vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5, 50.0);
 
-    traceManager->split_merge<Double>(2, 1, vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5, 50.0);
+
+    // traceManager->split_merge<Double>(2, 1, vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5, 50.0);
+
+    std::vector<std::vector<size_t>> rule_to_nont_idx_size_t;
+    for (auto rule : rule_to_nont_idx) {
+        rule_to_nont_idx_size_t.emplace_back();
+        for (const auto nont : rule) {
+            rule_to_nont_idx_size_t.back().push_back((size_t) nont);
+        }
+    }
+
+    auto grammarInfo = std::make_shared<const GrammarInfo2<std::string>>(rule_to_nont_idx_size_t, 0);
+    auto splitMergeTrainer = trainerFactory.build_split_merge_trainer(traceManager, grammarInfo, 20);
+
+    std::vector<size_t> nonterminal_splits(8, 1);
+//    convert_format()
+    std::vector<std::vector<double>> latentified(vec_new2.size());
+    for (size_t idx = 0; idx < vec_new2.size(); ++idx) {
+        latentified[idx].push_back(vec_new2[idx]);
+    }
+    std::vector<double> root_weights(1, 1.0);
+    std::vector<Trainer::RuleTensor<double>> rule_tensors;
+    StorageManager storageManager;
+    double *root_weight_ptrs = nullptr;
+    convert_to_eigen(
+            latentified
+            , rule_tensors
+            , root_weight_ptrs
+            , root_weights
+            , nonterminal_splits
+            , storageManager
+            , *grammarInfo
+    );
+    WeightVector root_weights_eigen(root_weight_ptrs, 1);
+//    std::vector<RuleTensor<double>>
+
+    Trainer::LatentAnnotation la(nonterminal_splits, root_weights_eigen, rule_tensors);
+    auto la_ = splitMergeTrainer.split_merge_cycle(la);
+    // todo : splitMergeTrainer.split_merge_cycle()
 
     return 0;
 }

@@ -31,9 +31,9 @@ namespace Manage {
                 , std::vector<Element<NodeT>> someSources
         )
                 : id(aId)
+                , manager(std::move(aManager))
                 , label(std::move(aLabel))
                 , labelID(aLabelId)
-                , manager(std::move(aManager))
                 , target(std::move(aTarget))
                 , sources(std::move(someSources)) { }
 

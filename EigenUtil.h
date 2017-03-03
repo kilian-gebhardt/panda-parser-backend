@@ -224,7 +224,12 @@ inline RuleTensor<double> createTensor(double * const storage, const std::vector
 }
 
 template<int max_dim, typename Val>
-inline void convert_format(double * const rule_ptr, const std::vector<unsigned> & rule_dim, const std::vector<Val> & weights, std::vector<RuleTensor<double>> & rule_tensors) {
+inline void convert_format(
+        double *const rule_ptr
+        , const std::vector<unsigned> & rule_dim
+        , const std::vector<Val> &weights
+        , std::vector<RuleTensor<double>> &rule_tensors
+) {
     Eigen::array<long, max_dim> rule_dim_a;
     for(unsigned dim = 0; dim < max_dim; ++dim) {
         rule_dim_a[dim] = rule_dim[dim];
@@ -240,12 +245,12 @@ inline void convert_format(double * const rule_ptr, const std::vector<unsigned> 
     auto weight_it = weights.begin();
 
     while (dim < max_dim) {
-        if (dim == max_dim - 1 and weight_position[dim] + 1 < rule_dim[dim]) {
+        if (dim == max_dim - 1 and weight_position[dim] + 1 < rule_dim_a[dim]) {
             ++weight_position[dim];
             assert(weight_it != weights.end());
             rule_weight_tensor(weight_position) =  weight_it->from();
             ++weight_it;
-        } else if (weight_position[dim] + 1 == rule_dim[dim]) {
+        } else if (weight_position[dim] + 1 == rule_dim_a[dim]) {
             if (dim > 0) {
                 for (unsigned dim_ = dim; dim_ < max_dim; ++dim_) {
                     weight_position[dim_] = -1;
@@ -254,7 +259,58 @@ inline void convert_format(double * const rule_ptr, const std::vector<unsigned> 
             }
             else
                 break;
-        } else if (weight_position[dim] + 1 < rule_dim[dim]) {
+        } else if (weight_position[dim] + 1 < rule_dim_a[dim]) {
+            ++weight_position[dim];
+            ++dim;
+        }
+    }
+
+    if(weight_it != weights.end()) {
+        std::cerr << "conversion error.";
+        abort();
+    }
+
+    rule_tensors.emplace_back(std::move(rule_weight_tensor));
+}
+
+template<int max_dim, typename Val>
+inline void convert_format(
+        double *const rule_ptr
+        , const std::vector<size_t> &rule_to_nonterminal
+        , const std::vector<size_t> & nont_splits
+        , const std::vector<Val> &weights
+        , std::vector<RuleTensor<double>> &rule_tensors
+) {
+    Eigen::array<long, max_dim> rule_dim_a;
+    for(unsigned dim = 0; dim < max_dim; ++dim) {
+        rule_dim_a[dim] = nont_splits[rule_to_nonterminal[dim]];
+    }
+    Eigen::array<long, max_dim> weight_position;
+    Eigen::TensorMap<Eigen::Tensor<double, max_dim>> rule_weight_tensor(rule_ptr, rule_dim_a);
+
+    for(unsigned dim = 0; dim < max_dim; ++dim) {
+        weight_position[dim] = -1;
+    }
+
+    unsigned dim = 0;
+    auto weight_it = weights.begin();
+
+    while (dim < max_dim) {
+        if (dim == max_dim - 1 and weight_position[dim] + 1 < rule_dim_a[dim]) {
+            ++weight_position[dim];
+            assert(weight_it != weights.end());
+            rule_weight_tensor(weight_position) =  weight_it->from();
+            ++weight_it;
+        } else if (weight_position[dim] + 1 == rule_dim_a[dim]) {
+            if (dim > 0) {
+                for (unsigned dim_ = dim; dim_ < max_dim; ++dim_) {
+                    weight_position[dim_] = -1;
+                }
+                --dim;
+            }
+            else
+                break;
+        } else if (weight_position[dim] + 1 < rule_dim_a[dim]) {
             ++weight_position[dim];
             ++dim;
         }
