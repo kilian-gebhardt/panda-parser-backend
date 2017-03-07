@@ -10,9 +10,10 @@
 #include "StorageManager.h"
 #include "TraceManager.h"
 #include "Trace.h"
+#include <boost/operators.hpp>
 
 namespace Trainer {
-    class Counts {
+    class Counts : boost::addable<Counts>{
     public:
         std::vector<RuleTensor<double>> ruleCounts;
         Eigen::Tensor<double, 1> rootCounts;
@@ -128,6 +129,12 @@ namespace Trainer {
                 : traceManager(traceManager), grammarInfo(grammarInfo), storageManager(storageManager), debug(debug) {};
 
         Counts expect(const LatentAnnotation latentAnnotation) {
+            if (tracesInsideWeights.size() < traceManager->size()) {
+                tracesInsideWeights.resize(traceManager->size());
+            }
+            if (tracesOutsideWeights.size() < traceManager->size()) {
+                tracesOutsideWeights.resize(traceManager->size());
+            }
             return expectation_la(latentAnnotation, traceManager->cbegin(), traceManager->cend());
         }
 
@@ -144,28 +151,16 @@ namespace Trainer {
         ) {
             Counts counts(latentAnnotation, *grammarInfo, *storageManager);
 
-            const std::vector<RuleTensor<double>> &ruleWeights = latentAnnotation.ruleWeights;
-            const WeightVector &rootWeights = latentAnnotation.rootWeights;
-
-            std::vector<RuleTensor<double>> &ruleCounts = counts.ruleCounts;
-            Eigen::Tensor<double, 1> &root_count = counts.rootCounts;
-            double &corpus_likelihood = counts.logLikelihood;
-
 
             for (auto traceIterator = start; traceIterator < end; ++traceIterator) {
                 const auto &trace = *traceIterator;
                 if (trace->get_hypergraph()->size() == 0)
                     continue;
 
-                // create maps for inside and outside maps if necessary
-                // todo: make this thread-safe
-                if (tracesInsideWeights.size() <= traceIterator - traceManager->cbegin()) {
-                    tracesInsideWeights.resize(1 + (traceIterator - traceManager->cbegin()));
-                }
-                if (tracesOutsideWeights.size() <= traceIterator - traceManager->cbegin()) {
-                    tracesOutsideWeights.resize(1 + (traceIterator - traceManager->cbegin()));
-                }
+                // create insert inside and outside weight for each node if necessary
                 if (tracesInsideWeights[traceIterator - traceManager->cbegin()].size() != trace->get_hypergraph()->size()) {
+                    tracesInsideWeights.clear();
+                    tracesOutsideWeights.clear();
                     for (const auto &node : *(trace->get_hypergraph())) {
                         tracesInsideWeights[traceIterator - traceManager->cbegin()].emplace(
                                 node
@@ -177,8 +172,8 @@ namespace Trainer {
                 }
 
                 trace->io_weights_la(
-                        ruleWeights
-                        , rootWeights
+                        latentAnnotation.ruleWeights
+                        , latentAnnotation.rootWeights
                         , tracesInsideWeights[traceIterator - traceManager->cbegin()]
                         , tracesOutsideWeights[traceIterator - traceManager->cbegin()]
                 );
@@ -195,10 +190,10 @@ namespace Trainer {
                 if (not std::isnan(traceRootProbability(0))
                     and not std::isinf(traceRootProbability(0))
                     and traceRootProbability(0) > 0) {
-                    root_count += traceRootProbabilities;
-                    corpus_likelihood += log(traceRootProbability(0));
+                    counts.rootCounts += traceRootProbabilities;
+                    counts.logLikelihood += log(traceRootProbability(0));
                 } else {
-                    corpus_likelihood += minus_infinity;
+                    counts.logLikelihood += minus_infinity;
                     continue;
                 }
 
@@ -223,40 +218,40 @@ namespace Trainer {
                         switch (rule_dim) {
                             case 1:
                                 compute_rule_count1(
-                                        ruleWeights[ruleId]
+                                        latentAnnotation.ruleWeights[ruleId]
                                         , lhnOutsideWeight
                                         , traceRootProbability(0)
-                                        , ruleCounts[ruleId]
+                                        , counts.ruleCounts[ruleId]
                                 );
                                 break;
                             case 2:
                                 compute_rule_count2(
-                                        ruleWeights[ruleId]
+                                        latentAnnotation.ruleWeights[ruleId]
                                         , edge
                                         , lhnOutsideWeight
                                         , traceRootProbability(0)
                                         , insideWeights
-                                        , ruleCounts[ruleId]
+                                        , counts.ruleCounts[ruleId]
                                 );
                                 break;
                             case 3:
                                 compute_rule_count3(
-                                        ruleWeights[ruleId]
+                                        latentAnnotation.ruleWeights[ruleId]
                                         , edge
                                         , lhnOutsideWeight
                                         , traceRootProbability(0)
                                         , insideWeights
-                                        , ruleCounts[ruleId]
+                                        , counts.ruleCounts[ruleId]
                                 );
                                 break;
                             case 4:
                                 compute_rule_count<4>(
-                                        ruleWeights[ruleId]
+                                        latentAnnotation.ruleWeights[ruleId]
                                         , edge
                                         , lhnOutsideWeight
                                         , traceRootProbability(0)
                                         , insideWeights
-                                        , ruleCounts[ruleId]
+                                        , counts.ruleCounts[ruleId]
                                 );
                                 break;
                             default:

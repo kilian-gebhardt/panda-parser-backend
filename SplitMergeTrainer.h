@@ -118,10 +118,13 @@ namespace Trainer {
     class Merger {
         std::shared_ptr<const GrammarInfo2> grammarInfo;
         std::shared_ptr<StorageManager> storageManager;
+        const bool debug;
 
     public:
-        Merger(std::shared_ptr<const GrammarInfo2> grammarInfo, std::shared_ptr<StorageManager> storageManager)
-                : grammarInfo(grammarInfo), storageManager(storageManager) {}
+        Merger(std::shared_ptr<const GrammarInfo2> grammarInfo
+               , std::shared_ptr<StorageManager> storageManager
+               , bool debug=false)
+                : grammarInfo(grammarInfo), storageManager(storageManager), debug(debug) {}
 
         LatentAnnotation merge(const LatentAnnotation &la, const MergeInfo &mergeInfo) {
             // root weights
@@ -131,7 +134,8 @@ namespace Trainer {
                 for (size_t idx_origin : mergeInfo.mergeSources[grammarInfo->start][idx])
                     rootWeights(idx) += la.rootWeights(idx_origin);
             }
-            std::cerr << "root weights " << rootWeights << std::endl;
+
+            if (debug) std::cerr << "root weights " << rootWeights << std::endl;
 
             // rule weights
             std::vector<RuleTensor<double>> ruleWeights;
@@ -142,7 +146,7 @@ namespace Trainer {
                         , mergeInfo.nontSplitsAfterMerge
                 );
                 merge_tensor(merged_tensor, la.ruleWeights[rule_id], rule_id, mergeInfo);
-                std::cerr << rule_id << " " << merged_tensor << std::endl;
+                if (debug) std::cerr << rule_id << " " << merged_tensor << std::endl;
                 ruleWeights.push_back(std::move(merged_tensor));
             }
 
@@ -206,6 +210,7 @@ namespace Trainer {
         std::shared_ptr<Splitter> splitter;
         std::shared_ptr<MergePreparator<Nonterminal, TraceID>> mergePreparator;
         std::shared_ptr<Merger> merger;
+        const bool debug;
 
     public:
         SplitMergeTrainer(
@@ -213,17 +218,17 @@ namespace Trainer {
                 , std::shared_ptr<Splitter> splitter
                 , std::shared_ptr<MergePreparator<Nonterminal, TraceID>> mergePreparator
                 , std::shared_ptr<Merger> merger
-        ) :
-                emTrainer(emTrainer), splitter(splitter), mergePreparator(mergePreparator), merger(merger) {}
+                , bool debug = false
+        ) : emTrainer(emTrainer), splitter(splitter), mergePreparator(mergePreparator), merger(merger), debug(debug) {}
 
         LatentAnnotation split_merge_cycle(LatentAnnotation la) {
             auto laSplit = splitter->split(la);
             emTrainer->train(laSplit);
             auto mergeInfo = mergePreparator->mergePrepare(laSplit);
 
-            std::cerr << mergeInfo;
-            std::cerr << "rules weights before merge" << std::endl;
-            {
+            if (debug) {
+                std::cerr << mergeInfo;
+                std::cerr << "rules weights before merge" << std::endl;
                 size_t rule_id{0};
                 for (auto ruleTensor : laSplit.ruleWeights) {
                     std::cerr << "rule " << rule_id << std::endl << ruleTensor << std::endl;
@@ -233,7 +238,7 @@ namespace Trainer {
 
             auto laMerged = merger->merge(laSplit, mergeInfo);
 
-            {
+            if (debug) {
                 size_t rule_id{0};
                 for (const RuleTensor<double> ruleTensor : laMerged.ruleWeights) {
                     std::cerr << "rule " << rule_id << std::endl << ruleTensor << std::endl;
@@ -253,8 +258,8 @@ namespace Trainer {
         using TraceIterator = ConstManagerIterator<Trace<Nonterminal, TraceID>>;
 
         const bool debug;
-        std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> traces_inside_weights;
-        std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> traces_outside_weights;
+        std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesInsideWeights;
+        std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesOutsideWeights;
 
     public:
         MergePreparator(
@@ -274,6 +279,12 @@ namespace Trainer {
                 mw.setZero();
                 nonterminalFrequencies.push_back(mw);
             }
+
+            if (tracesInsideWeights.size() < traceManager->size())
+                tracesInsideWeights.resize(traceManager->size());
+
+            if (tracesOutsideWeights.size() < traceManager->size())
+                tracesOutsideWeights.resize(traceManager->size());
 
             estimateNontFreqLA(
                     traceManager->cbegin()
@@ -300,8 +311,8 @@ namespace Trainer {
             const double merge_threshold = computeMergeThreshold(mergeDelta);
 
             // clean up
-            storageManager->free_weight_maps(traces_inside_weights);
-            storageManager->free_weight_maps(traces_outside_weights);
+            storageManager->free_weight_maps(tracesInsideWeights);
+            storageManager->free_weight_maps(tracesOutsideWeights);
             for (WeightVector &weightVector : nonterminalFrequencies) {
                 storageManager->free_weight_vector(weightVector);
             }
@@ -325,20 +336,13 @@ namespace Trainer {
             // computing in(A_x) * out(A_x) for every A ∈ N and x ∈ X_A
             for (TraceIterator traceIterator = start; traceIterator < stop; ++traceIterator) {
 
-                // todo: this could be problematic in a parallel setting
-                if (traces_inside_weights.size() <= traceIterator - traceManager->cbegin()) {
-                    traces_inside_weights.resize(1 + (traceIterator - traceManager->cbegin()));
-                }
-                if (traces_outside_weights.size() <= traceIterator - traceManager->cbegin()) {
-                    traces_outside_weights.resize(1 + (traceIterator - traceManager->cbegin()));
-                }
-                if (traces_inside_weights[traceIterator - traceManager->cbegin()].size() !=
+                if (tracesInsideWeights[traceIterator - traceManager->cbegin()].size() !=
                     traceIterator->get_hypergraph()->size()) {
                     for (const auto &node : *(traceIterator->get_hypergraph())) {
-                        traces_inside_weights[traceIterator - traceManager->cbegin()].emplace(
+                        tracesInsideWeights[traceIterator - traceManager->cbegin()].emplace(
                                 node
                                 , storageManager->create_weight_vector<WeightVector>(latentAnnotation.nonterminalSplits[node->get_label_id()]));
-                        traces_outside_weights[traceIterator - traceManager->cbegin()].emplace(
+                        tracesOutsideWeights[traceIterator - traceManager->cbegin()].emplace(
                                 node
                                 , storageManager->create_weight_vector<WeightVector>(latentAnnotation.nonterminalSplits[node->get_label_id()]));
                     }
@@ -347,12 +351,12 @@ namespace Trainer {
                 traceIterator->io_weights_la(
                         latentAnnotation.ruleWeights
                         , latentAnnotation.rootWeights
-                        , traces_inside_weights[traceIterator - traceManager->cbegin()]
-                        , traces_outside_weights[traceIterator - traceManager->cbegin()]
+                        , tracesInsideWeights[traceIterator - traceManager->cbegin()]
+                        , tracesOutsideWeights[traceIterator - traceManager->cbegin()]
                 );
 
-                const auto &insideWeights = traces_inside_weights[traceIterator - traceManager->cbegin()];
-                const auto &outsideWeights = traces_outside_weights[traceIterator - traceManager->cbegin()];
+                const auto &insideWeights = tracesInsideWeights[traceIterator - traceManager->cbegin()];
+                const auto &outsideWeights = tracesOutsideWeights[traceIterator - traceManager->cbegin()];
 
                 for (const Element<Node<Nonterminal>> &node : *(traceIterator->get_hypergraph())) {
 
@@ -408,9 +412,9 @@ namespace Trainer {
             std::vector<double> postfixSums;
 
             for (TraceIterator trace_id = start; trace_id < stop; ++trace_id) {
-                const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &insideWeights = traces_inside_weights[
+                const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &insideWeights = tracesInsideWeights[
                         trace_id - traceManager->cbegin()];
-                const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &outsideWeights = traces_outside_weights[
+                const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &outsideWeights = tracesOutsideWeights[
                         trace_id - traceManager->cbegin()];
 
                 for (const Element<Node<Nonterminal>> &node : *(trace_id->get_hypergraph())) {
