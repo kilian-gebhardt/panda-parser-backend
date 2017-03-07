@@ -12,7 +12,7 @@
 #include "Trace.h"
 #include "TraceManager.h"
 #include "TrainingCommon.h"
-#include "TrainerFactory.h"
+#include "TrainerBuilder.h"
 
 
 std::shared_ptr<HybridTree<std::string, int>> build_hybrid_tree(bool lcfrs) {
@@ -502,8 +502,8 @@ int main() {
 
     auto vec_new = manager.do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
 
-    auto trainerFactory = Trainer::TrainerFactory();
-    Trainer::EMTrainer<std::string, unsigned long> emTrainer = trainerFactory.build_em_trainer(traceManager);
+    auto emTrainerBuilder = Trainer::TrainerBuilder();
+    Trainer::EMTrainer<std::string, unsigned long> emTrainer = emTrainerBuilder.build_em_trainer(traceManager);
     auto vec_new2 = emTrainer.do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
 //    auto vec_new2 = traceManager->do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
 
@@ -568,7 +568,8 @@ int main() {
     }
 
     auto grammarInfo = std::make_shared<const GrammarInfo2>(rule_to_nont_idx_size_t, 0);
-    auto splitMergeTrainer = trainerFactory.build_split_merge_trainer(traceManager, grammarInfo, 20);
+    auto splitMergeTrainerBuilder = Trainer::SplitMergeTrainerBuilder<std::string, unsigned long>(traceManager, grammarInfo);
+    auto splitMergeTrainer = splitMergeTrainerBuilder.set_threshold_merger().build();
 
     std::vector<size_t> nonterminal_splits(8, 1);
 //    convert_format()
@@ -594,7 +595,6 @@ int main() {
 
     Trainer::LatentAnnotation la(nonterminal_splits, root_weights_eigen, rule_tensors);
     auto la_ = splitMergeTrainer.split_merge_cycle(la);
-    // todo : splitMergeTrainer.split_merge_cycle()
 
     return 0;
 }

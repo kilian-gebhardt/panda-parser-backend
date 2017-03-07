@@ -9,7 +9,7 @@ set(SOURCE_FILES main.cpp HybridTree.h SDCP.h SDCP_Parser.h util.h Trace.h Split
 
 set(EIGEN_SOURCES HybridTree.h SDCP.h SDCP_Parser.h util.h Trace.h SplitMergeUtil.h eigen_test.cpp EigenUtil.h)
 
-set(TRACEMANAGER_SOURCES main_tracemanager.cpp HybridTree.h SDCP.h SDCP_Parser.h util.h Trace.h SplitMergeUtil.h EigenUtil.h TraceManager.h StorageManager.h SplitMergeTrainer.h EMTrainerLA.h TrainingCommon.h Names.h EMTrainer.h TrainerFactory.h)
+set(TRACEMANAGER_SOURCES main_tracemanager.cpp HybridTree.h SDCP.h SDCP_Parser.h util.h Trace.h SplitMergeUtil.h EigenUtil.h TraceManager.h StorageManager.h SplitMergeTrainer.h EMTrainerLA.h TrainingCommon.h Names.h EMTrainer.h TrainerBuilder.h)
 
 set(MANAGER_SOURCES
         manager.cpp Manager.h Hypergraph.h GrammarInfo.h)
