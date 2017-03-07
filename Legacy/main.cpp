@@ -1,11 +1,12 @@
 #include <iostream>
 
-#include "HybridTree.h"
-#include "SDCP.h"
-#include "SDCP_Parser.h"
+#include "../DCP/HybridTree.h"
+#include "../DCP/SDCP.h"
+#include "../DCP/SDCP_Parser.h"
 #include <vector>
 #include "Trace.h"
 
+using namespace DCP;
 
 std::shared_ptr<HybridTree<std::string, int>> build_hybrid_tree(bool lcfrs) {
     auto tree = std::make_shared<HybridTree<std::string, int>>(HybridTree<std::string, int>());

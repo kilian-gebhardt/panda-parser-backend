@@ -5,15 +5,16 @@
 
 #include <iostream>
 
-#include "HybridTree.h"
-#include "SDCP.h"
-#include "SDCP_Parser.h"
+#include "DCP/HybridTree.h"
+#include "DCP/SDCP.h"
+#include "DCP/SDCP_Parser.h"
 #include <vector>
-#include "Trace.h"
-#include "TraceManager.h"
-#include "TrainingCommon.h"
-#include "TrainerBuilder.h"
+#include "Legacy/Trace.h"
+#include "Trainer/TraceManager.h"
+#include "Trainer/TrainingCommon.h"
+#include "Trainer/TrainerBuilder.h"
 
+using namespace Trainer;
 
 std::shared_ptr<HybridTree<std::string, int>> build_hybrid_tree(bool lcfrs) {
     auto tree = std::make_shared<HybridTree<std::string, int>>(HybridTree<std::string, int>());
@@ -84,11 +85,8 @@ transform_trace_to_hypergraph(
 
     // construct all nodes
     auto nodelist = std::map<ParseItem<Nonterminal, Position>, Element<Node<Nonterminal>>>();
-    for (auto const &item : trace) {
-        Element<Node<Nonterminal>> n = hg->create(item.first.nonterminal);
-        // todo: set infos on n
-        nodelist.emplace(item.first, n);
-    }
+    for (auto const &item : trace)
+        nodelist.emplace(item.first, hg->create(item.first.nonterminal));
 
     // construct hyperedges
     for (auto const &item : trace) {
@@ -590,7 +588,8 @@ int main() {
             , storageManager
             , *grammarInfo
     );
-    WeightVector root_weights_eigen(root_weight_ptrs, 1);
+    Eigen::TensorMap<Eigen::Tensor<double, 1>> root_weights_eigen_tmp(root_weight_ptrs, 1);
+    Eigen::Tensor<double, 1> root_weights_eigen = root_weights_eigen_tmp;
 //    std::vector<RuleTensor<double>>
 
     Trainer::LatentAnnotation la(nonterminal_splits, root_weights_eigen, rule_tensors);

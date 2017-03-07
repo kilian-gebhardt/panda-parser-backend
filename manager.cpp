@@ -6,37 +6,36 @@
 #include <memory>
 #include <string>
 #include <map>
-#include "Hypergraph.h"
+#include "Manage/Hypergraph.h"
 
 using namespace Manage;
 
 int main(){
-    std::shared_ptr<Hypergraph<Node<std::string>, std::string>> hg {std::make_shared<Hypergraph<Node<std::string>, std::string>>() };
+    std::vector<std::string> nLabels {"hello", "world", "this"};
+    std::vector<std::string> eLabels {"edge 1"};
+    std::shared_ptr<Hypergraph<std::string, std::string>> hg {std::make_shared<Hypergraph<std::string, std::string>>(nLabels, eLabels) };
 
-    Node<std::string> node1 = hg->create("hello");
-    Element<Node<std::string>> e1 = node1.get_element();
-    Node<std::string> node2 = hg->create("world");
-    Element<Node<std::string>> e2 = node2.get_element();
-    Node<std::string> node3 = hg->create("this");
+    auto node1 = hg->create("hello");
+    auto node2 = hg->create("world");
+    auto node3 = hg->create("this");
 
 
-    std::clog << e1->get_original_id();
+    std::clog << node1->get_label();
 
     std::map<Element<Node<std::string>>, std::string> mymap;
-    mymap[e1] = "hallo";
-    mymap[e2] = "welt";
-    mymap[node3.get_element()] = "Dies";
+    mymap[node1] = "hallo";
+    mymap[node2] = "welt";
+    mymap[node3] = "Dies";
 
-    std::clog << mymap[e2] << std::endl;
-
-
-    std::vector<Element<Node<std::string>>> sources {e1, e2};
-    Element<Node<std::string>> e3 = node3.get_element();
-    hg->add_hyperedge(e3, sources, "edge 1");
+    std::clog << mymap[node2] << std::endl;
 
 
+    std::vector<Element<Node<std::string>>> sources {node1, node2};
+    hg->add_hyperedge("edge 1", node3, sources);
 
-    for (auto e : hg->get_outgoing_edges(e2))
+
+
+    for (auto e : hg->get_outgoing_edges(node2))
         std::clog << "(" << e.first << "," << e.second << ")";
     std::clog << std::endl;
 

@@ -12,7 +12,8 @@
 #include <set>
 #include "LCFRS.h"
 #include "LCFRS_Parser.h"
-#include "Hypergraph.h"
+#include "../Manage/Hypergraph.h"
+#include "../Names.h"
 
 
 
@@ -182,7 +183,7 @@ namespace LCFR {
 
 
     LCFR::Rule<std::string, std::string> construct_rule(
-            const std::string nont, const std::vector<std::string> args, const std::string rhs
+            const std::string nont, const std::vector<std::string> args, const std::string rhs, auto ruleId
     ) {
         LCFR::LHS <std::__cxx11::string, std::__cxx11::string> lhs(nont);
         for (auto const &arg : args) {
@@ -202,9 +203,10 @@ namespace LCFR {
         std::vector<std::__cxx11::string> nonterminals;
         tokenize(rhs, nonterminals, " ", true);
 
-        return Rule<std::string, std::string>(lhs, nonterminals);
+        return Rule<std::string, std::string>(lhs, nonterminals, ruleId);
     };
 
+/*
     template <typename Nonterminal, typename Terminal>
     void print_top_trace(LCFRS<Nonterminal, Terminal> grammar
             , std::map<PassiveItem<Nonterminal>,TraceItem<Nonterminal,Terminal>> trace
@@ -219,37 +221,33 @@ namespace LCFR {
             std::clog << std::endl;
         }
     };
-
+*/
 
     template <typename Nonterminal, typename Terminal>
-    Manage::HypergraphPtr<Manage::Node<unsigned long>, unsigned long> convert_trace_to_hypergraph
+    HypergraphPtr<Nonterminal> convert_trace_to_hypergraph
             (
-            std::map<PassiveItem<Nonterminal>, TraceItem<Nonterminal, Terminal>> trace
+            const std::map<PassiveItem<Nonterminal>, TraceItem<Nonterminal, Terminal>> & trace
+            , const std::vector<Nonterminal> & nLabels
+            , const std::vector<EdgeLabelT> & eLabels
             ){
-        using namespace Manage;
-        using oID = unsigned long;
-        using HEoID = unsigned long;
         // construct all nodes
-        auto nodelist = std::map<PassiveItem<Nonterminal>, Element<Node<oID>>>();
-        HypergraphPtr<Node<oID>, HEoID> hg {std::make_shared<Hypergraph<Node<oID>, HEoID>>()};
+        auto nodelist = std::map<PassiveItem<Nonterminal>, Element<Node<Nonterminal>>>();
+        HypergraphPtr<Nonterminal> hg {std::make_shared<Hypergraph<Nonterminal>>(nLabels, eLabels)};
         for (auto const& item : trace) {
-            Node<oID> n = hg->create(0); // no old id available
-            // todo: set infos on n
-            nodelist.emplace(item.first, n.get_element());
+            nodelist.emplace(item.first, hg->create(item.first.get_nont()));
         }
 
         // construct hyperedges
         for (auto const& item : trace) {
-            Element<Node<oID>> outgoing = nodelist.at(*(item.second.uniquePtr));
-            std::vector<Element<Node<oID>>> incoming;
+            Element<Node<Nonterminal>> outgoing = nodelist.at(*(item.second.uniquePtr));
+            std::vector<Element<Node<Nonterminal>>> incoming;
             for(auto const& parse : item.second.parses){
                 incoming.clear();
                 incoming.reserve(parse.second.size());
                 for(auto const& pItem : parse.second)
                     incoming.push_back(nodelist.at(*pItem));
 
-                HyperEdge<Node<oID>, oID>& edge(hg->add_hyperedge(outgoing, incoming, parse.first->get_rule_id()));
-                // todo: set infos on edge
+                hg->add_hyperedge(parse.first->get_rule_id(), outgoing, incoming);
             }
 
         }

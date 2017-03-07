@@ -5,12 +5,12 @@
 #ifndef STERMPARSER_TRACE_H
 #define STERMPARSER_TRACE_H
 
-#include "SDCP_Parser.h"
+#include "../DCP/SDCP_Parser.h"
 #include <limits>
 #include <math.h>
 #include <malloc.h>
 #include <random>
-#include "util.h"
+#include "../util.h"
 #include "SplitMergeUtil.h"
 #include <functional>
 #include <boost/range/irange.hpp>
@@ -22,6 +22,8 @@
 #include <algorithm>
 #include <thread>
 #include <mutex>
+
+using namespace DCP;
 
 template <typename Nonterminal>
 class GrammarInfo {

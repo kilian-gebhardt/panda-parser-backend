@@ -5,11 +5,11 @@
 #ifndef STERMPARSER_EMTRAINERLA_H
 #define STERMPARSER_EMTRAINERLA_H
 
-#include "Names.h"
+#include "../Names.h"
 #include "TrainingCommon.h"
 #include "StorageManager.h"
 #include "TraceManager.h"
-#include "Trace.h"
+#include "../Legacy/Trace.h"
 #include <boost/operators.hpp>
 
 namespace Trainer {
@@ -150,9 +150,9 @@ namespace Trainer {
                 , const TraceIterator end
         ) {
             Counts counts(latentAnnotation, *grammarInfo, *storageManager);
-
-
-            for (auto traceIterator = start; traceIterator < end; ++traceIterator) {
+            TraceIterator traceIterator;
+            
+            for (traceIterator = start; traceIterator < end; ++traceIterator) {
                 const auto &trace = *traceIterator;
                 if (trace->get_hypergraph()->size() == 0)
                     continue;

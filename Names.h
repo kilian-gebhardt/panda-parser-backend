@@ -4,8 +4,8 @@
 
 #ifndef STERMPARSER_NAMES_H
 #define STERMPARSER_NAMES_H
-#include "Manager.h"
-#include "Hypergraph.h"
+#include "Manage/Manager.h"
+#include "Manage/Hypergraph.h"
 
 /*
 using WeightVector = Eigen::TensorMap<Eigen::Tensor<double, 1>>;

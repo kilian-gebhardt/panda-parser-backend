@@ -253,9 +253,11 @@ namespace Trainer {
 
     template<typename Nonterminal, typename TraceID>
     class MergePreparator {
+        using TraceIterator = ConstManagerIterator<Trace<Nonterminal, TraceID>>;
+
         const TraceManagerPtr<Nonterminal, EdgeLabelT> traceManager;
         std::shared_ptr<StorageManager> storageManager;
-        using TraceIterator = ConstManagerIterator<Trace<Nonterminal, TraceID>>;
+        std::shared_ptr<const GrammarInfo2> grammarInfo;
 
         const bool debug;
         std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesInsideWeights;
@@ -265,9 +267,10 @@ namespace Trainer {
         MergePreparator(
                 TraceManagerPtr<Nonterminal, EdgeLabelT> traceManager
                 , std::shared_ptr<StorageManager> storageManager
+                , std::shared_ptr<const GrammarInfo2> grammarInfo
                 , bool debug = false
         )
-                : traceManager(traceManager), storageManager(storageManager), debug(debug) {}
+                : traceManager(traceManager), storageManager(storageManager), grammarInfo(grammarInfo), debug(debug) {}
 
         MergeInfo mergePrepare(const LatentAnnotation latentAnnotation) {
 
@@ -518,8 +521,7 @@ namespace Trainer {
                         // always merge if Δ >= 1
                         || delta[split] >= 1 - 0.00001
                         // always merge initial symbol
-                        || (traceManager->cbegin()->get_goal()->get_label_id()) ==
-                           nont) { // todo: this info should be in GrammarInfo
+                        || grammarInfo->start == nont) {
                         mergeSelection.back().emplace_back();
                         mergeSelection.back().back().push_back(split);
                         mergeSelection.back().back().push_back(split + halfSplits);
@@ -551,10 +553,11 @@ namespace Trainer {
         ThresholdMergePreparator(
                 TraceManagerPtr<Nonterminal, TraceID> traceManager
                 , std::shared_ptr<StorageManager> storageManager
+                , std::shared_ptr<const GrammarInfo2> grammarInfo
                 , double merge_threshold
                 , bool debug = false
         )
-                : MergePreparator<Nonterminal, TraceID>(traceManager, storageManager, debug),
+                : MergePreparator<Nonterminal, TraceID>(traceManager, storageManager, grammarInfo, debug),
                   merge_threshold(merge_threshold) {}
 
     protected:
@@ -574,9 +577,11 @@ namespace Trainer {
         PercentMergePreparator(
                 TraceManagerPtr<Nonterminal, TraceID> traceManager
                 , std::shared_ptr<StorageManager> storageManager
+                , std::shared_ptr<const GrammarInfo2> grammarInfo
                 , double mergePercent
                 , bool debug = false
-        ) : MergePreparator<Nonterminal, TraceID>(traceManager, storageManager, debug), mergePercent(mergePercent) {}
+        ) : MergePreparator<Nonterminal, TraceID>(traceManager, storageManager, grammarInfo, debug)
+                , mergePercent(mergePercent) {}
 
     protected:
         double computeMergeThreshold(const std::vector<std::vector<double>> &mergeDelta) {

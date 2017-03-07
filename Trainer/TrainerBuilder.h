@@ -4,6 +4,7 @@
 
 #ifndef STERMPARSER_TRAINERBUILDER_H
 #define STERMPARSER_TRAINERBUILDER_H
+
 #include "EMTrainer.h"
 #include "SplitMergeTrainer.h"
 #include "EMTrainerLA.h"
@@ -28,48 +29,59 @@ namespace Trainer {
         std::shared_ptr<Splitter> splitter;
         std::shared_ptr<MergePreparator<Nonterminal, TraceID>> mergePreparator;
         std::shared_ptr<Merger> merger;
-        unsigned em_epochs {20};
+        unsigned em_epochs{20};
 
 
     public:
         SplitMergeTrainerBuilder(
-                TraceManagerPtr<Nonterminal, TraceID>  traceManager
+                TraceManagerPtr<Nonterminal, TraceID> traceManager
                 , std::shared_ptr<const GrammarInfo2> grammarInfo
                 , std::shared_ptr<StorageManager> storageManager = std::make_shared<StorageManager>()
-        )       : traceManager(traceManager)
-                , grammarInfo(grammarInfo)
-                , storageManager(storageManager) {}
+        ) : traceManager(traceManager), grammarInfo(grammarInfo), storageManager(storageManager) {}
 
-        SplitMergeTrainerBuilder& set_simple_expector() {
-            expector = std::make_shared<SimpleExpector<Nonterminal, TraceID>>(traceManager, grammarInfo, storageManager);
+        SplitMergeTrainerBuilder &set_simple_expector() {
+            expector = std::make_shared<SimpleExpector<Nonterminal, TraceID>>(
+                    traceManager
+                    , grammarInfo
+                    , storageManager
+            );
             return *this;
         }
 
-        SplitMergeTrainerBuilder& set_simple_maximizer() {
+        SplitMergeTrainerBuilder &set_simple_maximizer() {
             maximizer = std::make_shared<SimpleMaximizer>(grammarInfo);
             return *this;
         }
 
-        SplitMergeTrainerBuilder& set_em_epochs(unsigned epochs) {
+        SplitMergeTrainerBuilder &set_em_epochs(unsigned epochs) {
             em_epochs = epochs;
             return *this;
         }
 
-        SplitMergeTrainerBuilder& set_percent_merger(double percent=50.0) {
-            mergePreparator = std::make_shared<PercentMergePreparator<Nonterminal, TraceID>>(traceManager, storageManager, percent);
+        SplitMergeTrainerBuilder &set_percent_merger(double percent = 50.0) {
+            mergePreparator = std::make_shared<PercentMergePreparator<Nonterminal, TraceID>>(
+                    traceManager
+                    , storageManager
+                    , grammarInfo
+                    , percent
+            );
             return *this;
         }
 
-        SplitMergeTrainerBuilder& set_threshold_merger(double threshold=0.5) {
-            mergePreparator = std::make_shared<ThresholdMergePreparator<Nonterminal, TraceID>>(traceManager, storageManager, threshold);
+        SplitMergeTrainerBuilder &set_threshold_merger(double threshold = 0.5) {
+            mergePreparator = std::make_shared<ThresholdMergePreparator<Nonterminal, TraceID>>(
+                    traceManager
+                    , storageManager
+                    , grammarInfo
+                    , threshold
+            );
             return *this;
         }
 
-        SplitMergeTrainerBuilder& set_split_randomization(double percent=1.0) {
+        SplitMergeTrainerBuilder &set_split_randomization(double percent = 1.0) {
             splitter = std::make_shared<Splitter>(percent, grammarInfo, storageManager);
             return *this;
         }
-
 
 
         SplitMergeTrainer<Nonterminal, TraceID>

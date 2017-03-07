@@ -37,7 +37,6 @@ operator<<(std::ostream& os, const std::tuple<T0, T...>& t){
     return os << ')';
 }
 
-
 constexpr double minus_infinity = -std::numeric_limits<double>::infinity();
 
 class LogDouble : boost::operators<LogDouble> {

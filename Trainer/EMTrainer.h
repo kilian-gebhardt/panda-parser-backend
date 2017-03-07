@@ -6,7 +6,7 @@
 #define STERMPARSER_EMTRAINER_H
 #include <vector>
 #include <iostream>
-#include "Names.h"
+#include "../Names.h"
 #include "TraceManager.h"
 
 namespace Trainer {
@@ -40,11 +40,6 @@ namespace Trainer {
                 // expectation
                 ruleCounts = std::vector<Val>(ruleWeights.size(), Val::zero());
                 for (const auto trace : *traceManager) {
-
-                    // todo: do I need this test?
-                    if (trace->get_hypergraph()->size() == 0)
-                        continue;
-
                     const auto trIOweights = trace->io_weights(ruleWeights);
 
 //                for (const auto &item : trace->get_topological_order()) {

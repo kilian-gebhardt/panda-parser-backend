@@ -8,7 +8,7 @@
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <stdlib.h>
 #include <iostream>
-#include "util.h"
+#include "../util.h"
 #include <cmath>
 
 /*

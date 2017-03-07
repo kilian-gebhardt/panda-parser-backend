@@ -6,6 +6,7 @@
 #define STERM_PARSER_HYPERGRAPH_H
 
 #include "Manager.h"
+#include <algorithm>
 
 namespace Manage {
 
@@ -92,6 +93,7 @@ namespace Manage {
     template <typename NodeLabelT, typename EdgeLabelT>
     class Hypergraph : public Manager<Node<NodeLabelT>> {
     private:
+        // todo: shared pointer!
         std::vector<NodeLabelT> nodeLabels;
         std::vector<EdgeLabelT> edgeLabels;
 
