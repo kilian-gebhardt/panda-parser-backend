@@ -81,7 +81,7 @@ namespace Trainer {
                         }
                     }
                 }
-                epoch++;
+                ++epoch;
                 std::cerr << "Epoch " << epoch << "/" << noEpochs << ": ";
 //                for (unsigned i = 0; i < ruleWeights.size(); ++i) {
 //                    std::cerr << ruleWeights[i] << " ";

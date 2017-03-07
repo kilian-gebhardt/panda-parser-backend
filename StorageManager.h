@@ -195,6 +195,20 @@ public:
         return std::make_pair(start, allocated);
     }
 
+    template<typename Key>
+    void free_weight_maps(std::vector<MAPTYPE<Key, Eigen::Tensor<double, 1>>> &maps) {
+        maps.clear();
+    };
+
+    template<typename Key>
+    void free_weight_maps(std::vector<MAPTYPE<Key, Eigen::TensorMap<Eigen::Tensor<double, 1>>>> & maps) {
+        for (auto map : maps) {
+            for (auto entry : map) {
+                this->free_weight_vector(entry.second);
+            }
+        }
+        maps.clear();
+    };
 
     template<template<typename T1, typename T2> typename MapType, typename Nonterminal, typename TraceID>
     void free_io_weight_maps(

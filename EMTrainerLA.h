@@ -91,8 +91,8 @@ namespace Trainer {
                 std::cerr <<"Epoch " << epoch << "/" << epochs << ": ";
 
                 // output likelihood information based on old probability assignment
-                Eigen::Tensor<double, 0>corpus_prob_sum = counts.rootCounts.sum();
-                std::cerr << "corpus prob. sum " << corpus_prob_sum;
+                Eigen::Tensor<double, 0>corpusProbSum = counts.rootCounts.sum();
+                std::cerr << "corpus prob. sum " << corpusProbSum;
                 std::cerr << " corpus likelihood " << counts.logLikelihood;
 //                std::cerr << " root counts: " << counts.rootCounts << std::endl;
 
@@ -115,8 +115,8 @@ namespace Trainer {
         std::shared_ptr<StorageManager> storageManager;
         const bool debug;
 
-        std::vector<MAPTYPE<Element<Node < Nonterminal>>, WeightVector>> traces_inside_weights;
-        std::vector<MAPTYPE<Element<Node < Nonterminal>>, WeightVector>> traces_outside_weights;
+        std::vector<MAPTYPE<Element<Node < Nonterminal>>, WeightVector>> tracesInsideWeights;
+        std::vector<MAPTYPE<Element<Node < Nonterminal>>, WeightVector>> tracesOutsideWeights;
 
     public:
         SimpleExpector(
@@ -132,18 +132,8 @@ namespace Trainer {
         }
 
         void clean_up(){
-            for (auto traceIterator = traceManager->cbegin(); traceIterator != traceManager->cend(); ++ traceIterator) {
-                if (traceIterator - traceManager->cbegin() < traces_inside_weights.size()) {
-                    for (const auto &node : *(traceIterator->get_hypergraph())) {
-                        storageManager->free_weight_vector(
-                        traces_inside_weights[traceIterator - traceManager->cbegin()].at(node));
-                        storageManager->free_weight_vector(
-                        traces_outside_weights[traceIterator - traceManager->cbegin()].at(node));
-                    }
-                }
-            }
-            traces_inside_weights.clear();
-            traces_outside_weights.clear();
+            storageManager->free_weight_maps(tracesInsideWeights);
+            storageManager->free_weight_maps(tracesOutsideWeights);
         }
 
     private:
@@ -154,10 +144,10 @@ namespace Trainer {
         ) {
             Counts counts(latentAnnotation, *grammarInfo, *storageManager);
 
-            const std::vector<RuleTensor<double>> &rule_tensors = latentAnnotation.ruleWeights;
-            const WeightVector &root_probability = latentAnnotation.rootWeights;
+            const std::vector<RuleTensor<double>> &ruleWeights = latentAnnotation.ruleWeights;
+            const WeightVector &rootWeights = latentAnnotation.rootWeights;
 
-            std::vector<RuleTensor<double>> &rule_count_tensors = counts.ruleCounts;
+            std::vector<RuleTensor<double>> &ruleCounts = counts.ruleCounts;
             Eigen::Tensor<double, 1> &root_count = counts.rootCounts;
             double &corpus_likelihood = counts.logLikelihood;
 
@@ -169,104 +159,104 @@ namespace Trainer {
 
                 // create maps for inside and outside maps if necessary
                 // todo: make this thread-safe
-                if (traces_inside_weights.size() <= traceIterator - traceManager->cbegin()) {
-                    traces_inside_weights.resize(1 + (traceIterator - traceManager->cbegin()));
+                if (tracesInsideWeights.size() <= traceIterator - traceManager->cbegin()) {
+                    tracesInsideWeights.resize(1 + (traceIterator - traceManager->cbegin()));
                 }
-                if (traces_outside_weights.size() <= traceIterator - traceManager->cbegin()) {
-                    traces_outside_weights.resize(1 + (traceIterator - traceManager->cbegin()));
+                if (tracesOutsideWeights.size() <= traceIterator - traceManager->cbegin()) {
+                    tracesOutsideWeights.resize(1 + (traceIterator - traceManager->cbegin()));
                 }
-                if (traces_inside_weights[traceIterator - traceManager->cbegin()].size() != trace->get_hypergraph()->size()) {
+                if (tracesInsideWeights[traceIterator - traceManager->cbegin()].size() != trace->get_hypergraph()->size()) {
                     for (const auto &node : *(trace->get_hypergraph())) {
-                        traces_inside_weights[traceIterator - traceManager->cbegin()].emplace(
+                        tracesInsideWeights[traceIterator - traceManager->cbegin()].emplace(
                                 node
                                 , storageManager->create_weight_vector<WeightVector>(latentAnnotation.nonterminalSplits[node->get_label_id()]));
-                        traces_outside_weights[traceIterator - traceManager->cbegin()].emplace(
+                        tracesOutsideWeights[traceIterator - traceManager->cbegin()].emplace(
                                 node
                                 , storageManager->create_weight_vector<WeightVector>(latentAnnotation.nonterminalSplits[node->get_label_id()]));
                     }
                 }
 
                 trace->io_weights_la(
-                        rule_tensors
-                        , root_probability
-                        , traces_inside_weights[traceIterator - traceManager->cbegin()]
-                        , traces_outside_weights[traceIterator - traceManager->cbegin()]
+                        ruleWeights
+                        , rootWeights
+                        , tracesInsideWeights[traceIterator - traceManager->cbegin()]
+                        , tracesOutsideWeights[traceIterator - traceManager->cbegin()]
                 );
 
-                const auto &inside_weights = traces_inside_weights[traceIterator - traceManager->cbegin()];
-                const auto &outside_weights = traces_outside_weights[traceIterator - traceManager->cbegin()];
+                const auto &insideWeights = tracesInsideWeights[traceIterator - traceManager->cbegin()];
+                const auto &outsideWeights = tracesOutsideWeights[traceIterator - traceManager->cbegin()];
 
-                const auto &root_inside_weight = inside_weights.at(trace->get_goal());
-                const auto &root_outside_weight = outside_weights.at(trace->get_goal());
+                const auto &rootInsideWeight = insideWeights.at(trace->get_goal());
+                const auto &rootOutsideWeight = outsideWeights.at(trace->get_goal());
 
-                Eigen::Tensor<double, 1> trace_root_probabilities = root_inside_weight * root_outside_weight;
-                Eigen::Tensor<double, 0> trace_root_probability = trace_root_probabilities.sum();
+                Eigen::Tensor<double, 1> traceRootProbabilities = rootInsideWeight * rootOutsideWeight;
+                Eigen::Tensor<double, 0> traceRootProbability = traceRootProbabilities.sum();
 
-                if (not std::isnan(trace_root_probability(0))
-                    and not std::isinf(trace_root_probability(0))
-                    and trace_root_probability(0) > 0) {
-                    root_count += trace_root_probabilities;
-                    corpus_likelihood += log(trace_root_probability(0));
+                if (not std::isnan(traceRootProbability(0))
+                    and not std::isinf(traceRootProbability(0))
+                    and traceRootProbability(0) > 0) {
+                    root_count += traceRootProbabilities;
+                    corpus_likelihood += log(traceRootProbability(0));
                 } else {
                     corpus_likelihood += minus_infinity;
                     continue;
                 }
 
                 if (debug)
-                    std::cerr << "instance root probability: " << std::endl << trace_root_probabilities << std::endl;
+                    std::cerr << "instance root probability: " << std::endl << traceRootProbabilities << std::endl;
 
                 for (const Element<Node < Nonterminal>>
                     &node : *(trace->get_hypergraph())) {
-                    const WeightVector &lhn_outside_weight = outside_weights.at(node);
+                    const WeightVector &lhnOutsideWeight = outsideWeights.at(node);
 
                     if (debug) {
-                        std::cerr << node << std::endl << "outside weight" << std::endl << lhn_outside_weight
+                        std::cerr << node << std::endl << "outside weight" << std::endl << lhnOutsideWeight
                                   << std::endl;
                         std::cerr << "inside weight" << std::endl;
-                        const WeightVector &lhn_inside_weight = inside_weights.at(node);
+                        const WeightVector &lhn_inside_weight = insideWeights.at(node);
                         std::cerr << lhn_inside_weight << std::endl;
                     }
                     for (const auto &edge : trace->get_hypergraph()->get_incoming_edges(node)) {
-                        const int rule_id = edge->get_label_id();
+                        const int ruleId = edge->get_label_id();
                         const size_t rule_dim = edge->get_sources().size() + 1;
 
                         switch (rule_dim) {
                             case 1:
                                 compute_rule_count1(
-                                        rule_tensors[rule_id]
-                                        , lhn_outside_weight
-                                        , trace_root_probability(0)
-                                        , rule_count_tensors[rule_id]
+                                        ruleWeights[ruleId]
+                                        , lhnOutsideWeight
+                                        , traceRootProbability(0)
+                                        , ruleCounts[ruleId]
                                 );
                                 break;
                             case 2:
                                 compute_rule_count2(
-                                        rule_tensors[rule_id]
+                                        ruleWeights[ruleId]
                                         , edge
-                                        , lhn_outside_weight
-                                        , trace_root_probability(0)
-                                        , inside_weights
-                                        , rule_count_tensors[rule_id]
+                                        , lhnOutsideWeight
+                                        , traceRootProbability(0)
+                                        , insideWeights
+                                        , ruleCounts[ruleId]
                                 );
                                 break;
                             case 3:
                                 compute_rule_count3(
-                                        rule_tensors[rule_id]
+                                        ruleWeights[ruleId]
                                         , edge
-                                        , lhn_outside_weight
-                                        , trace_root_probability(0)
-                                        , inside_weights
-                                        , rule_count_tensors[rule_id]
+                                        , lhnOutsideWeight
+                                        , traceRootProbability(0)
+                                        , insideWeights
+                                        , ruleCounts[ruleId]
                                 );
                                 break;
                             case 4:
                                 compute_rule_count<4>(
-                                        rule_tensors[rule_id]
+                                        ruleWeights[ruleId]
                                         , edge
-                                        , lhn_outside_weight
-                                        , trace_root_probability(0)
-                                        , inside_weights
-                                        , rule_count_tensors[rule_id]
+                                        , lhnOutsideWeight
+                                        , traceRootProbability(0)
+                                        , insideWeights
+                                        , ruleCounts[ruleId]
                                 );
                                 break;
                             default:
@@ -280,116 +270,116 @@ namespace Trainer {
             return counts;
         }
 
-        inline void compute_rule_count1(const RuleTensor<double> & rule_weight_tensor, const RuleTensorRaw<double, 1> &lhn_outside_weight,
-                                        const double trace_root_probability, RuleTensor<double> & rule_count_tensor
+        inline void compute_rule_count1(const RuleTensor<double> & ruleWeight, const RuleTensorRaw<double, 1> &lhnOutsideWeight,
+                                        const double traceRootProbability, RuleTensor<double> & ruleCount
         ) {
-            constexpr unsigned rule_rank {1};
+            constexpr unsigned ruleRank {1};
 
-            const auto & rule_weight = boost::get<RuleTensorRaw <double, rule_rank>>(rule_weight_tensor);
+            const auto & ruleWeightRaw = boost::get<RuleTensorRaw <double, ruleRank>>(ruleWeight);
 
-            auto rule_val = rule_weight * lhn_outside_weight;
+            auto ruleValue = ruleWeightRaw * lhnOutsideWeight;
 
-            auto & rule_count = boost::get<RuleTensorRaw <double, rule_rank>>(rule_count_tensor);
+            auto & ruleCountRaw = boost::get<RuleTensorRaw <double, ruleRank>>(ruleCount);
 
-            if (trace_root_probability > 0) {
-                rule_count += rule_val.unaryExpr([trace_root_probability] (double x) {return x / trace_root_probability;});
+            if (traceRootProbability > 0) {
+                ruleCountRaw += ruleValue.unaryExpr([traceRootProbability] (double x) {return x / traceRootProbability;});
             }
         }
 
 
         inline void compute_rule_count2(
-                const RuleTensor<double> & rule_weight_tensor
+                const RuleTensor<double> & ruleWeight
                 , const Element<HyperEdge<Nonterminal>>& edge
-                , const RuleTensorRaw<double, 1>& lhn_outside_weight
-                , const double trace_root_probability
-                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& inside_weights
-                , RuleTensor<double> & rule_count_tensor
+                , const RuleTensorRaw<double, 1>& lhnOutsideWeight
+                , const double traceRootProbability
+                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& insideWeights
+                , RuleTensor<double> & ruleCount
         ) {
-            constexpr unsigned rule_rank {2};
+            constexpr unsigned ruleRank {2};
 
-            const auto & rule_weight = boost::get<RuleTensorRaw <double, rule_rank>>(rule_weight_tensor);
+            const auto & ruleWeightRaw = boost::get<RuleTensorRaw <double, ruleRank>>(ruleWeight);
 
-            const auto & rhs_weight = inside_weights.at(edge->get_sources()[0]);
-            auto rule_val = lhn_outside_weight.reshape(Eigen::array<long, rule_rank>{rule_weight.dimension(0), 1})
-                                    .broadcast(Eigen::array<long, rule_rank>{1, rule_weight.dimension(1)})
-                            * rhs_weight.reshape(Eigen::array<long, rule_rank>{1, rule_weight.dimension(1)})
-                                    .broadcast(Eigen::array<long, rule_rank>{rule_weight.dimension(0), 1}).eval()
-                            * rule_weight
+            const auto & rhsWeight = insideWeights.at(edge->get_sources()[0]);
+            auto ruleValue = lhnOutsideWeight.reshape(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1})
+                                    .broadcast(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1)})
+                            * rhsWeight.reshape(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1)})
+                                    .broadcast(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1}).eval()
+                            * ruleWeightRaw
             ;
 
-            auto & rule_count = boost::get<RuleTensorRaw <double, rule_rank>>(rule_count_tensor);
+            auto & ruleCountRaw = boost::get<RuleTensorRaw <double, ruleRank>>(ruleCount);
 
-            if (trace_root_probability > 0) {
-                rule_count += rule_val.unaryExpr([trace_root_probability] (double x) {return x / trace_root_probability;});
+            if (traceRootProbability > 0) {
+                ruleCountRaw += ruleValue.unaryExpr([traceRootProbability] (double x) {return x / traceRootProbability;});
             }
         }
 
 
         inline void compute_rule_count3(
-                const RuleTensor<double> & rule_weight_tensor
+                const RuleTensor<double> & ruleWeight
                 , const Element<HyperEdge<Nonterminal>>& edge
-                , const RuleTensorRaw <double, 1>& lhn_outside_weight
-                , const double trace_root_probability
-                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& inside_weights
-                , RuleTensor<double> & rule_count_tensor
+                , const RuleTensorRaw <double, 1>& lhnOutsideWeight
+                , const double traceRootProbability
+                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& insideWeights
+                , RuleTensor<double> & ruleCount
         ) {
-            constexpr unsigned rule_rank {3};
+            constexpr unsigned ruleRank {3};
 
-            const auto & rule_weight = boost::get<RuleTensorRaw<double, rule_rank>>(rule_weight_tensor);
-            const auto & rhs_weight1 = inside_weights.at(edge->get_sources()[0]);
-            const auto & rhs_weight2 = inside_weights.at(edge->get_sources()[1]);
+            const auto & ruleWeightRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleWeight);
+            const auto & rhsWeight1 = insideWeights.at(edge->get_sources()[0]);
+            const auto & rhsWeight2 = insideWeights.at(edge->get_sources()[1]);
 
-            auto rule_val = lhn_outside_weight.reshape(Eigen::array<long, rule_rank>{rule_weight.dimension(0), 1, 1})
-                                    .broadcast(Eigen::array<long, rule_rank>{1, rule_weight.dimension(1), rule_weight.dimension(2)})
-                            * rhs_weight1.reshape(Eigen::array<long, rule_rank>{1, rule_weight.dimension(1), 1})
-                                    .broadcast(Eigen::array<long, rule_rank>{rule_weight.dimension(0), 1, rule_weight.dimension(2)}).eval()
-                            * rhs_weight2.reshape(Eigen::array<long, rule_rank>{1, 1, rule_weight.dimension(2)})
-                                    .broadcast(Eigen::array<long, rule_rank>{rule_weight.dimension(0), rule_weight.dimension(1), 1}).eval()
-                            * rule_weight;
+            auto ruleValue = lhnOutsideWeight.reshape(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1, 1})
+                                    .broadcast(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1), ruleWeightRaw.dimension(2)})
+                            * rhsWeight1.reshape(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1), 1})
+                                    .broadcast(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1, ruleWeightRaw.dimension(2)}).eval()
+                            * rhsWeight2.reshape(Eigen::array<long, ruleRank>{1, 1, ruleWeightRaw.dimension(2)})
+                                    .broadcast(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), ruleWeightRaw.dimension(1), 1}).eval()
+                            * ruleWeightRaw;
             ;
 
-            auto & rule_count = boost::get<RuleTensorRaw<double, rule_rank>>(rule_count_tensor);
+            auto & ruleCountRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleCount);
 
-            if (trace_root_probability > 0) {
-                rule_count += rule_val.unaryExpr([trace_root_probability] (double x) {return x / trace_root_probability;});
+            if (traceRootProbability > 0) {
+                ruleCountRaw += ruleValue.unaryExpr([traceRootProbability] (double x) {return x / traceRootProbability;});
             }
         }
 
-        template<int rule_dim>
+        template<long rank>
         inline void compute_rule_count(
-                const RuleTensor<double> & rule_weight_tensor
+                const RuleTensor<double> & ruleWeight
                 , const Element<HyperEdge<Nonterminal>>& edge
-                , const RuleTensorRaw <double, 1>& lhn_outside_weight
-                , const double trace_root_probability
-                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& inside_weights
-                , RuleTensor<double> & rule_count_tensor
+                , const RuleTensorRaw <double, 1>& lhnOutsideWeight
+                , const double traceRootProbability
+                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& insideWeights
+                , RuleTensor<double> & ruleCount
         ) {
 
-            const auto & rule_weight = boost::get<RuleTensorRaw <double, rule_dim>>(rule_weight_tensor);
-            const auto & rule_dimension = rule_weight.dimensions();
+            const auto & ruleWeightRaw = boost::get<RuleTensorRaw <double, rank>>(ruleWeight);
+            const auto & ruleDimension = ruleWeightRaw.dimensions();
 
-            Eigen::array<long, rule_dim> rshape_dim;
-            Eigen::array<long, rule_dim> broad_dim;
-            for (unsigned i = 0; i < rule_dim; ++i) {
-                rshape_dim[i] = 1;
-                broad_dim[i] = rule_dimension[i];
+            Eigen::array<long, rank> reshapeDimensions;
+            Eigen::array<long, rank> broadcastDimensions;
+            for (unsigned i = 0; i < rank; ++i) {
+                reshapeDimensions[i] = 1;
+                broadcastDimensions[i] = ruleDimension[i];
             }
 
-            Eigen::Tensor<double, rule_dim> rule_val = rule_weight;
-            for (unsigned i = 0; i < rule_dim; ++i) {
-                const auto & item_weight = (i == 0)
-                                           ? lhn_outside_weight
-                                           : inside_weights.at(edge->get_sources()[i - 1]);
-                rshape_dim[i] = broad_dim[i];
-                broad_dim[i] = 1;
-                rule_val *= item_weight.reshape(rshape_dim).broadcast(broad_dim);
-                broad_dim[i] = rshape_dim[i];
-                rshape_dim[i] = 1;
+            Eigen::Tensor<double, rank> rule_val = ruleWeightRaw;
+            for (unsigned nont = 0; nont < rank; ++nont) {
+                const auto & itemWeight = (nont == 0)
+                                           ? lhnOutsideWeight
+                                           : insideWeights.at(edge->get_sources()[nont - 1]);
+                reshapeDimensions[nont] = broadcastDimensions[nont];
+                broadcastDimensions[nont] = 1;
+                rule_val *= itemWeight.reshape(reshapeDimensions).broadcast(broadcastDimensions);
+                broadcastDimensions[nont] = reshapeDimensions[nont];
+                reshapeDimensions[nont] = 1;
             }
 
-            auto & rule_count = boost::get<RuleTensorRaw <double, rule_dim>>(rule_count_tensor);
-            if (trace_root_probability > 0) {
-                rule_count += rule_val.unaryExpr([trace_root_probability] (double x) {return x / trace_root_probability;});
+            auto & ruleCountRaw = boost::get<RuleTensorRaw <double, rank>>(ruleCount);
+            if (traceRootProbability > 0) {
+                ruleCountRaw += rule_val.unaryExpr([traceRootProbability] (double x) {return x / traceRootProbability;});
             }
         }
     };
@@ -405,17 +395,17 @@ namespace Trainer {
         void maximize(LatentAnnotation &latentAnnotation, const Counts &counts) {
             unsigned nont = 0;
             for (const std::vector<std::size_t> &group : grammarInfo->normalizationGroups) {
-                const std::size_t lhs_dim = latentAnnotation.nonterminalSplits[nont];
-                maximization(lhs_dim, counts, latentAnnotation, group);
+                const std::size_t lhsSplits = latentAnnotation.nonterminalSplits[nont];
+                maximization(lhsSplits, counts, latentAnnotation, group);
                 ++nont;
             }
 
             // maximize root weights:
-            Eigen::Tensor<double, 0> corpus_prob_sum = counts.rootCounts.sum();
-            if (corpus_prob_sum(0) > 0)
+            Eigen::Tensor<double, 0> corpusProbSum = counts.rootCounts.sum();
+            if (corpusProbSum(0) > 0)
                 latentAnnotation.rootWeights = latentAnnotation.rootWeights.unaryExpr(
-                        [corpus_prob_sum](double x) {
-                            return x / corpus_prob_sum(0);
+                        [corpusProbSum](double x) {
+                            return x / corpusProbSum(0);
                         }
                 );
         }
@@ -427,14 +417,14 @@ namespace Trainer {
                 , LatentAnnotation &latentAnnotation
                 , const std::vector<std::size_t> &group
         ) {
-            Eigen::Tensor<double, 1> lhs_counts(lhsSplits);
-            lhs_counts.setZero();
+            Eigen::Tensor<double, 1> lhsCounts(lhsSplits);
+            lhsCounts.setZero();
             for (const size_t ruleId : group) {
-                compute_normalization_divisor(lhs_counts, counts.ruleCounts[ruleId]);
+                compute_normalization_divisor(lhsCounts, counts.ruleCounts[ruleId]);
             }
 
             for (const size_t ruleId : group) {
-                normalize(latentAnnotation.ruleWeights[ruleId], counts.ruleCounts[ruleId], lhs_counts);
+                normalize(latentAnnotation.ruleWeights[ruleId], counts.ruleCounts[ruleId], lhsCounts);
             }
 
         }

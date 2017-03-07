@@ -139,31 +139,31 @@ public:
     inline void io_weights_la(
             const std::vector<Trainer::RuleTensor<double>> & rules
             , const Eigen::TensorRef<Eigen::Tensor<double, 1>> & root
-            , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& inside_weights
-            , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& outside_weights
+            , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& insideWeights
+            , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& outsideWeights
     ) const {
 
         // TODO implement for general case (== no topological order) approximation of inside weights
         // computation of inside weights
 
         for (const auto& node : get_topological_order()) {
-            Trainer::WeightVector& target_weight = inside_weights.at(node);
+            Trainer::WeightVector& targetWeight = insideWeights.at(node);
 
-            target_weight.setZero();
+            targetWeight.setZero();
 
             for (const auto& edge : get_hypergraph()->get_incoming_edges(node)) {
                 switch (edge->get_sources().size() + 1) {
                     case 1:
-                        inside_weight_step1(target_weight, edge, rules);
+                        inside_weight_step1(targetWeight, edge, rules);
                         break;
                     case 2:
-                        inside_weight_step2(inside_weights, target_weight, edge, rules);
+                        inside_weight_step2(insideWeights, targetWeight, edge, rules);
                         break;
                     case 3:
-                        inside_weight_step3(inside_weights, target_weight, edge, rules);
+                        inside_weight_step3(insideWeights, targetWeight, edge, rules);
                         break;
                     case 4:
-                        inside_weight_step<4>(inside_weights, target_weight, edge, rules);
+                        inside_weight_step<4>(insideWeights, targetWeight, edge, rules);
                         break;
                     default:
                         std::cerr<< "Rules with more than 3 RHS nonterminals are not implemented." << std::endl;
@@ -172,7 +172,7 @@ public:
             }
 
 //                std::cerr << "inside weight " << node << std::endl;
-//                std::cerr << target_weight << std::endl;
+//                std::cerr << targetWeight << std::endl;
 
         }
 
@@ -180,12 +180,12 @@ public:
         for (auto node_iterator = get_topological_order().rbegin();  node_iterator != get_topological_order().rend(); ++node_iterator) {
             const Element<Node<Nonterminal>>& node = *node_iterator;
 
-            Trainer::WeightVector& outside_weight = outside_weights.at(node);
+            Trainer::WeightVector& outsideWeight = outsideWeights.at(node);
 
             if (node == get_goal())
-                outside_weight = root;
+                outsideWeight = root;
             else
-                outside_weight.setZero();
+                outsideWeight.setZero();
 
 
             for (const auto& outgoing : get_hypergraph()->get_outgoing_edges(node)) {
@@ -193,22 +193,22 @@ public:
                     case 1:
                         // Cannot happen, since there is at least one source (namely 'node')
                         std::cerr << "The trace is inconsistent!";
-                        break;
+                        abort();
                     case 2:
-                        outside_weight_step2(rules, outside_weights, outside_weight, outgoing);
+                        outside_weight_step2(rules, outsideWeights, outsideWeight, outgoing);
                         break;
                     case 3:
-                        outside_weight_step3(rules, inside_weights, outside_weights, outside_weight, outgoing);
+                        outside_weight_step3(rules, insideWeights, outsideWeights, outsideWeight, outgoing);
                         break;
                     case 4:
-                        outside_weight_step<4>(rules, inside_weights, outside_weights, outside_weight, outgoing);
+                        outside_weight_step<4>(rules, insideWeights, outsideWeights, outsideWeight, outgoing);
                         break;
                     default:
                         std::cerr<< "Rules with more than 3 RHS nonterminals are not implemented." << std::endl;
                         abort();
                 }
             }
-//            std::cerr << "outside weight " << node << std::endl << outside_weight << std::endl;
+//            std::cerr << "outside weight " << node << std::endl << outsideWeight << std::endl;
         }
     }
 
@@ -251,8 +251,8 @@ public:
     }
 
     inline void inside_weight_step3(
-            const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& inside_weights
-            , Trainer::WeightVector& target_weight
+            const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& insideWeights
+            , Trainer::WeightVector& targetWeight
             , const Element<HyperEdge<Nonterminal>>& edge
             , const std::vector<Trainer::RuleTensor<double>> &rules
     ) const {
@@ -265,14 +265,14 @@ public:
 //        std::cerr << "rule tensor " << edge->get_original_id() << " address " << rules[edge->get_original_id()] << std::endl << rule_weight << std::endl;
 
         constexpr unsigned rhs_pos1 = 1;
-        const auto & rhs_item_weight1 = inside_weights.at(edge->get_sources()[rhs_pos1-1]);
+        const auto & rhs_item_weight1 = insideWeights.at(edge->get_sources()[rhs_pos1-1]);
 
         constexpr unsigned rhs_pos2 = 2;
-        const auto & rhs_item_weight2 = inside_weights.at(edge->get_sources()[rhs_pos2-1]);
+        const auto & rhs_item_weight2 = insideWeights.at(edge->get_sources()[rhs_pos2-1]);
 
         auto c1 = rule_weight.contract(rhs_item_weight2, Eigen::array<Eigen::IndexPair<int>, 1>{Eigen::IndexPair<int>(2, 0)});
         auto c2 = c1.contract(rhs_item_weight1, Eigen::array<Eigen::IndexPair<int>, 1>{Eigen::IndexPair<int>(1, 0)});
-        target_weight += c2;
+        targetWeight += c2;
     }
 
 

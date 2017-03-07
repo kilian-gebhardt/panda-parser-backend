@@ -331,15 +331,13 @@ namespace Trainer {
         double mergeFactor() {
             if ((mergeInfo->mergeSources)
                 [(*rule_to_nonterminals)[ruleId][0]] // nont
-                [(*goalIndex)[0]]                              // goal split
-                        .size() == 1) {                                // source split
+                [(*goalIndex)[0]]                    // goal split
+                        .size() == 1) {              // source split
                 return 1.0;
             } else
                 return mergeInfo->mergeFactors[(*rule_to_nonterminals)[ruleId][0]][sourceIndex[0]];
         }
-//
-//        friend class TensorIterator<rank, true>;
-//        friend class TensorIterator<rank, false>;
+
     };
 
 

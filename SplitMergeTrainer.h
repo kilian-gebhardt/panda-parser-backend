@@ -22,10 +22,14 @@ namespace Trainer {
         }
 
     public:
-        Splitter(double randPercent, std::shared_ptr<const GrammarInfo2> grammarInfo, std::shared_ptr<StorageManager> storageManager)
+        Splitter(
+                double randPercent
+                , std::shared_ptr<const GrammarInfo2> grammarInfo
+                , std::shared_ptr<StorageManager> storageManager
+        )
                 : randPercent(randPercent), grammarInfo(grammarInfo), storageManager(storageManager) {}
 
-        LatentAnnotation split(const LatentAnnotation & la) {
+        LatentAnnotation split(const LatentAnnotation &la) {
             std::vector<size_t> nonterminalSplits;
             // double nonterminal splits
             nonterminalSplits.reserve(la.nonterminalSplits.size());
@@ -36,7 +40,7 @@ namespace Trainer {
                     , [](auto x) { return x * 2; }
             );
 
-            std::cerr << "la root weights: " << std::endl<< la.rootWeights << std::endl;
+            std::cerr << "la root weights: " << std::endl << la.rootWeights << std::endl;
             // new root weights
             Eigen::Tensor<double, 1> rootWeights(la.rootWeights.dimension(0) * 2);
             rootWeights = la.rootWeights.broadcast(Eigen::array<long, 1>{2});
@@ -54,14 +58,14 @@ namespace Trainer {
             // normalization
             unsigned nont = 0;
             for (auto &group : grammarInfo->normalizationGroups) {
-                Eigen::Tensor<double, 1> normalization_divisor(nonterminalSplits[nont]);
-                normalization_divisor.setZero();
+                Eigen::Tensor<double, 1> normalizationDivisor(nonterminalSplits[nont]);
+                normalizationDivisor.setZero();
                 for (size_t ruleId : group) {
-                    compute_normalization_divisor(normalization_divisor, ruleWeights[ruleId]);
+                    compute_normalization_divisor(normalizationDivisor, ruleWeights[ruleId]);
 
                 }
                 for (size_t ruleId : group) {
-                    normalize(ruleWeights[ruleId], ruleWeights[ruleId], normalization_divisor);
+                    normalize(ruleWeights[ruleId], ruleWeights[ruleId], normalizationDivisor);
                 }
             }
 
@@ -69,38 +73,41 @@ namespace Trainer {
         };
 
     private:
-        RuleTensor<double> create_split_tensor(const RuleTensor<double> wrapped_tensor) {
-            switch (wrapped_tensor.which() + 1) {
+        RuleTensor<double> create_split_tensor(const RuleTensor<double> wrappedTensor) {
+            switch (wrappedTensor.which() + 1) {
                 case 1:
-                    return create_split_tensor_ranked<1>(wrapped_tensor);
+                    return create_split_tensor_ranked<1>(wrappedTensor);
                 case 2:
-                    return create_split_tensor_ranked<2>(wrapped_tensor);
+                    return create_split_tensor_ranked<2>(wrappedTensor);
                 case 3:
-                    return create_split_tensor_ranked<3>(wrapped_tensor);
+                    return create_split_tensor_ranked<3>(wrappedTensor);
                 case 4:
-                    return create_split_tensor_ranked<4>(wrapped_tensor);
+                    return create_split_tensor_ranked<4>(wrappedTensor);
                 default:
                     abort();
             }
         }
 
         template<long rule_rank>
-        RuleTensor<double> create_split_tensor_ranked(const RuleTensor<double> wrapped_tensor) {
-            const auto &raw_tensor = boost::get<RuleTensorRaw <double, rule_rank>>(wrapped_tensor);
-            Eigen::array<Eigen::DenseIndex, rule_rank> split_dimenions = raw_tensor.dimensions();
+        RuleTensor<double> create_split_tensor_ranked(const RuleTensor<double> tensorWrapped) {
+            const auto &tensorRaw = boost::get<RuleTensorRaw<double, rule_rank>>(tensorWrapped);
+            Eigen::array<Eigen::DenseIndex, rule_rank> splitDimenions = tensorRaw.dimensions();
             Eigen::array<Eigen::DenseIndex, rule_rank> broadcast;
             std::fill(broadcast.begin(), broadcast.end(), 2);
-            std::for_each(split_dimenions.begin(), split_dimenions.end(), [](auto & dim) { dim = 2 * dim; });
+            std::for_each(splitDimenions.begin(), splitDimenions.end(), [](auto &dim) { dim = 2 * dim; });
             size_t memory = std::accumulate(
-                            split_dimenions.cbegin()
-                            , split_dimenions.cend()
-                            , (size_t) 1
-                            , std::multiplies<size_t>());
-            auto split_tensor = storageManager
-                    ->create_uninitialized_tensor_ranked_typed<RuleTensorRaw<double, rule_rank>>(memory, split_dimenions);
-            split_tensor = raw_tensor.broadcast(broadcast);
-            split_tensor = split_tensor.unaryExpr([this](double x) { return x * rand_split(); });
-            return split_tensor;
+                    splitDimenions.cbegin()
+                    , splitDimenions.cend()
+                    , (size_t) 1
+                    , std::multiplies<size_t>());
+            auto tensorSplit = storageManager
+                    ->create_uninitialized_tensor_ranked_typed<RuleTensorRaw<double, rule_rank>>(
+                            memory
+                            , splitDimenions
+                    );
+            tensorSplit = tensorRaw.broadcast(broadcast);
+            tensorSplit = tensorSplit.unaryExpr([this](double x) { return x * rand_split(); });
+            return tensorSplit;
         }
 
     };
@@ -116,9 +123,9 @@ namespace Trainer {
         Merger(std::shared_ptr<const GrammarInfo2> grammarInfo, std::shared_ptr<StorageManager> storageManager)
                 : grammarInfo(grammarInfo), storageManager(storageManager) {}
 
-        LatentAnnotation merge(const LatentAnnotation & la, const MergeInfo & mergeInfo) {
+        LatentAnnotation merge(const LatentAnnotation &la, const MergeInfo &mergeInfo) {
             // root weights
-            Eigen::Tensor<double, 1> rootWeights (mergeInfo.nontSplitsAfterMerge[grammarInfo->start]);
+            Eigen::Tensor<double, 1> rootWeights(mergeInfo.nontSplitsAfterMerge[grammarInfo->start]);
             for (Eigen::DenseIndex idx = 0; idx < rootWeights.dimension(0); ++idx) {
                 rootWeights(idx) = 0;
                 for (size_t idx_origin : mergeInfo.mergeSources[grammarInfo->start][idx])
@@ -174,8 +181,8 @@ namespace Trainer {
                 , const size_t ruleId
                 , const MergeInfo &mergeInfo
         ) {
-            auto &mergedTensorRaw = boost::get<RuleTensorRaw <double, rank>>(mergedTensor);
-            const auto &sourceTensorRaw = boost::get<RuleTensorRaw <double, rank>>(sourceTensor);
+            auto &mergedTensorRaw = boost::get<RuleTensorRaw<double, rank>>(mergedTensor);
+            const auto &sourceTensorRaw = boost::get<RuleTensorRaw<double, rank>>(sourceTensor);
 
             for (TensorIterator<rank> tensorIteraror{&mergedTensorRaw};
                  tensorIteraror != tensorIteraror.end(); ++tensorIteraror) {
@@ -202,9 +209,9 @@ namespace Trainer {
 
     public:
         SplitMergeTrainer(
-                std::shared_ptr<EMTrainerLA >emTrainer
+                std::shared_ptr<EMTrainerLA> emTrainer
                 , std::shared_ptr<Splitter> splitter
-                , std::shared_ptr<MergePreparator <Nonterminal, TraceID>> mergePreparator
+                , std::shared_ptr<MergePreparator<Nonterminal, TraceID>> mergePreparator
                 , std::shared_ptr<Merger> merger
         ) :
                 emTrainer(emTrainer), splitter(splitter), mergePreparator(mergePreparator), merger(merger) {}
@@ -217,10 +224,10 @@ namespace Trainer {
             std::cerr << mergeInfo;
             std::cerr << "rules weights before merge" << std::endl;
             {
-                size_t rule_id {0};
+                size_t rule_id{0};
                 for (auto ruleTensor : laSplit.ruleWeights) {
                     std::cerr << "rule " << rule_id << std::endl << ruleTensor << std::endl;
-                    ++ rule_id;
+                    ++rule_id;
                 }
             }
 
@@ -230,7 +237,7 @@ namespace Trainer {
                 size_t rule_id{0};
                 for (const RuleTensor<double> ruleTensor : laMerged.ruleWeights) {
                     std::cerr << "rule " << rule_id << std::endl << ruleTensor << std::endl;
-                    ++ rule_id;
+                    ++rule_id;
                 }
             }
             emTrainer->train(laMerged);
@@ -241,16 +248,20 @@ namespace Trainer {
 
     template<typename Nonterminal, typename TraceID>
     class MergePreparator {
-        const TraceManagerPtr <Nonterminal, EdgeLabelT> traceManager;
+        const TraceManagerPtr<Nonterminal, EdgeLabelT> traceManager;
         std::shared_ptr<StorageManager> storageManager;
         using TraceIterator = ConstManagerIterator<Trace<Nonterminal, TraceID>>;
 
         const bool debug;
-        std::vector<MAPTYPE<Element<Node < Nonterminal>>, WeightVector>> traces_inside_weights;
-        std::vector<MAPTYPE<Element<Node < Nonterminal>>, WeightVector>> traces_outside_weights;
+        std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> traces_inside_weights;
+        std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> traces_outside_weights;
 
     public:
-        MergePreparator(TraceManagerPtr<Nonterminal, EdgeLabelT> traceManager, std::shared_ptr<StorageManager> storageManager, bool debug = false)
+        MergePreparator(
+                TraceManagerPtr<Nonterminal, EdgeLabelT> traceManager
+                , std::shared_ptr<StorageManager> storageManager
+                , bool debug = false
+        )
                 : traceManager(traceManager), storageManager(storageManager), debug(debug) {}
 
         MergeInfo mergePrepare(const LatentAnnotation latentAnnotation) {
@@ -258,7 +269,8 @@ namespace Trainer {
 
             std::vector<WeightVector> nonterminalFrequencies;
             for (size_t nont = 0; nont < latentAnnotation.nonterminalSplits.size(); ++nont) {
-                WeightVector mw = storageManager->create_weight_vector<WeightVector>(latentAnnotation.nonterminalSplits[nont]);
+                WeightVector mw
+                        = storageManager->create_weight_vector<WeightVector>(latentAnnotation.nonterminalSplits[nont]);
                 mw.setZero();
                 nonterminalFrequencies.push_back(mw);
             }
@@ -288,36 +300,27 @@ namespace Trainer {
             const double merge_threshold = computeMergeThreshold(mergeDelta);
 
             // clean up
-            clean_up();
-            for (WeightVector & weightVector : nonterminalFrequencies) {
+            storageManager->free_weight_maps(traces_inside_weights);
+            storageManager->free_weight_maps(traces_outside_weights);
+            for (WeightVector &weightVector : nonterminalFrequencies) {
                 storageManager->free_weight_vector(weightVector);
             }
             nonterminalFrequencies.clear();
 
-            return build_merge_info(std::move(mergeFactors), merge_threshold, mergeDelta, latentAnnotation.nonterminalSplits);
+            return build_merge_info(
+                    std::move(mergeFactors)
+                    , merge_threshold
+                    , mergeDelta
+                    , latentAnnotation.nonterminalSplits
+            );
         }
+
     private:
-
-        void clean_up(){
-            for (auto traceIterator = traceManager->cbegin(); traceIterator != traceManager->cend(); ++ traceIterator) {
-                if (traceIterator - traceManager->cbegin() < traces_inside_weights.size()) {
-                    for (const auto &node : *(traceIterator->get_hypergraph())) {
-                        storageManager->free_weight_vector(
-                                traces_inside_weights[traceIterator - traceManager->cbegin()].at(node));
-                        storageManager->free_weight_vector(
-                                traces_outside_weights[traceIterator - traceManager->cbegin()].at(node));
-                    }
-                }
-            }
-            traces_inside_weights.clear();
-            traces_outside_weights.clear();
-        }
-
         inline void estimateNontFreqLA(
                 const TraceIterator start
                 , const TraceIterator stop
                 , std::vector<WeightVector> &nonterminalFrequencies
-                , const LatentAnnotation & latentAnnotation
+                , const LatentAnnotation &latentAnnotation
         ) {
             // computing in(A_x) * out(A_x) for every A ∈ N and x ∈ X_A
             for (TraceIterator traceIterator = start; traceIterator < stop; ++traceIterator) {
@@ -329,7 +332,8 @@ namespace Trainer {
                 if (traces_outside_weights.size() <= traceIterator - traceManager->cbegin()) {
                     traces_outside_weights.resize(1 + (traceIterator - traceManager->cbegin()));
                 }
-                if (traces_inside_weights[traceIterator - traceManager->cbegin()].size() != traceIterator->get_hypergraph()->size()) {
+                if (traces_inside_weights[traceIterator - traceManager->cbegin()].size() !=
+                    traceIterator->get_hypergraph()->size()) {
                     for (const auto &node : *(traceIterator->get_hypergraph())) {
                         traces_inside_weights[traceIterator - traceManager->cbegin()].emplace(
                                 node
@@ -338,7 +342,6 @@ namespace Trainer {
                                 node
                                 , storageManager->create_weight_vector<WeightVector>(latentAnnotation.nonterminalSplits[node->get_label_id()]));
                     }
-                    // todo: free this eventually
                 }
 
                 traceIterator->io_weights_la(
@@ -353,10 +356,10 @@ namespace Trainer {
 
                 for (const Element<Node<Nonterminal>> &node : *(traceIterator->get_hypergraph())) {
 
-                    const auto &inside_weight = insideWeights.at(node);
-                    const auto &outside_weight = outsideWeights.at(node);
+                    const auto &insideWeight = insideWeights.at(node);
+                    const auto &outsideWeight = outsideWeights.at(node);
 
-                    const auto vals = inside_weight * outside_weight;
+                    const auto vals = insideWeight * outsideWeight;
                     Eigen::Tensor<double, 0> denominator = vals.sum();
                     Eigen::Tensor<double, 1> fraction
                             = vals.unaryExpr([denominator](double x) { return x / denominator(0); });
@@ -370,10 +373,10 @@ namespace Trainer {
             }
         }
 
-        inline std::vector<std::vector<double>> computeMergeFactors(const std::vector<WeightVector> &merge_weights) {
+        inline std::vector<std::vector<double>> computeMergeFactors(const std::vector<WeightVector> &mergeWeights) {
             std::cerr << "Computing merge factors." << std::endl;
             std::vector<std::vector<double>> p;
-            for (auto las_weights : merge_weights) {
+            for (auto las_weights : mergeWeights) {
                 p.emplace_back(std::vector<double>());
                 const size_t half_splits{las_weights.dimension(0) / 2};
                 for (unsigned i = 0; i < half_splits; ++i) {
@@ -394,47 +397,56 @@ namespace Trainer {
                 const TraceIterator start
                 , const TraceIterator stop
                 , const std::vector<std::vector<double>> &p
-                , const std::vector<size_t> &nont_dimensions
-                , std::vector<std::vector<double>> &merge_delta
+                , const std::vector<size_t> &nontDimensions
+                , std::vector<std::vector<double>> &mergeDelta
         ) const {
-            std::vector<double> prefixes;
-            std::vector<double> postfixes;
+
+            // prefix and postfix sums are used for efficient computation of
+            // s(i) = sum_{j ∈ {0, …, i-1, i+1, …, n-1}} a_j
+            // for each i ∈ {0, …, n-1}
+            std::vector<double> prefixSums;
+            std::vector<double> postfixSums;
+
             for (TraceIterator trace_id = start; trace_id < stop; ++trace_id) {
-                const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &inside_weights = traces_inside_weights[
+                const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &insideWeights = traces_inside_weights[
                         trace_id - traceManager->cbegin()];
-                const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &outside_weights = traces_outside_weights[
+                const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &outsideWeights = traces_outside_weights[
                         trace_id - traceManager->cbegin()];
 
                 for (const Element<Node<Nonterminal>> &node : *(trace_id->get_hypergraph())) {
+                    const size_t nont = node->get_label_id();
+                    const size_t nontDim = nontDimensions[nont];
+                    const size_t halfDim = nontDim / 2;
 
-                    const size_t nont_dim = nont_dimensions[node->get_label_id()];
-                    const size_t half_dim = nont_dim / 2;
-                    prefixes.resize(half_dim, 0);
-                    postfixes.resize(half_dim, 0);
+                    const auto & insideWeight = insideWeights.at(node);
+                    const auto & outsideWeight = outsideWeights.at(node);
+
+                    prefixSums.resize(halfDim, 0.0);
+                    postfixSums.resize(halfDim, 0.0);
                     double denominator = 0;
                     {
-                        const size_t dim = half_dim - 1;
-                        const double in1 = inside_weights.at(node).data()[dim];
-                        const double in2 = inside_weights.at(node).data()[dim + half_dim];
-                        const double out1 = outside_weights.at(node).data()[dim];
-                        const double out2 = outside_weights.at(node).data()[dim + half_dim];
+                        const size_t idx = halfDim - 1;
+                        const double in1 = insideWeight(idx);
+                        const double in2 = insideWeight(idx + halfDim);
+                        const double out1 = outsideWeight(idx);
+                        const double out2 = outsideWeight(idx + halfDim);
                         denominator += in1 * out1 + in2 * out2;
                     }
-                    for (size_t dim = 0; dim < half_dim - 1; ++dim) {
-                        const double in1 = inside_weights.at(node).data()[dim];
-                        const double in2 = inside_weights.at(node).data()[dim + half_dim];
-                        const double out1 = outside_weights.at(node).data()[dim];
-                        const double out2 = outside_weights.at(node).data()[dim + half_dim];
-                        prefixes[dim + 1] = prefixes[dim] + in1 * out1 + in2 * out2;
+                    for (size_t idx = 0; idx < halfDim - 1; ++idx) {
+                        const double in1 = insideWeight(idx);
+                        const double in2 = insideWeight(idx + halfDim);
+                        const double out1 = outsideWeight(idx);
+                        const double out2 = outsideWeight(idx + halfDim);
+                        prefixSums[idx + 1] = prefixSums[idx] + in1 * out1 + in2 * out2;
                         denominator += in1 * out1 + in2 * out2;
                     }
 
-                    for (size_t dim_ = half_dim - 1; dim_ > 0; --dim_) {
-                        const double in1 = inside_weights.at(node).data()[dim_];
-                        const double in2 = inside_weights.at(node).data()[dim_ + half_dim];
-                        const double out1 = outside_weights.at(node).data()[dim_];
-                        const double out2 = outside_weights.at(node).data()[dim_ + half_dim];
-                        postfixes[dim_ - 1] = postfixes[dim_] + in1 * out1 + in2 * out2;
+                    for (size_t idx = halfDim - 1; idx > 0; --idx) {
+                        const double in1 = insideWeight(idx);
+                        const double in2 = insideWeight(idx + halfDim);
+                        const double out1 = outsideWeight(idx);
+                        const double out2 = outsideWeight(idx + halfDim);
+                        postfixSums[idx - 1] = postfixSums[idx] + in1 * out1 + in2 * out2;
                     }
 
                     // inside weight of some nodes can be zero in certain LA-dimensions
@@ -443,48 +455,47 @@ namespace Trainer {
                     if (denominator == 0)
                         continue;
 
-                    for (unsigned dim = 0; dim < half_dim; ++dim) {
-                        const double in1 = inside_weights.at(node).data()[dim];
-                        const double in2 = inside_weights.at(node).data()[dim + half_dim];
-                        const double out1 = outside_weights.at(node).data()[dim];
-                        const double out2 = outside_weights.at(node).data()[dim + half_dim];
-                        const size_t nont = node->get_label_id();
-                        const double p1 = p[nont][dim];
-                        const double p2 = p[nont][dim + half_dim];
+                    for (unsigned idx = 0; idx < halfDim; ++idx) {
+                        const double in1 = insideWeight(idx);
+                        const double in2 = insideWeight(idx + halfDim);
+                        const double out1 = outsideWeight(idx);
+                        const double out2 = outsideWeight(idx + halfDim);
+                        const double p1 = p[nont][idx];
+                        const double p2 = p[nont][idx + halfDim];
 
-                        const double out_merged = out1 + out2;
-                        const double in_merged = (p1 * in1) + (p2 * in2);
+                        const double inMerged = (p1 * in1) + (p2 * in2);
+                        const double outMerged = out1 + out2;
 
-                        const double Q = (prefixes[dim] + postfixes[dim] + in_merged * out_merged) / denominator;
+                        const double Q = (prefixSums[idx] + postfixSums[idx] + inMerged * outMerged) / denominator;
 
                         if (std::isnan(Q)) {
                             std::cerr << "bad fraction " << Q << " where" << std::endl;
-                            std::cerr << "prefix  " << prefixes[dim] << std::endl;
-                            std::cerr << "postfix " << postfixes[dim] << std::endl;
-                            std::cerr << "merged  " << in_merged * out_merged << std::endl;
+                            std::cerr << "prefix  " << prefixSums[idx] << std::endl;
+                            std::cerr << "postfix " << postfixSums[idx] << std::endl;
+                            std::cerr << "merged  " << inMerged * outMerged << std::endl;
                             std::cerr << "denom   " << denominator << std::endl;
 
                             assert(!std::isnan(Q));
                         }
 
-                        double &delta = merge_delta[nont][dim];
+                        double &delta = mergeDelta[nont][idx];
                         delta *= Q;
                     }
 
-                    prefixes.clear();
-                    postfixes.clear();
+                    prefixSums.clear();
+                    postfixSums.clear();
                 }
             }
         }
 
-        virtual double computeMergeThreshold(const std::vector<std::vector<double>> & merge_delta) = 0;
+        virtual double computeMergeThreshold(const std::vector<std::vector<double>> &mergeDelta) = 0;
 
         // evaluate Δ and build MergeInfo accordingly
         MergeInfo build_merge_info(
-                const std::vector<std::vector<double>> && merge_factors
+                const std::vector<std::vector<double>> &&merge_factors
                 , const double merge_threshold
-                , const std::vector<std::vector<double>> & merge_delta
-                , const std::vector<size_t> & nontSplits
+                , const std::vector<std::vector<double>> &merge_delta
+                , const std::vector<size_t> &nontSplits
         ) {
             std::vector<std::vector<std::vector<size_t>>> mergeSelection;
             std::vector<size_t> nontSplitsAfterMerge;
@@ -507,7 +518,7 @@ namespace Trainer {
                            nont) { // todo: this info should be in GrammarInfo
                         mergeSelection.back().emplace_back();
                         mergeSelection.back().back().push_back(split);
-                        mergeSelection.back().back().push_back(split +  halfSplits);
+                        mergeSelection.back().back().push_back(split + halfSplits);
                         ++merges;
                     } else {
                         mergeSelection.back().emplace_back(1, split);
@@ -533,11 +544,17 @@ namespace Trainer {
         const double merge_threshold;
 
     public:
-        ThresholdMergePreparator(TraceManagerPtr<Nonterminal, TraceID> traceManager, std::shared_ptr<StorageManager> storageManager, double merge_threshold, bool debug = false)
-                : MergePreparator<Nonterminal, TraceID>(traceManager, storageManager, debug) , merge_threshold(merge_threshold) {}
+        ThresholdMergePreparator(
+                TraceManagerPtr<Nonterminal, TraceID> traceManager
+                , std::shared_ptr<StorageManager> storageManager
+                , double merge_threshold
+                , bool debug = false
+        )
+                : MergePreparator<Nonterminal, TraceID>(traceManager, storageManager, debug),
+                  merge_threshold(merge_threshold) {}
 
     protected:
-        double computeMergeThreshold(const std::vector<std::vector<double>> & merge_delta) {
+        double computeMergeThreshold(const std::vector<std::vector<double>> &merge_delta) {
             std::cerr << "Selecting merges ";
             std::cerr << "above threshold " << merge_threshold;
             std::cerr << std::endl;
@@ -547,42 +564,43 @@ namespace Trainer {
 
     template<typename Nonterminal, typename TraceID>
     class PercentMergePreparator : public MergePreparator<Nonterminal, TraceID> {
-        const double merge_percent;
+        const double mergePercent;
 
     public:
-        PercentMergePreparator(TraceManagerPtr<Nonterminal, TraceID> traceManager
-                               , std::shared_ptr<StorageManager> storageManager
-                               , double merge_percent
-                               , bool debug = false
-        ) : MergePreparator<Nonterminal, TraceID>(traceManager, storageManager, debug), merge_percent(merge_percent) {}
+        PercentMergePreparator(
+                TraceManagerPtr<Nonterminal, TraceID> traceManager
+                , std::shared_ptr<StorageManager> storageManager
+                , double mergePercent
+                , bool debug = false
+        ) : MergePreparator<Nonterminal, TraceID>(traceManager, storageManager, debug), mergePercent(mergePercent) {}
 
     protected:
-        double computeMergeThreshold(const std::vector<std::vector<double>> & merge_delta){
+        double computeMergeThreshold(const std::vector<std::vector<double>> &mergeDelta) {
             std::cerr << "Selecting merges ";
-            std::cerr << "best " << merge_percent << " % ";
+            std::cerr << "best " << mergePercent << " % ";
             std::cerr << std::endl;
 
-            std::vector<double> ordered_merge_weights;
+            std::vector<double> orderedMergeWeights;
 
             // order merges according to likelihood_loss
-            for (const auto &delta : merge_delta) {
-                ordered_merge_weights.insert(
-                        std::end(ordered_merge_weights)
+            for (const auto &delta : mergeDelta) {
+                orderedMergeWeights.insert(
+                        std::end(orderedMergeWeights)
                         , std::begin(delta)
                         , std::end(delta));
             }
 
-            std::sort(std::begin(ordered_merge_weights), std::end(ordered_merge_weights), std::greater<double>());
+            std::sort(std::begin(orderedMergeWeights), std::end(orderedMergeWeights), std::greater<double>());
 
             // todo: option to skip over merge_weights >= 1
 
-            size_t index = (size_t) (merge_percent / 100.0 * ordered_merge_weights.size());
-            if (index > ordered_merge_weights.size())
-                index = ordered_merge_weights.size() - 1;
+            size_t index = (size_t) (mergePercent / 100.0 * orderedMergeWeights.size());
+            if (index > orderedMergeWeights.size())
+                index = orderedMergeWeights.size() - 1;
 
-            std::cerr << "index for ordered merges " << index << " / " << ordered_merge_weights.size() << std::endl;
+            std::cerr << "index for ordered merges " << index << " / " << orderedMergeWeights.size() << std::endl;
 
-            return ordered_merge_weights[index];
+            return orderedMergeWeights[index];
         }
     };
 
