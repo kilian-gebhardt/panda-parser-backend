@@ -7,7 +7,6 @@
 #include <vector>
 #include <functional>
 
-template <typename Nonterminal>
 class GrammarInfo2 {
 public:
     std::vector<std::vector<size_t>> rule_to_nonterminals;

@@ -12,10 +12,9 @@
 #include "EMTrainerLA.h"
 
 namespace Trainer {
-    template<typename Nonterminal>
     class Splitter {
         const double randPercent;
-        std::shared_ptr<const GrammarInfo2<Nonterminal>> grammarInfo;
+        std::shared_ptr<const GrammarInfo2> grammarInfo;
         std::shared_ptr<StorageManager> storageManager;
 
         double rand_split() {
@@ -23,7 +22,7 @@ namespace Trainer {
         }
 
     public:
-        Splitter(double randPercent, std::shared_ptr<const GrammarInfo2<Nonterminal>> grammarInfo, std::shared_ptr<StorageManager> storageManager)
+        Splitter(double randPercent, std::shared_ptr<const GrammarInfo2> grammarInfo, std::shared_ptr<StorageManager> storageManager)
                 : randPercent(randPercent), grammarInfo(grammarInfo), storageManager(storageManager) {}
 
         LatentAnnotation split(const LatentAnnotation & la) {
@@ -109,27 +108,104 @@ namespace Trainer {
     template<typename Nonterminal, typename TraceID>
     class MergePreparator;
 
-    template<typename Nonterminal>
-    class Merger;
-    /*{
+    class Merger {
+        std::shared_ptr<const GrammarInfo2> grammarInfo;
+        std::shared_ptr<StorageManager> storageManager;
+
     public:
-        Merger(const GrammarInfo2<Nonterminal> &, StorageManager &);
-        LatentAnnotation merge(const LatentAnnotation, const MergeInfo);
-    };*/
+        Merger(std::shared_ptr<const GrammarInfo2> grammarInfo, std::shared_ptr<StorageManager> storageManager)
+                : grammarInfo(grammarInfo), storageManager(storageManager) {}
+
+        LatentAnnotation merge(const LatentAnnotation & la, const MergeInfo & mergeInfo) {
+            // root weights
+            Eigen::Tensor<double, 1> rootWeights (mergeInfo.nontSplitsAfterMerge[grammarInfo->start]);
+            for (Eigen::DenseIndex idx = 0; idx < rootWeights.dimension(0); ++idx) {
+                rootWeights(idx) = 0;
+                for (size_t idx_origin : mergeInfo.mergeSources[grammarInfo->start][idx])
+                    rootWeights(idx) += la.rootWeights(idx_origin);
+            }
+            std::cerr << "root weights " << rootWeights << std::endl;
+
+            // rule weights
+            std::vector<RuleTensor<double>> ruleWeights;
+            for (size_t rule_id = 0; rule_id < grammarInfo->rule_to_nonterminals.size(); ++rule_id) {
+                RuleTensor<double> merged_tensor = storageManager->create_uninitialized_tensor(
+                        rule_id
+                        , *grammarInfo
+                        , mergeInfo.nontSplitsAfterMerge
+                );
+                merge_tensor(merged_tensor, la.ruleWeights[rule_id], rule_id, mergeInfo);
+                std::cerr << rule_id << " " << merged_tensor << std::endl;
+                ruleWeights.push_back(std::move(merged_tensor));
+            }
+
+            return LatentAnnotation(mergeInfo.nontSplitsAfterMerge, rootWeights, ruleWeights);
+        }
+
+    private:
+        inline void merge_tensor(
+                RuleTensor<double> &mergedTensor
+                , const RuleTensor<double> &sourceTensor
+                , const size_t ruleId
+                , const MergeInfo &mergeInfo
+        ) {
+            switch (mergedTensor.which() + 1) {
+                case 1:
+                    merge_tensor_ranked<1>(mergedTensor, sourceTensor, ruleId, mergeInfo);
+                    break;
+                case 2:
+                    merge_tensor_ranked<2>(mergedTensor, sourceTensor, ruleId, mergeInfo);
+                    break;
+                case 3:
+                    merge_tensor_ranked<3>(mergedTensor, sourceTensor, ruleId, mergeInfo);
+                    break;
+                case 4:
+                    merge_tensor_ranked<4>(mergedTensor, sourceTensor, ruleId, mergeInfo);
+                    break;
+                default:
+                    abort();
+            }
+        }
+
+        template<long rank>
+        inline void merge_tensor_ranked(
+                RuleTensor<double> &mergedTensor
+                , const RuleTensor<double> &sourceTensor
+                , const size_t ruleId
+                , const MergeInfo &mergeInfo
+        ) {
+            auto &mergedTensorRaw = boost::get<RuleTensorRaw <double, rank>>(mergedTensor);
+            const auto &sourceTensorRaw = boost::get<RuleTensorRaw <double, rank>>(sourceTensor);
+
+            for (TensorIterator<rank> tensorIteraror{&mergedTensorRaw};
+                 tensorIteraror != tensorIteraror.end(); ++tensorIteraror) {
+                *tensorIteraror = 0;
+                for (MergeIterator<rank, true> mergeIterator(
+                        &sourceTensorRaw
+                        , ruleId
+                        , &(tensorIteraror.get_index())
+                        , &mergeInfo
+                        , &(grammarInfo->rule_to_nonterminals)
+                ); mergeIterator != mergeIterator.end(); ++mergeIterator) {
+                    *tensorIteraror += *mergeIterator * mergeIterator.mergeFactor();
+                }
+            }
+        }
+    };
 
     template<typename Nonterminal, typename TraceID>
     class SplitMergeTrainer {
         std::shared_ptr<EMTrainerLA> emTrainer;
-        std::shared_ptr<Splitter<Nonterminal>> splitter;
+        std::shared_ptr<Splitter> splitter;
         std::shared_ptr<MergePreparator<Nonterminal, TraceID>> mergePreparator;
-        std::shared_ptr<Merger<Nonterminal>> merger;
+        std::shared_ptr<Merger> merger;
 
     public:
         SplitMergeTrainer(
                 std::shared_ptr<EMTrainerLA >emTrainer
-                , std::shared_ptr<Splitter<Nonterminal>> splitter
+                , std::shared_ptr<Splitter> splitter
                 , std::shared_ptr<MergePreparator <Nonterminal, TraceID>> mergePreparator
-                , std::shared_ptr<Merger<Nonterminal>> merger
+                , std::shared_ptr<Merger> merger
         ) :
                 emTrainer(emTrainer), splitter(splitter), mergePreparator(mergePreparator), merger(merger) {}
 
@@ -507,92 +583,6 @@ namespace Trainer {
             std::cerr << "index for ordered merges " << index << " / " << ordered_merge_weights.size() << std::endl;
 
             return ordered_merge_weights[index];
-        }
-    };
-
-    template<typename Nonterminal>
-    class Merger {
-        std::shared_ptr<const GrammarInfo2<Nonterminal>> grammarInfo;
-        std::shared_ptr<StorageManager> storageManager;
-
-    public:
-        Merger(std::shared_ptr<const GrammarInfo2<Nonterminal>> grammarInfo, std::shared_ptr<StorageManager> storageManager)
-                : grammarInfo(grammarInfo), storageManager(storageManager) {}
-
-        LatentAnnotation merge(const LatentAnnotation & la, const MergeInfo & mergeInfo) {
-            // root weights
-            Eigen::Tensor<double, 1> rootWeights (mergeInfo.nontSplitsAfterMerge[grammarInfo->start]);
-            for (Eigen::DenseIndex idx = 0; idx < rootWeights.dimension(0); ++idx) {
-                rootWeights(idx) = 0;
-                for (size_t idx_origin : mergeInfo.mergeSources[grammarInfo->start][idx])
-                    rootWeights(idx) += la.rootWeights(idx_origin);
-            }
-            std::cerr << "root weights " << rootWeights << std::endl;
-
-            // rule weights
-            std::vector<RuleTensor<double>> ruleWeights;
-            for (size_t rule_id = 0; rule_id < grammarInfo->rule_to_nonterminals.size(); ++rule_id) {
-                RuleTensor<double> merged_tensor = storageManager->create_uninitialized_tensor(
-                        rule_id
-                        , *grammarInfo
-                        , mergeInfo.nontSplitsAfterMerge
-                );
-                merge_tensor(merged_tensor, la.ruleWeights[rule_id], rule_id, mergeInfo);
-                std::cerr << rule_id << " " << merged_tensor << std::endl;
-                ruleWeights.push_back(std::move(merged_tensor));
-            }
-
-            return LatentAnnotation(mergeInfo.nontSplitsAfterMerge, rootWeights, ruleWeights);
-        }
-
-    private:
-        inline void merge_tensor(
-                RuleTensor<double> &mergedTensor
-                , const RuleTensor<double> &sourceTensor
-                , const size_t ruleId
-                , const MergeInfo &mergeInfo
-        ) {
-            switch (mergedTensor.which() + 1) {
-                case 1:
-                    merge_tensor_ranked<1>(mergedTensor, sourceTensor, ruleId, mergeInfo);
-                    break;
-                case 2:
-                    merge_tensor_ranked<2>(mergedTensor, sourceTensor, ruleId, mergeInfo);
-                    break;
-                case 3:
-                    merge_tensor_ranked<3>(mergedTensor, sourceTensor, ruleId, mergeInfo);
-                    break;
-                case 4:
-                    merge_tensor_ranked<4>(mergedTensor, sourceTensor, ruleId, mergeInfo);
-                    break;
-                default:
-                    abort();
-            }
-        }
-
-        template<long rank>
-        inline void merge_tensor_ranked(
-                RuleTensor<double> &mergedTensor
-                , const RuleTensor<double> &sourceTensor
-                , const size_t ruleId
-                , const MergeInfo &mergeInfo
-        ) {
-            auto &mergedTensorRaw = boost::get<RuleTensorRaw <double, rank>>(mergedTensor);
-            const auto &sourceTensorRaw = boost::get<RuleTensorRaw <double, rank>>(sourceTensor);
-
-            for (TensorIterator<rank> tensorIteraror{&mergedTensorRaw};
-                 tensorIteraror != tensorIteraror.end(); ++tensorIteraror) {
-                *tensorIteraror = 0;
-                for (MergeIterator<rank, true> mergeIterator(
-                        &sourceTensorRaw
-                        , ruleId
-                        , &(tensorIteraror.get_index())
-                        , &mergeInfo
-                        , &(grammarInfo->rule_to_nonterminals)
-                ); mergeIterator != mergeIterator.end(); ++mergeIterator) {
-                    *tensorIteraror += *mergeIterator * mergeIterator.mergeFactor();
-                }
-            }
         }
     };
 

@@ -455,8 +455,8 @@ public:
 
     // Functions for Cython interface
 
-    GrammarInfo2<size_t>* grammar_info_id(const std::vector<std::vector<size_t>> &rule_to_nonterminals) {
-        return new GrammarInfo2<Nonterminal>(rule_to_nonterminals, this->cbegin()->get_goal()->get_label_id());
+    GrammarInfo2* grammar_info_id(const std::vector<std::vector<size_t>> &rule_to_nonterminals) {
+        return new GrammarInfo2(rule_to_nonterminals, this->cbegin()->get_goal()->get_label_id());
     }
 
     std::vector<std::vector<double>> lift_doubles(const std::vector<double>& rule_weights) const {

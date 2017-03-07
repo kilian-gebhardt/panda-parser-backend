@@ -108,10 +108,10 @@ public:
         }
     }
 
-    template<unsigned long rank, typename Nonterminal>
+    template<unsigned long rank>
     inline Trainer::RuleTensor<double> create_uninitialized_tensor_ranked(
             const size_t rule_id
-            , const GrammarInfo2<Nonterminal> &grammarInfo
+            , const GrammarInfo2 &grammarInfo
             , const std::vector<size_t> &nont_splits
     ) {
         Eigen::array<Eigen::DenseIndex, rank> rule_dimension;
@@ -139,10 +139,9 @@ public:
 
 
 
-    template <typename Nonterminal>
     inline Trainer::RuleTensor<double> create_uninitialized_tensor(
             const size_t rule_id
-            , const GrammarInfo2<Nonterminal> &grammarInfo
+            , const GrammarInfo2 &grammarInfo
             , const std::vector<size_t> &nont_splits
     ) {
         switch (grammarInfo.rule_to_nonterminals[rule_id].size()) {

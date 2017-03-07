@@ -20,16 +20,16 @@ namespace Trainer {
         SplitMergeTrainer <Nonterminal, TraceID>
         build_split_merge_trainer(
                 TraceManagerPtr<Nonterminal, TraceID> traceManager
-                , std::shared_ptr<const GrammarInfo2<Nonterminal>> grammarInfo
+                , std::shared_ptr<const GrammarInfo2> grammarInfo
                 , unsigned epochs
         ) {
             auto storageManager = std::make_shared<StorageManager>();
             auto expector = std::make_shared<SimpleExpector<Nonterminal, TraceID>>(traceManager, grammarInfo, storageManager);
-            auto maximizer = std::make_shared<SimpleMaximizer<Nonterminal>>(grammarInfo);
+            auto maximizer = std::make_shared<SimpleMaximizer>(grammarInfo);
             auto emTrainer = std::make_shared<EMTrainerLA> (epochs, expector, maximizer);
-            auto splitter = std::make_shared<Splitter<Nonterminal>>(1.0, grammarInfo, storageManager);
+            auto splitter = std::make_shared<Splitter>(1.0, grammarInfo, storageManager);
             auto mergePreparator = std::make_shared<PercentMergePreparator<Nonterminal, TraceID>>(traceManager, storageManager, 50.0);
-            auto merger = std::make_shared<Merger<Nonterminal>>(grammarInfo, storageManager);
+            auto merger = std::make_shared<Merger>(grammarInfo, storageManager);
             return SplitMergeTrainer<Nonterminal, TraceID>(emTrainer, splitter, mergePreparator, merger);
         }
     };

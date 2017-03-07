@@ -149,7 +149,6 @@ inline void convert_format_no_creation(const std::vector<double> & weights,
     }
 }
 
-template <typename Nonterminal>
 unsigned convert_to_eigen(
         const std::vector<std::vector<double>> &rule_weights
         , std::vector<Trainer::RuleTensor<double>> &rule_tensors
@@ -157,7 +156,7 @@ unsigned convert_to_eigen(
         , const std::vector<double> &root_weights
         , const std::vector<size_t> &nonterminal_splits
         , StorageManager &storageManager
-        , const GrammarInfo2<Nonterminal> & grammarInfo
+        , const GrammarInfo2 & grammarInfo
 ) {
     unsigned allocated(0);
     unsigned rule = 0;
@@ -568,7 +567,7 @@ int main() {
         }
     }
 
-    auto grammarInfo = std::make_shared<const GrammarInfo2<std::string>>(rule_to_nont_idx_size_t, 0);
+    auto grammarInfo = std::make_shared<const GrammarInfo2>(rule_to_nont_idx_size_t, 0);
     auto splitMergeTrainer = trainerFactory.build_split_merge_trainer(traceManager, grammarInfo, 20);
 
     std::vector<size_t> nonterminal_splits(8, 1);

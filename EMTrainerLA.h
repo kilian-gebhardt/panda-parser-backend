@@ -18,8 +18,7 @@ namespace Trainer {
         Eigen::Tensor<double, 1> rootCounts;
         double logLikelihood;
 
-        template<typename Nonterminal>
-        Counts(LatentAnnotation latentAnnotation, const GrammarInfo2<Nonterminal> &grammarInfo, StorageManager & storageManager)
+        Counts(LatentAnnotation latentAnnotation, const GrammarInfo2 &grammarInfo, StorageManager & storageManager)
                 : rootCounts(latentAnnotation.rootWeights.dimension(0)), logLikelihood(0) {
             for (size_t ruleId = 0; ruleId < latentAnnotation.ruleWeights.size(); ++ruleId) {
                 RuleTensor<double> count =
@@ -112,7 +111,7 @@ namespace Trainer {
         using TraceIterator = ConstManagerIterator<Trace<Nonterminal, TraceID>>;
 
         const TraceManagerPtr<Nonterminal, TraceID> traceManager;
-        std::shared_ptr<const GrammarInfo2<Nonterminal>> grammarInfo;
+        std::shared_ptr<const GrammarInfo2> grammarInfo;
         std::shared_ptr<StorageManager> storageManager;
         const bool debug;
 
@@ -122,7 +121,7 @@ namespace Trainer {
     public:
         SimpleExpector(
                 TraceManagerPtr<Nonterminal, TraceID> traceManager
-                , std::shared_ptr<const GrammarInfo2<Nonterminal>> grammarInfo
+                , std::shared_ptr<const GrammarInfo2> grammarInfo
                 , std::shared_ptr<StorageManager> storageManager
                 , bool debug = false
         )
@@ -395,13 +394,12 @@ namespace Trainer {
         }
     };
 
-    template <typename Nonterminal>
     class SimpleMaximizer : public Maximizer {
-        std::shared_ptr<const GrammarInfo2<Nonterminal>> grammarInfo;
+        std::shared_ptr<const GrammarInfo2> grammarInfo;
         const bool debug;
 
     public:
-        SimpleMaximizer(std::shared_ptr<const GrammarInfo2<Nonterminal>> grammarInfo, bool debug = false)
+        SimpleMaximizer(std::shared_ptr<const GrammarInfo2> grammarInfo, bool debug = false)
                 : grammarInfo(grammarInfo)
                 , debug(debug) {};
         void maximize(LatentAnnotation &latentAnnotation, const Counts &counts) {
