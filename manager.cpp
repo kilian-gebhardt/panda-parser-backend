@@ -3,6 +3,7 @@
 //
 
 #include <iostream>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <map>
@@ -15,7 +16,7 @@ int main(){
     std::vector<std::string> eLabels {"edge 1"};
     std::shared_ptr<Hypergraph<std::string, std::string>> hg {std::make_shared<Hypergraph<std::string, std::string>>(nLabels, eLabels) };
 
-    auto node1 = hg->create("hello");
+    auto node1 = hg->create("hello\te\te\naa");
     auto node2 = hg->create("world");
     auto node3 = hg->create("this");
 
@@ -67,8 +68,21 @@ int main(){
     std::clog << *it;
     std::clog << (it[2]);
     std::clog << (hg->end() - it);
+    std::clog << std::endl;
 
 
 
+    std::filebuf fb;
+    if(fb.open("/tmp/manager.txt", std::ios::out)) {
+        std::ostream out(&fb);
+        hg->serialize(out);
+        fb.close();
+    }
+
+    if(fb.open("/tmp/manager.txt", std::ios::in)) {
+        std::istream in(&fb);
+        HypergraphPtr<std::string, std::string> hg2 = Hypergraph<std::string, std::string>::deserialize(in);
+        std::clog << "Read in Manager with Node#: " <<  hg->size();
+    }
 
 }

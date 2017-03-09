@@ -100,6 +100,39 @@ namespace Manage{
             return infos.size();
         }
 
+
+
+        void serialize(std::ostream& o) const {
+            o << "Manager Version 1" << std::endl;
+            o << infos.size() << " Items" << std::endl;
+            for(const InfoT& info : infos) {
+                info.serialize(o);
+            }
+        }
+
+        static ManagerPtr<InfoT> deserialize(std::istream& in){
+            std::string line;
+            std::getline(in, line);
+            if(line != "Manager Version 1")
+                throw std::string("Version Mismatch for Manager");
+
+            int noItems;
+            in >> noItems;
+            std::getline(in, line);
+            if(line != " Items")
+                throw std::string("Unexpected line '" + line + "' expected ' Items'");
+
+            ManagerPtr<InfoT> manager = std::make_shared<Manager<InfoT>>();
+
+            for(int i = 0; i < noItems; ++i){
+                InfoT info = InfoT::deserialize(in, i, manager);
+                manager->infos.push_back(std::move(info));
+            }
+
+            return manager;
+        }
+
+
     };
 
 
