@@ -61,18 +61,28 @@ namespace Manage {
 
         // Serialization works for LabelT of std::string and size_t
 
-        template <typename T = LabelT>
-        typename std::enable_if_t<std::is_same<T, std::string>::value, void>
+
+        template<typename T = LabelT>
+        typename std::enable_if_t<
+                std::is_same<T, std::string>::value || std::is_same<T, size_t>::value
+                , void
+        >
         serialize(std::ostream &out) const {
-            out << labelID << ';' << label.size() << ';' << label
-                << ';' << target << ';' << sources.size() << ';';
+            out << labelID << ';';
+            serialize_string_or_size_t(out, label);
+            out << ';' << target << ';' << sources.size() << ';';
             for (auto const &source : sources)
-                out << source << ';'
-                    << std::endl;
+                out << source << ';';
+            out << std::endl;
+
         }
 
-        template <typename NodeLabelT, typename T = LabelT>
-        static typename std::enable_if_t<std::is_same<T, std::string>::value, HyperEdge<NodeT, std::string>>
+        template<typename NodeLabelT, typename T = LabelT>
+        static
+        typename std::enable_if_t<
+                std::is_same<T, std::string>::value || std::is_same<T, size_t>::value
+                , HyperEdge<NodeT, LabelT>
+        >
         deserialize(
                 std::istream &in
                 , ID id
@@ -81,19 +91,13 @@ namespace Manage {
         ) {
             LabelT l;
             size_t lID;
-            int lenLabel = 0;
             int noSources = 0;
             char sep;
             ID nodeID;
             in >> lID;
             in >> sep; //read in the separator
-            in >> lenLabel;  //deserialize size of string
-            in >> sep; //read in the separator
-            if (in && lenLabel) {
-                std::vector<char> tmp(lenLabel);
-                in.read(tmp.data(), lenLabel); //deserialize characters of string
-                l.assign(tmp.data(), lenLabel);
-            }
+            deserialize_string_or_size_t(in, l);
+
             in >> sep; //read in the separator
             in >> nodeID;
             Element<NodeT> target = Element<NodeT>(nodeID, hg);
@@ -107,54 +111,8 @@ namespace Manage {
                 in >> sep; // read in the saparator
             }
 
-            return HyperEdge<NodeT, std::string>(id, man, l, lID, target, sources);
+            return HyperEdge<NodeT, LabelT>(id, man, l, lID, target, sources);
         }
-
-
-        template <typename T = LabelT>
-        typename std::enable_if_t<std::is_same<T, size_t>::value, void>
-        serialize(std::ostream &out) const {
-            out << labelID << ';' << label
-                << ';' << target << ';' << sources.size() << ';';
-            for (auto const &source : sources)
-                out << source << ';'
-                    << std::endl;
-        }
-
-        template <typename NodeLabelT, typename T = LabelT>
-        static typename std::enable_if_t<std::is_same<T, size_t>::value, HyperEdge<NodeT, size_t>>
-        deserialize(
-                std::istream &in
-                , ID id
-                , ManagerPtr<HyperEdge<NodeT, LabelT>> man
-                , HypergraphPtr<NodeLabelT, LabelT> hg
-        ) {
-            LabelT l;
-            size_t lID;
-            int lenLabel = 0;
-            int noSources = 0;
-            char sep;
-            ID nodeID;
-            in >> lID;
-            in >> sep; //read in the separator
-            in >> l;
-            in >> sep; //read in the separator
-            in >> nodeID;
-            Element<NodeT> target = Element<NodeT>(nodeID, hg);
-            in >> sep; // read in the separator
-            in >> noSources;
-            in >> sep;
-            std::vector<Element<NodeT>> sources;
-            for(int i = 0; i < noSources; ++i){
-                in >> nodeID;
-                sources.emplace_back(nodeID, hg);
-                in >> sep; // read in the saparator
-            }
-
-            return HyperEdge<NodeT, size_t>(id, man, l, lID, target, sources);
-        }
-
-
     };
 
 
@@ -184,47 +142,33 @@ namespace Manage {
 
 
         // Serialization works for LabelT of std::string and size_t
-
         template<typename T = LabelT>
-        typename std::enable_if_t<std::is_same<T, std::string>::value, void>
+        typename std::enable_if_t<
+                std::is_same<T, std::string>::value || std::is_same<T, size_t>::value
+                , void
+        >
         serialize(std::ostream &out) const {
             out << labelID << ';';
-            serialize_string(out, label);
+            serialize_string_or_size_t(out, label);
             out << std::endl;
         }
 
+
         template<typename T = LabelT>
-        static typename std::enable_if_t<std::is_same<T, std::string>::value, Node<std::string>>
+        static
+        typename std::enable_if_t<
+                std::is_same<T, std::string>::value || std::is_same<T, size_t>::value
+                , Node<LabelT>
+        >
         deserialize(std::istream &in, ID id, ManagerPtr<Node<LabelT>> man) {
             LabelT l;
             size_t lID;
-            int len = 0;
             char sep;
             in >> lID;
-            in >> sep; //read in the seperator
-            l = deserialize_string(in);
+            in >> sep;
+            deserialize_string_or_size_t(in, l);
             return Node<std::string>(id, man, l, lID);
         }
-
-
-        template<typename T = LabelT>
-        typename std::enable_if_t<std::is_same<T, size_t>::value, void>
-        serialize(std::ostream &out) const {
-            out << labelID << ';' << label << std::endl;
-        }
-
-        template<typename T = LabelT>
-        static typename std::enable_if_t<std::is_same<T, size_t>::value, Node<size_t>>
-        deserialize(std::istream &in, ID id, ManagerPtr<Node<LabelT>> man) {
-            LabelT l;
-            size_t lID;
-            char sep;
-            in >> lID;
-            in >> sep; //read in the seperator
-            in >> l;
-            return Node<size_t>(id, man, l, lID);
-        }
-
 
     };
 
@@ -313,12 +257,22 @@ namespace Manage {
 
         // Serialization only possible for NodeLabelT/EdgeLabelT as std::string or size_t
 
-        void serialize(std::ostream& o) {
+
+        template<typename T1 = NodeLabelT, typename T2 = EdgeLabelT>
+        typename std::enable_if_t<
+                (std::is_same<T1, std::string>::value || std::is_same<T1, size_t>::value)
+                &&
+                (std::is_same<T2, std::string>::value || std::is_same<T2, size_t>::value)
+                , void
+        >
+        serialize(std::ostream& o) {
             o << "Hypergraph Version 1" << std::endl;
             o << "NodeLabels:" << std::endl;
             serialize_labels<NodeLabelT>(o, nodeLabels);
+            o << std::endl;
             o << "EdgeLabels: " << std::endl;
             serialize_labels<EdgeLabelT>(o, edgeLabels);
+            o << std::endl;
 
             o << Manager<Node<NodeLabelT>>::size() << " Nodes:" << std::endl;
             for(const auto& node : *this) {
@@ -343,6 +297,7 @@ namespace Manage {
                 >
         deserialize(std::istream& in){
             std::string line;
+            std::getline(in, line); // read the rest of the line (only linebreak)
             std::getline(in, line);
             if(line != "Hypergraph Version 1")
                 throw std::string("Version Mismatch for Manager");
@@ -365,7 +320,7 @@ namespace Manage {
             HypergraphPtr<NodeLabelT, EdgeLabelT> hypergraph = std::make_shared<Hypergraph>(nodeLs, edgeLs);
 
             for(int i = 0; i < noItems; ++i){
-                Node<NodeLabelT> node {Node<NodeLabelT>::deserialize(in, i, hypergraph)};
+                Node<NodeLabelT> node = Node<NodeLabelT>::deserialize(in, i, hypergraph);
                 hypergraph->create(node.get_label()); // todo: add it directly?
             }
 
@@ -376,9 +331,8 @@ namespace Manage {
 //                throw std::string("Unexpected line '" + line + "' expected ' Edges:'");
                 std::cerr << "Getting " << line << std::endl;
             for(int i = 0; i < noItems; ++i){
-                HyperEdge<Node<NodeLabelT>, EdgeLabelT> edge {
-                        HyperEdge<Node<NodeLabelT>, EdgeLabelT>::deserialize(in, i, hypergraph->edges, hypergraph)
-                };
+                HyperEdge<Node<NodeLabelT>, EdgeLabelT> edge =
+                        HyperEdge<Node<NodeLabelT>, EdgeLabelT>::deserialize(in, i, hypergraph->edges, hypergraph);
                 hypergraph->add_hyperedge(edge.get_label(), edge.get_target(), edge.get_sources());
             }
 

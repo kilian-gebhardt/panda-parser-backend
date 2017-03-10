@@ -8,10 +8,17 @@
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 #include "../Names.h"
 #include "../Manage/Manager.h"
+#include "../Manage/Manager_util.h"
 #include "GrammarInfo.h"
 #include "TrainingCommon.h"
 
 namespace Trainer {
+    template<typename Nonterminal, typename TraceID>
+    class TraceManager2;
+    template<typename Nonterminal, typename TraceID>
+    using TraceManagerPtr = std::shared_ptr<TraceManager2<Nonterminal, TraceID>>;
+
+
 
     template<typename Nonterminal, typename oID>
     class Trace {
@@ -430,6 +437,42 @@ namespace Trainer {
         }
 
 
+
+
+
+        // Serialization works for LabelT of std::string and size_t
+        template<typename T = oID>
+        typename std::enable_if_t<
+                std::is_same<T, std::string>::value || std::is_same<T, size_t>::value
+                , void
+        >
+        serialize(std::ostream &out) const {
+            Manage::serialize_string_or_size_t(out, originalID);
+            out << ";" << goal;
+            out << std::endl;
+            hypergraph->serialize(out);
+        }
+
+
+        template<typename T = oID>
+        static
+        typename std::enable_if_t<
+                std::is_same<T, std::string>::value || std::is_same<T, size_t>::value
+                , Trace<Nonterminal, oID>
+        >
+        deserialize(std::istream &in, Manage::ID id, TraceManagerPtr<Nonterminal, oID> man) {
+            oID l;
+            char sep;
+            Manage::ID goalID;
+            Manage::deserialize_string_or_size_t(in, l);
+            in >> sep;
+            in >> goalID;
+            HypergraphPtr<Nonterminal> hg = Hypergraph<Nonterminal>::deserialize(in);
+            Element<Node<Nonterminal>> goalElement(goalID, hg);
+
+            return Trace<Nonterminal, oID>(id, man, l, hg, goalElement);
+        }
+
     };
 
 
@@ -448,6 +491,43 @@ namespace Trainer {
         TraceManager2(const bool debug = false) : debug(debug) {}
 
         // todo: Hook on create?
+
+
+
+
+        void serialize(std::ostream& o) {
+            o << "TraceManager Version 1" << std::endl;
+            o << Manager<Trace<Nonterminal, TraceID>>::size() << " Traces:" << std::endl;
+            for(const auto& trace : *this) {
+                trace->serialize(o);
+            }
+        }
+
+        static TraceManagerPtr<Nonterminal, TraceID> deserialize(std::istream& in){
+            std::string line;
+            std::getline(in, line);
+            if(line != "TraceManager Version 1")
+                throw std::string("Version Mismatch for TraceManager");
+
+            int noItems;
+            in >> noItems;
+            std::getline(in, line);
+            if(line != " Traces:")
+                throw std::string("Unexpected line '" + line + "' expected ' Traces'");
+
+            TraceManagerPtr<Nonterminal, TraceID> traceManager = std::make_shared<TraceManager2<Nonterminal, TraceID>>();
+
+            for(int i = 0; i < noItems; ++i){
+                Trace<Nonterminal, TraceID> trace { Trace<Nonterminal, TraceID>::deserialize(in, i, traceManager)};
+                traceManager->create(trace.get_original_id(), trace.get_hypergraph(), trace.get_goal());
+            }
+
+            return traceManager;
+        }
+
+
+
+
 
 
 
@@ -513,8 +593,6 @@ namespace Trainer {
 
     };
 
-    template<typename Nonterminal, typename TraceID>
-    using TraceManagerPtr = std::shared_ptr<TraceManager2<Nonterminal, TraceID>>;
 
 
 }

@@ -8,13 +8,13 @@
 #include <string>
 #include <map>
 #include "Manage/Hypergraph.h"
+#include "Trainer/TraceManager.h"
 
-using namespace Manage;
 
-int main(){
-    std::vector<std::string> nLabels {"hello", "world", "this"};
-    std::vector<std::string> eLabels {"edge 1"};
-    std::shared_ptr<Hypergraph<std::string, std::string>> hg {std::make_shared<Hypergraph<std::string, std::string>>(nLabels, eLabels) };
+int main() {
+    std::vector<std::string> nLabels{"hello", "world", "this"};
+    std::vector<EdgeLabelT> eLabels{42};
+    HypergraphPtr<std::string> hg = std::make_shared<Hypergraph<std::string>>(nLabels, eLabels);
 
     auto node1 = hg->create("hello\te\te\naa");
     auto node2 = hg->create("world");
@@ -31,16 +31,13 @@ int main(){
     std::clog << mymap[node2] << std::endl;
 
 
-    std::vector<Element<Node<std::string>>> sources {node1, node2};
-    hg->add_hyperedge("edge 1", node3, sources);
-
+    std::vector<Element<Node<std::string>>> sources{node1, node2};
+    hg->add_hyperedge(42, node3, sources);
 
 
     for (auto e : hg->get_outgoing_edges(node2))
         std::clog << "(" << e.first << "," << e.second << ")";
     std::clog << std::endl;
-
-
 
 
     std::clog << "Fun with iterators:" << std::endl;
@@ -50,13 +47,13 @@ int main(){
 
     std::clog << std::endl;
 
-    for (auto const_it = hg->cbegin(); const_it != hg->cend(); ++const_it){
+    for (auto const_it = hg->cbegin(); const_it != hg->cend(); ++const_it) {
         std::clog << *const_it;
     }
 
     std::clog << std::endl;
 
-    std::clog << typeid(std::iterator_traits<ManagerIterator<Node<std::string>>>::difference_type).name();
+    std::clog << typeid(std::iterator_traits<Manage::ManagerIterator<Node<std::string>>>::difference_type).name();
     std::clog << std::endl;
 
     auto it = hg->begin();
@@ -71,18 +68,24 @@ int main(){
     std::clog << std::endl;
 
 
+    Trainer::TraceManagerPtr<std::string, std::string> traceManager
+            = std::make_shared<Trainer::TraceManager2<std::string, std::string>>();
+    traceManager->create("The best HG!", hg, node1);
+
 
     std::filebuf fb;
-    if(fb.open("/tmp/manager.txt", std::ios::out)) {
+    if (fb.open("/tmp/manager.txt", std::ios::out)) {
         std::ostream out(&fb);
-        hg->serialize(out);
+        traceManager->serialize(out);
         fb.close();
     }
 
-    if(fb.open("/tmp/manager.txt", std::ios::in)) {
+    if (fb.open("/tmp/manager.txt", std::ios::in)) {
         std::istream in(&fb);
-        HypergraphPtr<std::string, std::string> hg2 = Hypergraph<std::string, std::string>::deserialize(in);
-        std::clog << "Read in Manager with Node#: " <<  hg->size();
+        Trainer::TraceManagerPtr<std::string, std::string> tm2 = Trainer::TraceManager2<std::string
+                                                                                        , std::string
+        >::deserialize(in);
+        std::clog << "Read in TraceManager with Trace#: " << tm2->size();
     }
 
 }
