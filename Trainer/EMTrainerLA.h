@@ -11,49 +11,69 @@
 #include "TraceManager.h"
 #include "../Legacy/Trace.h"
 #include <boost/operators.hpp>
+#include <eigen3/unsupported/Eigen/CXX11/Tensor>
+#include "LatentAnnotation.h"
+#include <memory>
 
 namespace Trainer {
-    class Counts : boost::addable<Counts>{
+    class Counts : boost::addable<Counts> {
     public:
-        std::vector<RuleTensor<double>> ruleCounts;
-        Eigen::Tensor<double, 1> rootCounts;
+        std::shared_ptr<StorageManager> storageManager;
         double logLikelihood;
+        std::unique_ptr<std::vector<RuleTensor<double>>> ruleCounts;
+        Eigen::Tensor<double, 1> rootCounts;
 
-        Counts(LatentAnnotation latentAnnotation, const GrammarInfo2 &grammarInfo, StorageManager & storageManager)
-                : rootCounts(latentAnnotation.rootWeights.dimension(0)), logLikelihood(0) {
-            for (size_t ruleId = 0; ruleId < latentAnnotation.ruleWeights.size(); ++ruleId) {
-                RuleTensor<double> count =
-                        storageManager.create_uninitialized_tensor(
+        Counts(
+                const LatentAnnotation &latentAnnotation
+                , const GrammarInfo2 &grammarInfo
+                , std::shared_ptr<StorageManager> storageManager
+        )
+                : storageManager(storageManager), logLikelihood(0),
+                  ruleCounts(std::make_unique<std::vector<RuleTensor<double>>>()),
+                  rootCounts(latentAnnotation.rootWeights.dimension(0)) {
+            for (size_t ruleId = 0; ruleId < latentAnnotation.ruleWeights->size(); ++ruleId) {
+                ruleCounts->push_back(
+                        storageManager->create_uninitialized_tensor(
                                 ruleId
                                 , grammarInfo
                                 , latentAnnotation.nonterminalSplits
-                        );
-                set_zero(count);
-                ruleCounts.push_back(count);
+                        ));
+                set_zero(ruleCounts->back());
             }
             rootCounts.setZero();
+        }
+
+        Counts(const Counts &other)
+                : storageManager(other.storageManager), logLikelihood(other.logLikelihood),
+                  ruleCounts(std::make_unique<std::vector<RuleTensor<double>>>()),
+                  rootCounts(Eigen::Tensor<double, 1>(other.rootCounts.dimensions())) {
+            rootCounts = other.rootCounts;
+            for (const auto &ruleTensor : *other.ruleCounts) {
+                RuleTensor<double> count = storageManager->copy_tensor(ruleTensor);
+                ruleCounts->push_back(count);
+            }
         }
 
         Counts &operator+=(const Counts &other) {
             logLikelihood += other.logLikelihood;
 
-            for (unsigned rule = 0; rule < ruleCounts.size(); ++rule) {
-                switch (ruleCounts[rule].which() + 1) {
+            for (unsigned rule = 0; rule < ruleCounts->size(); ++rule) {
+                switch ((*ruleCounts)[rule].which() + 1) {
                     case 1:
-                        boost::get<RuleTensorRaw<double, 1>>(ruleCounts[rule])
-                                += boost::get<RuleTensorRaw<double, 1>>(other.ruleCounts[rule]);
+                        boost::get<RuleTensorRaw<double, 1>>((*ruleCounts)[rule])
+                                += boost::get<RuleTensorRaw<double, 1>>((*other.ruleCounts)[rule]);
                         break;
                     case 2:
-                        boost::get<RuleTensorRaw<double, 2>>(ruleCounts[rule])
-                                += boost::get<RuleTensorRaw<double, 2>>(other.ruleCounts[rule]);
+                        boost::get<RuleTensorRaw<double, 2>>((*ruleCounts)[rule])
+                                += boost::get<RuleTensorRaw<double, 2>>((*other.ruleCounts)[rule]);
                         break;
                     case 3:
-                        boost::get<RuleTensorRaw<double, 3>>(ruleCounts[rule])
-                                += boost::get<RuleTensorRaw<double, 3>>(other.ruleCounts[rule]);
+                        boost::get<RuleTensorRaw<double, 3>>((*ruleCounts)[rule])
+                                += boost::get<RuleTensorRaw<double, 3>>((*other.ruleCounts)[rule]);
                         break;
                     case 4:
-                        boost::get<RuleTensorRaw<double, 4>>(ruleCounts[rule])
-                                += boost::get<RuleTensorRaw<double, 4>>(other.ruleCounts[rule]);
+                        boost::get<RuleTensorRaw<double, 4>>((*ruleCounts)[rule])
+                                += boost::get<RuleTensorRaw<double, 4>>((*other.ruleCounts)[rule]);
                         break;
                     default:
                         abort();
@@ -67,13 +87,14 @@ namespace Trainer {
 
     class Expector {
     public:
-        virtual Counts expect(const LatentAnnotation latentAnnotation) = 0;
+        virtual Counts expect(const LatentAnnotation &latentAnnotation) = 0;
+
         virtual void clean_up() = 0;
     };
 
     class Maximizer {
     public:
-        virtual void maximize(LatentAnnotation &, const Counts&) = 0;
+        virtual void maximize(LatentAnnotation &, const Counts &) = 0;
     };
 
     class EMTrainerLA {
@@ -85,14 +106,14 @@ namespace Trainer {
         EMTrainerLA(unsigned epochs, std::shared_ptr<Expector> expector, std::shared_ptr<Maximizer> maximizer)
                 : epochs(epochs), expector(expector), maximizer(maximizer) {};
 
-        void train(LatentAnnotation & latentAnnotation) {
+        void train(LatentAnnotation &latentAnnotation) {
             for (unsigned epoch = 0; epoch < epochs; ++epoch) {
                 Counts counts = expector->expect(latentAnnotation);
 
-                std::cerr <<"Epoch " << epoch << "/" << epochs << ": ";
+                std::cerr << "Epoch " << epoch << "/" << epochs << ": ";
 
                 // output likelihood information based on old probability assignment
-                Eigen::Tensor<double, 0>corpusProbSum = counts.rootCounts.sum();
+                Eigen::Tensor<double, 0> corpusProbSum = counts.rootCounts.sum();
                 std::cerr << "corpus prob. sum " << corpusProbSum;
                 std::cerr << " corpus likelihood " << counts.logLikelihood;
 //                std::cerr << " root counts: " << counts.rootCounts << std::endl;
@@ -103,32 +124,33 @@ namespace Trainer {
             }
             expector->clean_up();
         }
+
     };
 
     template<typename Nonterminal, typename TraceID>
     class SimpleExpector : public Expector {
         template<typename T1, typename T2>
         using MAPTYPE = typename std::unordered_map<T1, T2>;
-        using TraceIterator = ConstManagerIterator<Trace<Nonterminal, TraceID>>;
+        using TraceIterator = ConstManagerIterator<Trace < Nonterminal, TraceID>>;
 
-        const TraceManagerPtr<Nonterminal, TraceID> traceManager;
+        const TraceManagerPtr <Nonterminal, TraceID> traceManager;
         std::shared_ptr<const GrammarInfo2> grammarInfo;
         std::shared_ptr<StorageManager> storageManager;
         const bool debug;
 
-        std::vector<MAPTYPE<Element<Node < Nonterminal>>, WeightVector>> tracesInsideWeights;
-        std::vector<MAPTYPE<Element<Node < Nonterminal>>, WeightVector>> tracesOutsideWeights;
+        std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesInsideWeights;
+        std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesOutsideWeights;
 
     public:
         SimpleExpector(
-                TraceManagerPtr<Nonterminal, TraceID> traceManager
+                TraceManagerPtr <Nonterminal, TraceID> traceManager
                 , std::shared_ptr<const GrammarInfo2> grammarInfo
                 , std::shared_ptr<StorageManager> storageManager
                 , bool debug = false
         )
                 : traceManager(traceManager), grammarInfo(grammarInfo), storageManager(storageManager), debug(debug) {};
 
-        Counts expect(const LatentAnnotation latentAnnotation) {
+        Counts expect(const LatentAnnotation &latentAnnotation) {
             if (tracesInsideWeights.size() < traceManager->size()) {
                 tracesInsideWeights.resize(traceManager->size());
             }
@@ -138,27 +160,28 @@ namespace Trainer {
             return expectation_la(latentAnnotation, traceManager->cbegin(), traceManager->cend());
         }
 
-        void clean_up(){
+        void clean_up() {
             storageManager->free_weight_maps(tracesInsideWeights);
             storageManager->free_weight_maps(tracesOutsideWeights);
         }
 
     private:
         inline Counts expectation_la(
-                const LatentAnnotation latentAnnotation
+                const LatentAnnotation &latentAnnotation
                 , const TraceIterator start
                 , const TraceIterator end
         ) {
-            Counts counts(latentAnnotation, *grammarInfo, *storageManager);
+            Counts counts(latentAnnotation, *grammarInfo, storageManager);
             TraceIterator traceIterator;
-            
+
             for (traceIterator = start; traceIterator < end; ++traceIterator) {
                 const auto &trace = *traceIterator;
                 if (trace->get_hypergraph()->size() == 0)
                     continue;
 
                 // create insert inside and outside weight for each node if necessary
-                if (tracesInsideWeights[traceIterator - traceManager->cbegin()].size() != trace->get_hypergraph()->size()) {
+                if (tracesInsideWeights[traceIterator - traceManager->cbegin()].size() !=
+                    trace->get_hypergraph()->size()) {
                     tracesInsideWeights.clear();
                     tracesOutsideWeights.clear();
                     for (const auto &node : *(trace->get_hypergraph())) {
@@ -172,7 +195,7 @@ namespace Trainer {
                 }
 
                 trace->io_weights_la(
-                        latentAnnotation.ruleWeights
+                        *latentAnnotation.ruleWeights
                         , latentAnnotation.rootWeights
                         , tracesInsideWeights[traceIterator - traceManager->cbegin()]
                         , tracesOutsideWeights[traceIterator - traceManager->cbegin()]
@@ -193,6 +216,7 @@ namespace Trainer {
                     counts.rootCounts += traceRootProbabilities;
                     counts.logLikelihood += log(traceRootProbability(0));
                 } else {
+                    //std::cerr << "trace Root Probability " << traceRootProbability(0) << std::endl;
                     counts.logLikelihood += minus_infinity;
                     continue;
                 }
@@ -200,8 +224,8 @@ namespace Trainer {
                 if (debug)
                     std::cerr << "instance root probability: " << std::endl << traceRootProbabilities << std::endl;
 
-                for (const Element<Node < Nonterminal>>
-                    &node : *(trace->get_hypergraph())) {
+                for (const Element<Node<Nonterminal>>
+                            &node : *(trace->get_hypergraph())) {
                     const WeightVector &lhnOutsideWeight = outsideWeights.at(node);
 
                     if (debug) {
@@ -218,40 +242,40 @@ namespace Trainer {
                         switch (rule_dim) {
                             case 1:
                                 compute_rule_count1(
-                                        latentAnnotation.ruleWeights[ruleId]
+                                        (*latentAnnotation.ruleWeights)[ruleId]
                                         , lhnOutsideWeight
                                         , traceRootProbability(0)
-                                        , counts.ruleCounts[ruleId]
+                                        , (*counts.ruleCounts)[ruleId]
                                 );
                                 break;
                             case 2:
                                 compute_rule_count2(
-                                        latentAnnotation.ruleWeights[ruleId]
+                                        (*latentAnnotation.ruleWeights)[ruleId]
                                         , edge
                                         , lhnOutsideWeight
                                         , traceRootProbability(0)
                                         , insideWeights
-                                        , counts.ruleCounts[ruleId]
+                                        , (*counts.ruleCounts)[ruleId]
                                 );
                                 break;
                             case 3:
                                 compute_rule_count3(
-                                        latentAnnotation.ruleWeights[ruleId]
+                                        (*latentAnnotation.ruleWeights)[ruleId]
                                         , edge
                                         , lhnOutsideWeight
                                         , traceRootProbability(0)
                                         , insideWeights
-                                        , counts.ruleCounts[ruleId]
+                                        , (*counts.ruleCounts)[ruleId]
                                 );
                                 break;
                             case 4:
                                 compute_rule_count<4>(
-                                        latentAnnotation.ruleWeights[ruleId]
+                                        (*latentAnnotation.ruleWeights)[ruleId]
                                         , edge
                                         , lhnOutsideWeight
                                         , traceRootProbability(0)
                                         , insideWeights
-                                        , counts.ruleCounts[ruleId]
+                                        , (*counts.ruleCounts)[ruleId]
                                 );
                                 break;
                             default:
@@ -265,93 +289,115 @@ namespace Trainer {
             return counts;
         }
 
-        inline void compute_rule_count1(const RuleTensor<double> & ruleWeight, const RuleTensorRaw<double, 1> &lhnOutsideWeight,
-                                        const double traceRootProbability, RuleTensor<double> & ruleCount
+        inline void compute_rule_count1(
+                const RuleTensor<double> &ruleWeight
+                , const RuleTensorRaw<double, 1> &lhnOutsideWeight
+                , const double traceRootProbability
+                , RuleTensor<double> &ruleCount
         ) {
-            constexpr unsigned ruleRank {1};
+            constexpr unsigned ruleRank{1};
 
-            const auto & ruleWeightRaw = boost::get<RuleTensorRaw <double, ruleRank>>(ruleWeight);
+            const auto &ruleWeightRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleWeight);
 
             auto ruleValue = ruleWeightRaw * lhnOutsideWeight;
 
-            auto & ruleCountRaw = boost::get<RuleTensorRaw <double, ruleRank>>(ruleCount);
+            auto &ruleCountRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleCount);
 
             if (traceRootProbability > 0) {
-                ruleCountRaw += ruleValue.unaryExpr([traceRootProbability] (double x) {return x / traceRootProbability;});
+                ruleCountRaw += ruleValue.unaryExpr(
+                        [traceRootProbability](double x) {
+                            return x / traceRootProbability;
+                        }
+                );
             }
         }
 
 
         inline void compute_rule_count2(
-                const RuleTensor<double> & ruleWeight
-                , const Element<HyperEdge<Nonterminal>>& edge
-                , const RuleTensorRaw<double, 1>& lhnOutsideWeight
+                const RuleTensor<double> &ruleWeight
+                , const Element<HyperEdge<Nonterminal>> &edge
+                , const RuleTensorRaw<double, 1> &lhnOutsideWeight
                 , const double traceRootProbability
-                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& insideWeights
-                , RuleTensor<double> & ruleCount
+                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &insideWeights
+                , RuleTensor<double> &ruleCount
         ) {
-            constexpr unsigned ruleRank {2};
+            constexpr unsigned ruleRank{2};
 
-            const auto & ruleWeightRaw = boost::get<RuleTensorRaw <double, ruleRank>>(ruleWeight);
+            const auto &ruleWeightRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleWeight);
 
-            const auto & rhsWeight = insideWeights.at(edge->get_sources()[0]);
+            const auto &rhsWeight = insideWeights.at(edge->get_sources()[0]);
             auto ruleValue = lhnOutsideWeight.reshape(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1})
-                                    .broadcast(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1)})
-                            * rhsWeight.reshape(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1)})
-                                    .broadcast(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1}).eval()
-                            * ruleWeightRaw
-            ;
+                                     .broadcast(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1)})
+                             * rhsWeight.reshape(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1)})
+                                     .broadcast(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1}).eval()
+                             * ruleWeightRaw;
 
-            auto & ruleCountRaw = boost::get<RuleTensorRaw <double, ruleRank>>(ruleCount);
+            auto &ruleCountRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleCount);
 
             if (traceRootProbability > 0) {
-                ruleCountRaw += ruleValue.unaryExpr([traceRootProbability] (double x) {return x / traceRootProbability;});
+                ruleCountRaw += ruleValue.unaryExpr(
+                        [traceRootProbability](double x) {
+                            return x / traceRootProbability;
+                        }
+                );
             }
         }
 
 
         inline void compute_rule_count3(
-                const RuleTensor<double> & ruleWeight
-                , const Element<HyperEdge<Nonterminal>>& edge
-                , const RuleTensorRaw <double, 1>& lhnOutsideWeight
+                const RuleTensor<double> &ruleWeight
+                , const Element<HyperEdge<Nonterminal>> &edge
+                , const RuleTensorRaw<double, 1> &lhnOutsideWeight
                 , const double traceRootProbability
-                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& insideWeights
-                , RuleTensor<double> & ruleCount
+                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &insideWeights
+                , RuleTensor<double> &ruleCount
         ) {
-            constexpr unsigned ruleRank {3};
+            constexpr unsigned ruleRank{3};
 
-            const auto & ruleWeightRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleWeight);
-            const auto & rhsWeight1 = insideWeights.at(edge->get_sources()[0]);
-            const auto & rhsWeight2 = insideWeights.at(edge->get_sources()[1]);
+            const auto &ruleWeightRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleWeight);
+            const auto &rhsWeight1 = insideWeights.at(edge->get_sources()[0]);
+            const auto &rhsWeight2 = insideWeights.at(edge->get_sources()[1]);
 
             auto ruleValue = lhnOutsideWeight.reshape(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1, 1})
-                                    .broadcast(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1), ruleWeightRaw.dimension(2)})
-                            * rhsWeight1.reshape(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1), 1})
-                                    .broadcast(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1, ruleWeightRaw.dimension(2)}).eval()
-                            * rhsWeight2.reshape(Eigen::array<long, ruleRank>{1, 1, ruleWeightRaw.dimension(2)})
-                                    .broadcast(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), ruleWeightRaw.dimension(1), 1}).eval()
-                            * ruleWeightRaw;
-            ;
+                                     .broadcast(
+                                             Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1),
+                                                                          ruleWeightRaw.dimension(2)}
+                                     )
+                             * rhsWeight1.reshape(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1), 1})
+                                     .broadcast(
+                                             Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1,
+                                                                          ruleWeightRaw.dimension(2)}
+                                     ).eval()
+                             * rhsWeight2.reshape(Eigen::array<long, ruleRank>{1, 1, ruleWeightRaw.dimension(2)})
+                                     .broadcast(
+                                             Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0),
+                                                                          ruleWeightRaw.dimension(1), 1}
+                                     ).eval()
+                             * ruleWeightRaw;;
 
-            auto & ruleCountRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleCount);
+            auto &ruleCountRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleCount);
 
             if (traceRootProbability > 0) {
-                ruleCountRaw += ruleValue.unaryExpr([traceRootProbability] (double x) {return x / traceRootProbability;});
+                ruleCountRaw += ruleValue.unaryExpr(
+                        [traceRootProbability](double x) {
+                            return x / traceRootProbability;
+                        }
+                );
             }
         }
 
         template<long rank>
         inline void compute_rule_count(
-                const RuleTensor<double> & ruleWeight
-                , const Element<HyperEdge<Nonterminal>>& edge
-                , const RuleTensorRaw <double, 1>& lhnOutsideWeight
+                const RuleTensor<double> &ruleWeight
+                , const Element<HyperEdge<Nonterminal>> &edge
+                , const RuleTensorRaw<double, 1> &lhnOutsideWeight
                 , const double traceRootProbability
-                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector>& insideWeights
-                , RuleTensor<double> & ruleCount
+                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &insideWeights
+                , RuleTensor<double> &ruleCount
         ) {
 
-            const auto & ruleWeightRaw = boost::get<RuleTensorRaw <double, rank>>(ruleWeight);
-            const auto & ruleDimension = ruleWeightRaw.dimensions();
+            const auto &ruleWeightRaw = boost::get<RuleTensorRaw<double, rank>>(ruleWeight);
+            const auto &ruleDimension = ruleWeightRaw.dimensions();
 
             Eigen::array<long, rank> reshapeDimensions;
             Eigen::array<long, rank> broadcastDimensions;
@@ -362,9 +408,9 @@ namespace Trainer {
 
             Eigen::Tensor<double, rank> rule_val = ruleWeightRaw;
             for (unsigned nont = 0; nont < rank; ++nont) {
-                const auto & itemWeight = (nont == 0)
-                                           ? lhnOutsideWeight
-                                           : insideWeights.at(edge->get_sources()[nont - 1]);
+                const auto &itemWeight = (nont == 0)
+                                         ? lhnOutsideWeight
+                                         : insideWeights.at(edge->get_sources()[nont - 1]);
                 reshapeDimensions[nont] = broadcastDimensions[nont];
                 broadcastDimensions[nont] = 1;
                 rule_val *= itemWeight.reshape(reshapeDimensions).broadcast(broadcastDimensions);
@@ -372,9 +418,13 @@ namespace Trainer {
                 reshapeDimensions[nont] = 1;
             }
 
-            auto & ruleCountRaw = boost::get<RuleTensorRaw <double, rank>>(ruleCount);
+            auto &ruleCountRaw = boost::get<RuleTensorRaw<double, rank>>(ruleCount);
             if (traceRootProbability > 0) {
-                ruleCountRaw += rule_val.unaryExpr([traceRootProbability] (double x) {return x / traceRootProbability;});
+                ruleCountRaw += rule_val.unaryExpr(
+                        [traceRootProbability](double x) {
+                            return x / traceRootProbability;
+                        }
+                );
             }
         }
     };
@@ -385,8 +435,8 @@ namespace Trainer {
 
     public:
         SimpleMaximizer(std::shared_ptr<const GrammarInfo2> grammarInfo, bool debug = false)
-                : grammarInfo(grammarInfo)
-                , debug(debug) {};
+                : grammarInfo(grammarInfo), debug(debug) {};
+
         void maximize(LatentAnnotation &latentAnnotation, const Counts &counts) {
             unsigned nont = 0;
             for (const std::vector<std::size_t> &group : grammarInfo->normalizationGroups) {
@@ -398,7 +448,7 @@ namespace Trainer {
             // maximize root weights:
             Eigen::Tensor<double, 0> corpusProbSum = counts.rootCounts.sum();
             if (corpusProbSum(0) > 0)
-                latentAnnotation.rootWeights = latentAnnotation.rootWeights.unaryExpr(
+                latentAnnotation.rootWeights = counts.rootCounts.unaryExpr(
                         [corpusProbSum](double x) {
                             return x / corpusProbSum(0);
                         }
@@ -415,11 +465,11 @@ namespace Trainer {
             Eigen::Tensor<double, 1> lhsCounts(lhsSplits);
             lhsCounts.setZero();
             for (const size_t ruleId : group) {
-                compute_normalization_divisor(lhsCounts, counts.ruleCounts[ruleId]);
+                compute_normalization_divisor(lhsCounts, (*counts.ruleCounts)[ruleId]);
             }
 
             for (const size_t ruleId : group) {
-                normalize(latentAnnotation.ruleWeights[ruleId], counts.ruleCounts[ruleId], lhsCounts);
+                normalize((*latentAnnotation.ruleWeights)[ruleId], (*counts.ruleCounts)[ruleId], lhsCounts);
             }
 
         }

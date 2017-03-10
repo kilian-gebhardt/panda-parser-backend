@@ -5,6 +5,7 @@
 #ifndef STERMPARSER_GRAMMARINFO_H
 #define STERMPARSER_GRAMMARINFO_H
 #include <vector>
+#include <iostream>
 
 namespace Trainer {
 
@@ -30,34 +31,42 @@ namespace Trainer {
             }
 
             normalizationGroups = normGroups;
-
-//        { // Debug Output:
-//            unsigned i = 0;
-//            for (auto rtn : rule_to_nonterminals) {
-//                std::cerr << i << ": ";
-//                unsigned j = 0;
-//                for (auto n : rtn) {
-//                    if (j == 1) {
-//                        std::cerr << "-> ";
-//                    }
-//                    std::cerr << n << " ";
-//                    ++j;
-//                }
-//                std::cerr << ";" << std::endl;
-//                ++i;
-//            }
-//            for (unsigned i = 0; i < normalizationGroups.size(); ++i) {
-//                std::cerr << i << " : { ";
-//                for (auto n : normalizationGroups[i]) {
-//                    std::cerr << n << " ";
-//                }
-//                std::cerr << "} ";
-//            }
-//            std::cerr << std::endl;
-//        }
-
         }
     };
+
+    std::ostream &operator<<(std::ostream &os, const GrammarInfo2 &grammarInfo) {
+        os << "Start symbol " << grammarInfo.start << std::endl;
+
+        os << "Rule to nonterminals: " << std::endl;
+
+        // Debug Output:
+        unsigned i = 0;
+        for (auto rtn : grammarInfo.rule_to_nonterminals) {
+            os << i << ": ";
+            unsigned j = 0;
+            for (auto n : rtn) {
+                if (j == 1) {
+                    os << "-> ";
+                }
+                os << n << " ";
+                ++j;
+            }
+            os << ";" << std::endl;
+            ++i;
+        }
+
+        os << "normalization groups " << std::endl;
+        for (unsigned i = 0; i < grammarInfo.normalizationGroups.size(); ++i) {
+            os << i << " : { ";
+            for (auto n : grammarInfo.normalizationGroups[i]) {
+                os << n << " ";
+            }
+            os << "} ";
+        }
+        os << std::endl;
+
+        return os;
+    }
 }
 
 #endif //STERMPARSER_GRAMMARINFO_H

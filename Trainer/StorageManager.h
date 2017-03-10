@@ -13,6 +13,7 @@
 #include "TrainingCommon.h"
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 
+
 namespace Trainer {
 
     class StorageManager {
@@ -103,7 +104,7 @@ namespace Trainer {
 
         inline void free_weight_vector(Eigen::TensorMap<Eigen::Tensor<double, 1>> &weightVector) {
             if (not selfMalloc) {
-                free_region(weightVector.data(), weightVector.dimension(0));
+                free_region(weightVector.data(), (size_t) weightVector.size());
             } else {
                 // todo: not implemented
                 abort();
@@ -111,52 +112,92 @@ namespace Trainer {
         }
 
         template<unsigned long rank>
-        inline Trainer::RuleTensor<double> create_uninitialized_tensor_ranked(
-                const size_t rule_id
+        inline RuleTensor<double> create_uninitialized_tensor_ranked(
+                const size_t ruleId
                 , const GrammarInfo2 &grammarInfo
-                , const std::vector<size_t> &nont_splits
+                , const std::vector<size_t> &nontSplits
         ) {
-            Eigen::array<Eigen::DenseIndex, rank> rule_dimension;
-            size_t memory = 1;
+            Eigen::array<Eigen::DenseIndex, rank> ruleDimensions;
             for (unsigned dim = 0; dim < rank; ++dim) {
-                memory *= rule_dimension[dim] = nont_splits[grammarInfo.rule_to_nonterminals[rule_id][dim]];
+                ruleDimensions[dim] = nontSplits[grammarInfo.rule_to_nonterminals[ruleId][dim]];
             }
-            return create_uninitialized_tensor_ranked_typed<Trainer::RuleTensorRaw<double, rank>>(
-                    memory
-                    , rule_dimension
-            );
+            return create_uninitialized_tensor_ranked_typed<Trainer::RuleTensorRaw<double, rank>>(ruleDimensions);
         }
 
         template<typename T, unsigned long rank>
         inline
         typename std::enable_if_t<std::is_same<T, Eigen::Tensor<double, rank>>::value, T>
-        create_uninitialized_tensor_ranked_typed(size_t memory, const Eigen::array<long, rank> &rule_dimensions) {
-            return Eigen::Tensor<double, rank>(rule_dimensions);
+        create_uninitialized_tensor_ranked_typed(const Eigen::array<long, rank> &ruleDimensions) {
+            return Eigen::Tensor<double, rank>(ruleDimensions);
         };
 
         template<typename T, unsigned long rank>
         inline
         typename std::enable_if_t<std::is_same<T, Eigen::TensorMap<Eigen::Tensor<double, rank>>>::value, T>
-        create_uninitialized_tensor_ranked_typed(size_t memory, const Eigen::array<long, rank> &rule_dimensions) {
+        create_uninitialized_tensor_ranked_typed(const Eigen::array<long, rank> &ruleDimensions) {
+            size_t memory = std::accumulate(
+                    ruleDimensions.cbegin()
+                    , ruleDimensions.cend()
+                    , (size_t) 1
+                    , std::multiplies<size_t>());
             double *storage = get_region(memory);
-            return Eigen::TensorMap<Eigen::Tensor<double, rank>>(storage, rule_dimensions);
+            return Eigen::TensorMap<Eigen::Tensor<double, rank>>(storage, ruleDimensions);
         };
 
 
         inline Trainer::RuleTensor<double> create_uninitialized_tensor(
-                const size_t rule_id
+                const size_t ruleId
                 , const GrammarInfo2 &grammarInfo
-                , const std::vector<size_t> &nont_splits
+                , const std::vector<size_t> &nontSplits
         ) {
-            switch (grammarInfo.rule_to_nonterminals[rule_id].size()) {
+            switch (grammarInfo.rule_to_nonterminals[ruleId].size()) {
                 case 1:
-                    return create_uninitialized_tensor_ranked<1>(rule_id, grammarInfo, nont_splits);
+                    return create_uninitialized_tensor_ranked<1>(ruleId, grammarInfo, nontSplits);
                 case 2:
-                    return create_uninitialized_tensor_ranked<2>(rule_id, grammarInfo, nont_splits);
+                    return create_uninitialized_tensor_ranked<2>(ruleId, grammarInfo, nontSplits);
                 case 3:
-                    return create_uninitialized_tensor_ranked<3>(rule_id, grammarInfo, nont_splits);
+                    return create_uninitialized_tensor_ranked<3>(ruleId, grammarInfo, nontSplits);
                 case 4:
-                    return create_uninitialized_tensor_ranked<4>(rule_id, grammarInfo, nont_splits);
+                    return create_uninitialized_tensor_ranked<4>(ruleId, grammarInfo, nontSplits);
+                default:
+                    abort();
+            }
+        }
+
+
+        template<typename T, unsigned long rank>
+        inline
+        typename std::enable_if_t<std::is_same<T, Eigen::Tensor<double, rank>>::value, T>
+        copy_tensor_ranked(const RuleTensor<double> & ruleTensor) {
+            auto ruleTensorRaw = boost::get<RuleTensorRaw<double, rank>>(ruleTensor);
+            Eigen::Tensor<double, rank> copyTensor(ruleTensorRaw.dimensions());
+            copyTensor = ruleTensorRaw;
+            return copyTensor;
+        };
+
+        template<typename T, unsigned long rank>
+        inline
+        typename std::enable_if_t<std::is_same<T, Eigen::TensorMap<Eigen::Tensor<double, rank>>>::value, T>
+        copy_tensor_ranked(const RuleTensor<double> & ruleTensor) {
+            auto ruleTensorRaw = boost::get<RuleTensorRaw<double, rank>>(ruleTensor);
+            double *storage = get_region((size_t) ruleTensorRaw.size());
+            Eigen::TensorMap<Eigen::Tensor<double, rank>> copyTensor(storage, ruleTensorRaw.dimensions());
+            copyTensor = ruleTensorRaw;
+            return copyTensor;
+        };
+
+        inline Trainer::RuleTensor<double> copy_tensor(
+               const RuleTensor<double> & ruleTensor
+        ) {
+            switch (ruleTensor.which() + 1) {
+                case 1:
+                    return copy_tensor_ranked<RuleTensorRaw<double, 1>, 1>(ruleTensor);
+                case 2:
+                    return copy_tensor_ranked<RuleTensorRaw<double, 2>, 2>(ruleTensor);
+                case 3:
+                    return copy_tensor_ranked<RuleTensorRaw<double, 3>, 3>(ruleTensor);
+                case 4:
+                    return copy_tensor_ranked<RuleTensorRaw<double, 4>, 4>(ruleTensor);
                 default:
                     abort();
             }

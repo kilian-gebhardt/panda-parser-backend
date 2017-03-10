@@ -10,7 +10,7 @@
 #include "EMTrainerLA.h"
 
 namespace Trainer {
-    class TrainerBuilder {
+    class EMTrainerBuilder {
     public:
         template<typename Nonterminal, typename TraceID>
         EMTrainer<Nonterminal, TraceID> build_em_trainer(TraceManagerPtr<Nonterminal, TraceID> traceManager) {
@@ -27,7 +27,7 @@ namespace Trainer {
         std::shared_ptr<Maximizer> maximizer;
         std::shared_ptr<EMTrainerLA> emTrainer;
         std::shared_ptr<Splitter> splitter;
-        std::shared_ptr<MergePreparator<Nonterminal, TraceID>> mergePreparator;
+        std::shared_ptr<MergePreparator> mergePreparator;
         std::shared_ptr<Merger> merger;
         unsigned em_epochs{20};
 
@@ -55,6 +55,11 @@ namespace Trainer {
 
         SplitMergeTrainerBuilder &set_em_epochs(unsigned epochs) {
             em_epochs = epochs;
+            return *this;
+        }
+
+        SplitMergeTrainerBuilder &set_merge_nothing() {
+            mergePreparator = std::make_shared<MergeNothingMergePreparator>(grammarInfo);
             return *this;
         }
 

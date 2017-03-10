@@ -4,14 +4,16 @@
 
 
 #include <iostream>
+#include <vector>
 
 #include "DCP/HybridTree.h"
 #include "DCP/SDCP.h"
 #include "DCP/SDCP_Parser.h"
-#include <vector>
+#include "DCP/util.h"
 #include "Legacy/Trace.h"
 #include "Trainer/TraceManager.h"
 #include "Trainer/TrainingCommon.h"
+#include "Trainer/LatentAnnotation.h"
 #include "Trainer/TrainerBuilder.h"
 
 using namespace Trainer;
@@ -64,124 +66,6 @@ std::shared_ptr<HybridTree<std::string, int>> build_hybrid_tree(bool lcfrs) {
 
     return tree;
 };
-
-
-template<typename Nonterminal>
-std::pair<HypergraphPtr<Nonterminal>, Element<Node<Nonterminal>>>
-transform_trace_to_hypergraph(
-        const SDCPParser<std::string, std::string, int> &parser
-        , std::vector<Nonterminal> nodeLabels
-        , std::vector<EdgeLabelT> edgeLabels
-) {
-    using Terminal = std::string;
-    using Position = int;
-
-    const MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<std::pair<std::shared_ptr<Rule<Nonterminal, Terminal>>
-                                                                          , std::vector<std::shared_ptr<ParseItem<
-                    Nonterminal
-                    , Position>> >>>> &trace(parser.get_trace());
-
-    HypergraphPtr<Nonterminal> hg{std::make_shared<Hypergraph<Nonterminal>>(nodeLabels, edgeLabels)};
-
-    // construct all nodes
-    auto nodelist = std::map<ParseItem<Nonterminal, Position>, Element<Node<Nonterminal>>>();
-    for (auto const &item : trace)
-        nodelist.emplace(item.first, hg->create(item.first.nonterminal));
-
-    // construct hyperedges
-    for (auto const &item : trace) {
-        Element<Node<Nonterminal >> outgoing = nodelist.at(item.first);
-        std::vector<Element<Node<Nonterminal>>> incoming;
-        for (auto const &parse : item.second) {
-            incoming.clear();
-            incoming.reserve(parse.second.size());
-            for (auto const &pItem : parse.second)
-                incoming.push_back(nodelist.at(*pItem));
-
-            /*Element<HyperEdge<Nonterminal>>& edge = */ hg->add_hyperedge(parse.first->id, outgoing, incoming);
-            // set optional infos on edge here
-        }
-
-    }
-
-    return std::make_pair(hg, nodelist.at(*parser.goal));
-};
-
-template<long max_dim>
-inline void convert_format_no_creation(const std::vector<double> & weights,
-        Trainer::RuleTensor<double> & tensor){
-    auto tensor_raw = boost::get<Trainer::RuleTensorRaw<double, max_dim>>(tensor);
-
-    Eigen::array<long, max_dim> weight_position;
-    for(unsigned dim = 0; dim < max_dim; ++dim) {
-        weight_position[dim] = -1;
-    }
-
-    unsigned dim = 0;
-    auto weight_it = weights.begin();
-
-    while (dim < max_dim) {
-        if (dim == max_dim - 1 and weight_position[dim] + 1 < tensor_raw.dimension(dim)) {
-            ++weight_position[dim];
-            assert(weight_it != weights.end());
-            tensor_raw(weight_position) =  *weight_it;
-            ++weight_it;
-        } else if (weight_position[dim] + 1 == tensor_raw.dimension(dim)) {
-            if (dim > 0) {
-                for (unsigned dim_ = dim; dim_ < max_dim; ++dim_) {
-                    weight_position[dim_] = -1;
-                }
-                --dim;
-            }
-            else
-                break;
-        } else if (weight_position[dim] + 1 < tensor_raw.dimension(dim)) {
-            ++weight_position[dim];
-            ++dim;
-        }
-    }
-
-    if(weight_it != weights.end()) {
-        std::cerr << "conversion error.";
-        abort();
-    }
-}
-
-unsigned convert_to_eigen(
-        const std::vector<std::vector<double>> &rule_weights
-        , std::vector<Trainer::RuleTensor<double>> &rule_tensors
-        , double * & root_weights_ptrs
-        , const std::vector<double> &root_weights
-        , const std::vector<size_t> &nonterminal_splits
-        , StorageManager &storageManager
-        , const GrammarInfo2 & grammarInfo
-) {
-    unsigned allocated(0);
-    unsigned rule = 0;
-    for (auto rule_weight : rule_weights) {
-        auto rule_tensor = storageManager.create_uninitialized_tensor(rule, grammarInfo, nonterminal_splits);
-        const unsigned dims = grammarInfo.rule_to_nonterminals[rule].size();
-
-        switch (dims) {
-            case 1: convert_format_no_creation<1>(rule_weight, rule_tensor); break;
-            case 2: convert_format_no_creation<2>(rule_weight, rule_tensor); break;
-            case 3: convert_format_no_creation<3>(rule_weight, rule_tensor); break;
-            case 4: convert_format_no_creation<4>(rule_weight, rule_tensor); break;
-            default:
-                assert(false && "Rules with more than 3 RHS nonterminals are not implemented.");
-                abort();
-        }
-        rule_tensors.push_back(rule_tensor);
-        allocated += rule_weight.size();
-        ++rule;
-    }
-    root_weights_ptrs = storageManager.get_region(root_weights.size());
-    allocated += root_weights.size();
-    for (unsigned i = 0; i < root_weights.size(); ++i) {
-        root_weights_ptrs[i] = root_weights[i];
-    }
-    return allocated;
-}
 
 
 int main() {
@@ -450,9 +334,10 @@ int main() {
 
     manager.add_trace_entry(parser.get_trace(), *parser.goal, 0);
 
-    std::pair<HypergraphPtr<std::string>, Element<Node<std::string>>> transformedTrace{
-            transform_trace_to_hypergraph<std::string>(parser, nodeLabels, edgeLabels)};
-    traceManager->create(0L, transformedTrace.first, transformedTrace.second);
+    DCP::add_trace_to_manager(parser, nodeLabels, edgeLabels, traceManager);
+//    std::pair<HypergraphPtr<std::string>, Element<Node<std::string>>> transformedTrace{
+//            DCP::transform_trace_to_hypergraph<std::string>(parser, nodeLabels, edgeLabels)};
+//    traceManager->create(0L, transformedTrace.first, transformedTrace.second);
 
     std::cerr << "There are " << (*traceManager)[0].get_hypergraph()->size() << " nodes in the first trace\n";
 
@@ -487,20 +372,20 @@ int main() {
 //        std::cerr << "T: " << item << " " << pair.first[item] << " " << pair.second[item] << std::endl;
 //    }
 
-    std::vector<std::vector<unsigned>> my_rule_groups{{0},
-                                                      {1},
-                                                      {2},
-                                                      {3},
-                                                      {4, 5},
-                                                      {6},
-                                                      {7},
-                                                      {8}};
+    const std::vector<std::vector<unsigned>> my_rule_groups{{0},
+                                                          {1},
+                                                          {2},
+                                                          {3},
+                                                          {4, 5},
+                                                          {6},
+                                                          {7},
+                                                          {8}};
 
     std::vector<double> my_rule_weights2{1, 1, 1, 1, 0.5, 0.5, 1, 1, 1};
 
     auto vec_new = manager.do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
 
-    auto emTrainerBuilder = Trainer::TrainerBuilder();
+    auto emTrainerBuilder = Trainer::EMTrainerBuilder();
     Trainer::EMTrainer<std::string, unsigned long> emTrainer = emTrainerBuilder.build_em_trainer(traceManager);
     auto vec_new2 = emTrainer.do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
 //    auto vec_new2 = traceManager->do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
@@ -529,7 +414,7 @@ int main() {
             {"G", 7}
     };
 
-    auto nont_idx2 = [&](const std::string &nont) {
+    auto nont_idx2 = [&](const std::string &nont) -> unsigned {
         return mymap.at(nont);
     };
 
@@ -557,17 +442,19 @@ int main() {
 
     // traceManager->split_merge<Double>(2, 1, vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5, 50.0);
 
-    std::vector<std::vector<size_t>> rule_to_nont_idx_size_t;
-    for (auto rule : rule_to_nont_idx) {
-        rule_to_nont_idx_size_t.emplace_back();
-        for (const auto nont : rule) {
-            rule_to_nont_idx_size_t.back().push_back((size_t) nont);
+    std::vector<std::vector<size_t>> rule_to_nont_idx_size_t(9);
+    for (auto p : sDCP.lhn_to_rule) {
+        for (auto rule : p.second) {
+            rule_to_nont_idx_size_t[rule->id].push_back(nont_idx2(rule->lhn));
+            for (auto nont : rule->rhs) {
+                rule_to_nont_idx_size_t[rule->id].push_back(nont_idx2(nont));
+            }
         }
     }
 
     auto grammarInfo = std::make_shared<const GrammarInfo2>(rule_to_nont_idx_size_t, 0);
     auto splitMergeTrainerBuilder = Trainer::SplitMergeTrainerBuilder<std::string, unsigned long>(traceManager, grammarInfo);
-    auto splitMergeTrainer = splitMergeTrainerBuilder.set_threshold_merger().build();
+    auto splitMergeTrainer = splitMergeTrainerBuilder.set_merge_nothing().build();
 
     std::vector<size_t> nonterminal_splits(8, 1);
 //    convert_format()
@@ -576,24 +463,10 @@ int main() {
         latentified[idx].push_back(vec_new2[idx]);
     }
     std::vector<double> root_weights(1, 1.0);
-    std::vector<Trainer::RuleTensor<double>> rule_tensors;
     StorageManager storageManager;
-    double *root_weight_ptrs = nullptr;
-    convert_to_eigen(
-            latentified
-            , rule_tensors
-            , root_weight_ptrs
-            , root_weights
-            , nonterminal_splits
-            , storageManager
-            , *grammarInfo
-    );
-    Eigen::TensorMap<Eigen::Tensor<double, 1>> root_weights_eigen_tmp(root_weight_ptrs, 1);
-    Eigen::Tensor<double, 1> root_weights_eigen = root_weights_eigen_tmp;
-//    std::vector<RuleTensor<double>>
-
-    Trainer::LatentAnnotation la(nonterminal_splits, root_weights_eigen, rule_tensors);
-    auto la_ = splitMergeTrainer.split_merge_cycle(la);
+    Trainer::LatentAnnotation la(nonterminal_splits, root_weights, latentified, *grammarInfo, storageManager);
+    auto la_1 = splitMergeTrainer.split_merge_cycle(la);
+    auto la_2 = splitMergeTrainer.split_merge_cycle(la_1);
 
     return 0;
 }

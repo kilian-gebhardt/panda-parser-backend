@@ -11,14 +11,14 @@
 #include "../Manage/Manager_util.h"
 #include "GrammarInfo.h"
 #include "TrainingCommon.h"
+#include <set>
+#include <iostream>
 
 namespace Trainer {
     template<typename Nonterminal, typename TraceID>
     class TraceManager2;
     template<typename Nonterminal, typename TraceID>
     using TraceManagerPtr = std::shared_ptr<TraceManager2<Nonterminal, TraceID>>;
-
-
 
     template<typename Nonterminal, typename oID>
     class Trace {
@@ -219,8 +219,9 @@ namespace Trainer {
 
 
         inline void inside_weight_step1(
-                Trainer::WeightVector &targetWeight, const Element<HyperEdge<Nonterminal>> &edge, const std::vector<
-                Trainer::RuleTensor<double>> &rules
+                Trainer::WeightVector &targetWeight
+                , const Element<HyperEdge<Nonterminal>> &edge
+                , const std::vector<Trainer::RuleTensor<double>> &rules
         ) const {
             constexpr unsigned ruleRank{1};
 
@@ -537,15 +538,6 @@ namespace Trainer {
             return new Trainer::GrammarInfo2(rule_to_nonterminals, this->cbegin()->get_goal()->get_label_id());
         }
 
-        std::vector<std::vector<double>> lift_doubles(const std::vector<double> &rule_weights) const {
-            std::vector<std::vector<double >> rule_weights_la;
-            for (const double &rule_weight : rule_weights) {
-                rule_weights_la.emplace_back(1, rule_weight);
-            }
-            return rule_weights_la;
-        }
-
-
         // ##############################
         // ##############################
         // ##############################
@@ -594,7 +586,10 @@ namespace Trainer {
     };
 
 
-
+    template<typename Nonterminal, typename TraceID>
+    TraceManagerPtr<Nonterminal, TraceID> build_trace_manager_ptr(bool debug=false) {
+        return std::make_shared<TraceManager2<Nonterminal, TraceID>>(debug);
+    };
 }
 
 

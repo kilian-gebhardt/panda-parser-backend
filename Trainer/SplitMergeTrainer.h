@@ -10,11 +10,14 @@
 #include <functional>
 #include "TrainingCommon.h"
 #include "EMTrainerLA.h"
+#include "GrammarInfo.h"
 
 namespace Trainer {
     class Splitter {
         const double randPercent;
+    public:
         std::shared_ptr<const GrammarInfo2> grammarInfo;
+    private:
         std::shared_ptr<StorageManager> storageManager;
 
         double rand_split() {
@@ -51,29 +54,30 @@ namespace Trainer {
             std::cerr << "split root weights: " << std::endl << rootWeights << std::endl;
 
             // new unnormalized rule weights
-            std::vector<RuleTensor<double>> ruleWeights;
-            ruleWeights.reserve(la.ruleWeights.size());
-            for (const RuleTensor<double> &rule_weight : la.ruleWeights)
-                ruleWeights.push_back(create_split_tensor(rule_weight));
+            auto ruleWeights = std::make_unique<std::vector<RuleTensor<double>>>();
+            ruleWeights->reserve(la.ruleWeights->size());
+            for (const RuleTensor<double> &rule_weight : *la.ruleWeights)
+                ruleWeights->push_back(create_split_tensor(rule_weight));
+
             // normalization
-            unsigned nont = 0;
-            for (auto &group : grammarInfo->normalizationGroups) {
+            for (size_t nont = 0; nont < grammarInfo->normalizationGroups.size(); ++nont) {
+                auto & group = grammarInfo->normalizationGroups[nont];
                 Eigen::Tensor<double, 1> normalizationDivisor(nonterminalSplits[nont]);
                 normalizationDivisor.setZero();
                 for (size_t ruleId : group) {
-                    compute_normalization_divisor(normalizationDivisor, ruleWeights[ruleId]);
+                    compute_normalization_divisor(normalizationDivisor, (*ruleWeights)[ruleId]);
 
                 }
                 for (size_t ruleId : group) {
-                    normalize(ruleWeights[ruleId], ruleWeights[ruleId], normalizationDivisor);
+                    normalize((*ruleWeights)[ruleId], (*ruleWeights)[ruleId], normalizationDivisor);
                 }
             }
 
-            return LatentAnnotation(nonterminalSplits, rootWeights, ruleWeights);
+            return LatentAnnotation(nonterminalSplits, std::move(rootWeights), std::move(ruleWeights));
         };
 
     private:
-        RuleTensor<double> create_split_tensor(const RuleTensor<double> wrappedTensor) {
+        RuleTensor<double> create_split_tensor(const RuleTensor<double> &wrappedTensor) {
             switch (wrappedTensor.which() + 1) {
                 case 1:
                     return create_split_tensor_ranked<1>(wrappedTensor);
@@ -89,22 +93,14 @@ namespace Trainer {
         }
 
         template<long rule_rank>
-        RuleTensor<double> create_split_tensor_ranked(const RuleTensor<double> tensorWrapped) {
+        RuleTensor<double> create_split_tensor_ranked(const RuleTensor<double> &tensorWrapped) {
             const auto &tensorRaw = boost::get<RuleTensorRaw<double, rule_rank>>(tensorWrapped);
-            Eigen::array<Eigen::DenseIndex, rule_rank> splitDimenions = tensorRaw.dimensions();
+            Eigen::array<Eigen::DenseIndex, rule_rank> splitDimensions = tensorRaw.dimensions();
             Eigen::array<Eigen::DenseIndex, rule_rank> broadcast;
             std::fill(broadcast.begin(), broadcast.end(), 2);
-            std::for_each(splitDimenions.begin(), splitDimenions.end(), [](auto &dim) { dim = 2 * dim; });
-            size_t memory = std::accumulate(
-                    splitDimenions.cbegin()
-                    , splitDimenions.cend()
-                    , (size_t) 1
-                    , std::multiplies<size_t>());
+            std::for_each(splitDimensions.begin(), splitDimensions.end(), [](auto &dim) { dim = 2 * dim; });
             auto tensorSplit = storageManager
-                    ->create_uninitialized_tensor_ranked_typed<RuleTensorRaw<double, rule_rank>>(
-                            memory
-                            , splitDimenions
-                    );
+                    ->create_uninitialized_tensor_ranked_typed<RuleTensorRaw<double, rule_rank>>(splitDimensions);
             tensorSplit = tensorRaw.broadcast(broadcast);
             tensorSplit = tensorSplit.unaryExpr([this](double x) { return x * rand_split(); });
             return tensorSplit;
@@ -113,7 +109,7 @@ namespace Trainer {
     };
 
     template<typename Nonterminal, typename TraceID>
-    class MergePreparator;
+    class DefaultMergePreparator;
 
     class Merger {
         std::shared_ptr<const GrammarInfo2> grammarInfo;
@@ -121,9 +117,11 @@ namespace Trainer {
         const bool debug;
 
     public:
-        Merger(std::shared_ptr<const GrammarInfo2> grammarInfo
-               , std::shared_ptr<StorageManager> storageManager
-               , bool debug=false)
+        Merger(
+                std::shared_ptr<const GrammarInfo2> grammarInfo
+                , std::shared_ptr<StorageManager> storageManager
+                , bool debug = false
+        )
                 : grammarInfo(grammarInfo), storageManager(storageManager), debug(debug) {}
 
         LatentAnnotation merge(const LatentAnnotation &la, const MergeInfo &mergeInfo) {
@@ -138,19 +136,19 @@ namespace Trainer {
             if (debug) std::cerr << "root weights " << rootWeights << std::endl;
 
             // rule weights
-            std::vector<RuleTensor<double>> ruleWeights;
+            auto ruleWeights = std::make_unique<std::vector<RuleTensor<double>>>();
             for (size_t rule_id = 0; rule_id < grammarInfo->rule_to_nonterminals.size(); ++rule_id) {
                 RuleTensor<double> merged_tensor = storageManager->create_uninitialized_tensor(
                         rule_id
                         , *grammarInfo
                         , mergeInfo.nontSplitsAfterMerge
                 );
-                merge_tensor(merged_tensor, la.ruleWeights[rule_id], rule_id, mergeInfo);
+                merge_tensor(merged_tensor, (*la.ruleWeights)[rule_id], rule_id, mergeInfo);
                 if (debug) std::cerr << rule_id << " " << merged_tensor << std::endl;
-                ruleWeights.push_back(std::move(merged_tensor));
+                ruleWeights->push_back(std::move(merged_tensor));
             }
 
-            return LatentAnnotation(mergeInfo.nontSplitsAfterMerge, rootWeights, ruleWeights);
+            return LatentAnnotation(mergeInfo.nontSplitsAfterMerge, std::move(rootWeights), std::move(ruleWeights));
         }
 
     private:
@@ -188,7 +186,7 @@ namespace Trainer {
             auto &mergedTensorRaw = boost::get<RuleTensorRaw<double, rank>>(mergedTensor);
             const auto &sourceTensorRaw = boost::get<RuleTensorRaw<double, rank>>(sourceTensor);
 
-            for (TensorIterator<rank> tensorIteraror{&mergedTensorRaw};
+            for (TensorIteratorLowToHigh<rank> tensorIteraror{&mergedTensorRaw};
                  tensorIteraror != tensorIteraror.end(); ++tensorIteraror) {
                 *tensorIteraror = 0;
                 for (MergeIterator<rank, true> mergeIterator(
@@ -204,11 +202,70 @@ namespace Trainer {
         }
     };
 
+    class MergePreparator {
+        std::shared_ptr<const GrammarInfo2> grammarInfo;
+        const bool debug;
+
+    protected:
+        // evaluate Δ and build MergeInfo accordingly
+        MergeInfo build_merge_info(
+                const std::vector<std::vector<double>> &&merge_factors
+                , const double merge_threshold
+                , const std::vector<std::vector<double>> &merge_delta
+                , const std::vector<size_t> &nontSplits
+        ) {
+            std::vector<std::vector<std::vector<size_t>>> mergeSelection;
+            std::vector<size_t> nontSplitsAfterMerge;
+            unsigned nont = 0;
+            unsigned merges = 0;
+            unsigned splits = 0;
+
+            if (debug) std::cerr << "merge deltas: ";
+            for (const auto &delta : merge_delta) {
+                if (debug) std::cerr << " { ";
+                mergeSelection.push_back(std::vector<std::vector<size_t >>());
+                const size_t halfSplits = nontSplits[nont] / 2;
+                for (size_t split = 0; split < halfSplits; ++split) {
+                    if (debug) std::cerr << delta[split] << " ";
+                    if (delta[split] >= merge_threshold - 0.00001
+                        // always merge if Δ >= 1
+                        || delta[split] >= 1 - 0.00001
+                        // always merge initial symbol
+                        || grammarInfo->start == nont) {
+                        mergeSelection.back().emplace_back();
+                        mergeSelection.back().back().push_back(split);
+                        mergeSelection.back().back().push_back(split + halfSplits);
+                        ++merges;
+                    } else {
+                        mergeSelection.back().emplace_back(1, split);
+                        mergeSelection.back().emplace_back(1, split + halfSplits);
+                        ++splits;
+                    }
+                }
+                if (debug) std::cerr << " } ";
+                ++nont;
+                nontSplitsAfterMerge.push_back(mergeSelection.back().size());
+            }
+            if (debug) std::cerr << std::endl;
+
+            std::cerr << "Merging " << merges << " of " << merges + splits << " splits. Merge threshold is "
+                      << merge_threshold << std::endl;
+
+            return MergeInfo(std::move(mergeSelection), std::move(nontSplitsAfterMerge), std::move(merge_factors));
+        }
+
+    public:
+        MergePreparator(std::shared_ptr<const GrammarInfo2> grammarInfo, bool debug = false)
+                : grammarInfo(grammarInfo), debug(debug) {}
+
+        virtual MergeInfo merge_prepare(const LatentAnnotation &latentAnnotation) = 0;
+    };
+
     template<typename Nonterminal, typename TraceID>
     class SplitMergeTrainer {
         std::shared_ptr<EMTrainerLA> emTrainer;
         std::shared_ptr<Splitter> splitter;
-        std::shared_ptr<MergePreparator<Nonterminal, TraceID>> mergePreparator;
+        std::shared_ptr<MergePreparator> mergePreparator;
         std::shared_ptr<Merger> merger;
         const bool debug;
 
@@ -216,31 +273,50 @@ namespace Trainer {
         SplitMergeTrainer(
                 std::shared_ptr<EMTrainerLA> emTrainer
                 , std::shared_ptr<Splitter> splitter
-                , std::shared_ptr<MergePreparator<Nonterminal, TraceID>> mergePreparator
+                , std::shared_ptr<MergePreparator> mergePreparator
                 , std::shared_ptr<Merger> merger
                 , bool debug = false
         ) : emTrainer(emTrainer), splitter(splitter), mergePreparator(mergePreparator), merger(merger), debug(debug) {}
 
-        LatentAnnotation split_merge_cycle(LatentAnnotation la) {
-            auto laSplit = splitter->split(la);
+        LatentAnnotation split_merge_cycle(const LatentAnnotation &la) {
+            if (debug) {
+                std::cerr << *(splitter->grammarInfo) << std::endl;
+
+                std::cerr << "nonterminal splits: ";
+                for (auto nont : la.nonterminalSplits)
+                    std::cerr << nont << " ";
+                std::cerr << std::endl;
+                std::cerr << "rules weights at begin of SM cycle" << std::endl;
+                size_t rule_id{0};
+                for (const auto &ruleTensor : *la.ruleWeights) {
+                    std::cerr << "rule " << rule_id << ":  ";
+                    for (auto nont : splitter->grammarInfo->rule_to_nonterminals[rule_id])
+                        std::cerr << nont << " ";
+                    std::cerr << std::endl << ruleTensor << std::endl;
+                    ++rule_id;
+                }
+                std::cerr << std::endl;
+            }
+
+            LatentAnnotation laSplit{splitter->split(la)};
             emTrainer->train(laSplit);
-            auto mergeInfo = mergePreparator->mergePrepare(laSplit);
+            auto mergeInfo = mergePreparator->merge_prepare(laSplit);
 
             if (debug) {
                 std::cerr << mergeInfo;
                 std::cerr << "rules weights before merge" << std::endl;
                 size_t rule_id{0};
-                for (auto ruleTensor : laSplit.ruleWeights) {
+                for (const auto &ruleTensor : *laSplit.ruleWeights) {
                     std::cerr << "rule " << rule_id << std::endl << ruleTensor << std::endl;
                     ++rule_id;
                 }
             }
 
-            auto laMerged = merger->merge(laSplit, mergeInfo);
+            LatentAnnotation laMerged{merger->merge(laSplit, mergeInfo)};
 
             if (debug) {
                 size_t rule_id{0};
-                for (const RuleTensor<double> ruleTensor : laMerged.ruleWeights) {
+                for (const RuleTensor<double> &ruleTensor : *laMerged.ruleWeights) {
                     std::cerr << "rule " << rule_id << std::endl << ruleTensor << std::endl;
                     ++rule_id;
                 }
@@ -251,30 +327,54 @@ namespace Trainer {
 
     };
 
+    /**
+     * Merges none of the splits, expect for start symbol whose splits are always merged.
+     */
+    class MergeNothingMergePreparator : public MergePreparator {
+    public:
+        MergeNothingMergePreparator(std::shared_ptr<const GrammarInfo2> grammarInfo, bool debug=false)
+                : MergePreparator(grammarInfo, debug) {};
+
+        MergeInfo merge_prepare(const LatentAnnotation &latentAnnotation) {
+            std::vector<std::vector<double>> mergeFactors;
+            std::vector<std::vector<double>> mergeDelta;
+
+            for (auto splits : latentAnnotation.nonterminalSplits) {
+                mergeFactors.emplace_back(splits, 0.5);
+                mergeDelta.emplace_back(splits / 2, 0.4);
+            }
+
+            double merge_threshold = 0.5;
+
+            return build_merge_info(
+                    std::move(mergeFactors)
+                    , merge_threshold
+                    , mergeDelta
+                    , latentAnnotation.nonterminalSplits
+            );
+        }
+    };
+
     template<typename Nonterminal, typename TraceID>
-    class MergePreparator {
+    class DefaultMergePreparator : public MergePreparator {
         using TraceIterator = ConstManagerIterator<Trace<Nonterminal, TraceID>>;
 
         const TraceManagerPtr<Nonterminal, EdgeLabelT> traceManager;
         std::shared_ptr<StorageManager> storageManager;
-        std::shared_ptr<const GrammarInfo2> grammarInfo;
 
-        const bool debug;
         std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesInsideWeights;
         std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesOutsideWeights;
 
     public:
-        MergePreparator(
+        DefaultMergePreparator(
                 TraceManagerPtr<Nonterminal, EdgeLabelT> traceManager
                 , std::shared_ptr<StorageManager> storageManager
                 , std::shared_ptr<const GrammarInfo2> grammarInfo
                 , bool debug = false
         )
-                : traceManager(traceManager), storageManager(storageManager), grammarInfo(grammarInfo), debug(debug) {}
+                : MergePreparator(grammarInfo, debug), traceManager(traceManager), storageManager(storageManager) {}
 
-        MergeInfo mergePrepare(const LatentAnnotation latentAnnotation) {
-
-
+        MergeInfo merge_prepare(const LatentAnnotation &latentAnnotation) {
             std::vector<WeightVector> nonterminalFrequencies;
             for (size_t nont = 0; nont < latentAnnotation.nonterminalSplits.size(); ++nont) {
                 WeightVector mw
@@ -352,7 +452,7 @@ namespace Trainer {
                 }
 
                 traceIterator->io_weights_la(
-                        latentAnnotation.ruleWeights
+                        *latentAnnotation.ruleWeights
                         , latentAnnotation.rootWeights
                         , tracesInsideWeights[traceIterator - traceManager->cbegin()]
                         , tracesOutsideWeights[traceIterator - traceManager->cbegin()]
@@ -400,6 +500,11 @@ namespace Trainer {
             return p;
         }
 
+        /**
+         * Compute merge-Δ for each split. This is an approximation of likelihood after merge
+         * divided by likelihood before merge.
+         * Splits with high merge-Δ should be merged, splits with low merge-Δ should be kept.
+         */
         inline void computeMergeDeltas(
                 const TraceIterator start
                 , const TraceIterator stop
@@ -425,8 +530,8 @@ namespace Trainer {
                     const size_t nontDim = nontDimensions[nont];
                     const size_t halfDim = nontDim / 2;
 
-                    const auto & insideWeight = insideWeights.at(node);
-                    const auto & outsideWeight = outsideWeights.at(node);
+                    const auto &insideWeight = insideWeights.at(node);
+                    const auto &outsideWeight = outsideWeights.at(node);
 
                     prefixSums.resize(halfDim, 0.0);
                     postfixSums.resize(halfDim, 0.0);
@@ -496,57 +601,13 @@ namespace Trainer {
         }
 
         virtual double computeMergeThreshold(const std::vector<std::vector<double>> &mergeDelta) = 0;
-
-        // evaluate Δ and build MergeInfo accordingly
-        MergeInfo build_merge_info(
-                const std::vector<std::vector<double>> &&merge_factors
-                , const double merge_threshold
-                , const std::vector<std::vector<double>> &merge_delta
-                , const std::vector<size_t> &nontSplits
-        ) {
-            std::vector<std::vector<std::vector<size_t>>> mergeSelection;
-            std::vector<size_t> nontSplitsAfterMerge;
-            unsigned nont = 0;
-            unsigned merges = 0;
-            unsigned splits = 0;
-
-            if (debug) std::cerr << "merge deltas: ";
-            for (const auto &delta : merge_delta) {
-                if (debug) std::cerr << " { ";
-                mergeSelection.push_back(std::vector<std::vector<size_t >>());
-                const size_t halfSplits = nontSplits[nont] / 2;
-                for (size_t split = 0; split < halfSplits; ++split) {
-                    if (debug) std::cerr << delta[split] << " ";
-                    if (delta[split] >= merge_threshold - 0.00001
-                        // always merge if Δ >= 1
-                        || delta[split] >= 1 - 0.00001
-                        // always merge initial symbol
-                        || grammarInfo->start == nont) {
-                        mergeSelection.back().emplace_back();
-                        mergeSelection.back().back().push_back(split);
-                        mergeSelection.back().back().push_back(split + halfSplits);
-                        ++merges;
-                    } else {
-                        mergeSelection.back().emplace_back(1, split);
-                        mergeSelection.back().emplace_back(1, split + halfSplits);
-                        ++splits;
-                    }
-                }
-                if (debug) std::cerr << " } ";
-                ++nont;
-                nontSplitsAfterMerge.push_back(mergeSelection.back().size());
-            }
-            if (debug) std::cerr << std::endl;
-
-            std::cerr << "Merging " << merges << " of " << merges + splits << " splits. Merge threshold is "
-                      << merge_threshold << std::endl;
-
-            return MergeInfo(std::move(mergeSelection), std::move(nontSplitsAfterMerge), std::move(merge_factors));
-        }
     };
 
+    /**
+     * Merge all splits, where merge-Δ is above given threshold.
+     */
     template<typename Nonterminal, typename TraceID>
-    class ThresholdMergePreparator : public MergePreparator<Nonterminal, TraceID> {
+    class ThresholdMergePreparator : public DefaultMergePreparator<Nonterminal, TraceID> {
         const double merge_threshold;
 
     public:
@@ -557,7 +618,7 @@ namespace Trainer {
                 , double merge_threshold
                 , bool debug = false
         )
-                : MergePreparator<Nonterminal, TraceID>(traceManager, storageManager, grammarInfo, debug),
+                : DefaultMergePreparator<Nonterminal, TraceID>(traceManager, storageManager, grammarInfo, debug),
                   merge_threshold(merge_threshold) {}
 
     protected:
@@ -569,8 +630,11 @@ namespace Trainer {
         }
     };
 
+    /**
+     * Merges the first mergePercent % of splits ordered by merge-Δ in descending order.
+     */
     template<typename Nonterminal, typename TraceID>
-    class PercentMergePreparator : public MergePreparator<Nonterminal, TraceID> {
+    class PercentMergePreparator : public DefaultMergePreparator<Nonterminal, TraceID> {
         const double mergePercent;
 
     public:
@@ -580,8 +644,8 @@ namespace Trainer {
                 , std::shared_ptr<const GrammarInfo2> grammarInfo
                 , double mergePercent
                 , bool debug = false
-        ) : MergePreparator<Nonterminal, TraceID>(traceManager, storageManager, grammarInfo, debug)
-                , mergePercent(mergePercent) {}
+        ) : DefaultMergePreparator<Nonterminal, TraceID>(traceManager, storageManager, grammarInfo, debug),
+            mergePercent(mergePercent) {}
 
     protected:
         double computeMergeThreshold(const std::vector<std::vector<double>> &mergeDelta) {

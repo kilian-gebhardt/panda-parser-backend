@@ -10,12 +10,17 @@
 #include <boost/variant.hpp>
 #include <vector>
 #include <cstddef>
+#include <unordered_map>
+
 
 namespace Trainer {
+    template<typename T1, typename T2>
+    using MAPTYPE = typename std::unordered_map<T1, T2>;
+
 //    using WeightVector = Eigen::TensorMap<Eigen::Tensor<double, 1>>;
     using WeightVector = Eigen::Tensor<double, 1>;
 
-    template <typename Scalar, long rank>
+    template<typename Scalar, long rank>
     //using RuleTensorRaw = Eigen::TensorMap<Eigen::Tensor<Scalar, rank>>;
     using RuleTensorRaw = Eigen::Tensor<Scalar, rank>;
 
@@ -28,18 +33,7 @@ namespace Trainer {
             , RuleTensorRaw<Scalar, 5>
             , RuleTensorRaw<Scalar, 6>
             , RuleTensorRaw<Scalar, 7>
-           >;
-
-    struct LatentAnnotation {
-        const std::vector<std::size_t> nonterminalSplits;
-        WeightVector rootWeights;
-        std::vector<RuleTensor<double>> ruleWeights;
-        LatentAnnotation(
-                const std::vector<size_t> nonterminalSplits
-                , WeightVector rootWeights
-                , std::vector<RuleTensor<double>> ruleWeights
-        ) : nonterminalSplits(nonterminalSplits) , rootWeights(rootWeights), ruleWeights(ruleWeights) {};
-    };
+    >;
 
     struct MergeInfo {
         const std::vector<std::vector<std::vector<std::size_t >>> mergeSources;
@@ -53,7 +47,7 @@ namespace Trainer {
         ) : mergeSources(mergeSources), nontSplitsAfterMerge(nontSplitsAfterMerge), mergeFactors(mergeFactors) {}
     };
 
-    std::ostream &operator<<(std::ostream &os, const MergeInfo & mergeInfo) {
+    std::ostream &operator<<(std::ostream &os, const MergeInfo &mergeInfo) {
         os << "Merge Info: " << std::endl << "Merge factors: " << std::endl;
         {
             size_t nont = 0;
@@ -65,7 +59,7 @@ namespace Trainer {
                 ++nont;
             }
         }
-        os<< std::endl << "Merge sources: " << std::endl;
+        os << std::endl << "Merge sources: " << std::endl;
         {
             size_t nont = 0;
             for (auto nont_split : mergeInfo.mergeSources) {
@@ -114,9 +108,10 @@ namespace Trainer {
     }
 
     template<long rank, typename VECTOR>
-    inline void normalize_ranked(RuleTensor<double> &normalized, const RuleTensor<double> &unnormalized, const VECTOR &normalizer) {
-        auto &raw_normalized = boost::get<RuleTensorRaw <double, rank>>(normalized);
-        auto &raw_unnormalized = boost::get<RuleTensorRaw <double, rank>>(unnormalized);
+    inline void
+    normalize_ranked(RuleTensor<double> &normalized, const RuleTensor<double> &unnormalized, const VECTOR &normalizer) {
+        auto &raw_normalized = boost::get<RuleTensorRaw<double, rank>>(normalized);
+        const auto &raw_unnormalized = boost::get<RuleTensorRaw<double, rank>>(unnormalized);
 
         for (unsigned idx = 0; idx < normalizer.dimension(0); ++idx)
             if (not std::isnan(normalizer(idx))
@@ -132,7 +127,8 @@ namespace Trainer {
     };
 
     template<typename VECTOR>
-    inline void normalize(RuleTensor<double> &normalized, const RuleTensor<double> &unnormalized, const VECTOR &normalizer) {
+    inline void
+    normalize(RuleTensor<double> &normalized, const RuleTensor<double> &unnormalized, const VECTOR &normalizer) {
         switch (unnormalized.which() + 1) {
             case 1:
                 normalize_ranked<1>(normalized, unnormalized, normalizer);
@@ -153,52 +149,61 @@ namespace Trainer {
 
     template<int rule_rank>
     inline void set_zero_ranked(
-            RuleTensor<double> & ruleTensor
+            RuleTensor<double> &ruleTensor
     ) {
         boost::get<RuleTensorRaw<double, rule_rank>>(ruleTensor).setZero();
     }
 
-    inline void set_zero(RuleTensor<double> & ruleTensor) {
+    inline void set_zero(RuleTensor<double> &ruleTensor) {
         switch (ruleTensor.which() + 1) {
-            case 1: set_zero_ranked<1>(ruleTensor); break;
-            case 2: set_zero_ranked<2>(ruleTensor); break;
-            case 3: set_zero_ranked<3>(ruleTensor); break;
-            case 4: set_zero_ranked<4>(ruleTensor); break;
-            default: abort();
+            case 1:
+                set_zero_ranked<1>(ruleTensor);
+                break;
+            case 2:
+                set_zero_ranked<2>(ruleTensor);
+                break;
+            case 3:
+                set_zero_ranked<3>(ruleTensor);
+                break;
+            case 4:
+                set_zero_ranked<4>(ruleTensor);
+                break;
+            default:
+                abort();
         }
     }
 
     template<unsigned rank, bool isConst = false>
-    class TensorIterator {
-    private:
+    class TensorIteratorLowToHigh {
+    protected:
         Eigen::array<Eigen::DenseIndex, rank> index;
-        RuleTensorRaw <double, rank> *tensor;
+        RuleTensorRaw<double, rank> *tensor;
     public:
         using value_type = typename std::conditional<isConst, const double, double>::type;
         using pointer = typename std::conditional<isConst, const double *, double *>::type;
         using reference = typename std::conditional<isConst, const double &, double &>::type;
         using iterator_category = std::forward_iterator_tag;
 
-        TensorIterator() : tensor(nullptr) { std::fill(index.begin(), index.end(), 0); }
+        TensorIteratorLowToHigh() : tensor(nullptr) { std::fill(index.begin(), index.end(), 0); }
 
-        TensorIterator(RuleTensorRaw <double, rank> *tensor) : tensor(tensor) {
+        TensorIteratorLowToHigh(RuleTensorRaw<double, rank> *tensor) : tensor(tensor) {
             std::fill(index.begin(), index.end(), 0);
         }
 
-        TensorIterator(
+        TensorIteratorLowToHigh(
                 RuleTensorRaw<double, rank> *tensor
                 , Eigen::array<Eigen::DenseIndex, rank> index
         ) : index(index), tensor(tensor) {}
 
-        bool operator==(const TensorIterator<rank, isConst> &other) const { return index == other.index; }
+        bool operator==(const TensorIteratorLowToHigh<rank, isConst> &other) const { return index == other.index; }
 
-        bool operator!=(const TensorIterator<rank, isConst> &other) const { return !(*this == other); }
+        bool operator!=(const TensorIteratorLowToHigh<rank, isConst> &other) const { return !(*this == other); }
 
         reference operator*() { return (*tensor)(index); }
 
         pointer operator->() { return &((*tensor)(index)); }
 
-        TensorIterator<rank, isConst> &operator++() {
+        TensorIteratorLowToHigh<rank, isConst> &operator++() {
             size_t idx = 0;
             const auto &dimensions = tensor->dimensions();
             while (idx < rank) {
@@ -215,25 +220,81 @@ namespace Trainer {
             return *this;
         }
 
-        TensorIterator<rank, isConst> end() const {
-            return TensorIterator<rank, isConst>(tensor, tensor->dimensions());
+        TensorIteratorLowToHigh<rank, isConst> end() const {
+            return TensorIteratorLowToHigh<rank, isConst>(tensor, tensor->dimensions());
         };
 
         const Eigen::array<Eigen::DenseIndex, rank> &get_index() {
             return index;
         };
-//
-//        friend class TensorIterator<rank, true>;
-//        friend class TensorIterator<rank, false>;
     };
 
+    template<unsigned rank, bool isConst = false>
+    class TensorIteratorHighToLow {
+    protected:
+        Eigen::array<Eigen::DenseIndex, rank> index;
+        RuleTensorRaw<double, rank> *tensor;
+    public:
+        using value_type = typename std::conditional<isConst, const double, double>::type;
+        using difference_type = void;
+        using pointer = typename std::conditional<isConst, const double *, double *>::type;
+        using reference = typename std::conditional<isConst, const double &, double &>::type;
+        using iterator_category = std::forward_iterator_tag;
+
+        TensorIteratorHighToLow() : tensor(nullptr) { std::fill(index.begin(), index.end(), 0); }
+
+        TensorIteratorHighToLow(RuleTensorRaw<double, rank> *tensor) : tensor(tensor) {
+            std::fill(index.begin(), index.end(), 0);
+        }
+
+        TensorIteratorHighToLow(
+                RuleTensorRaw<double, rank> *tensor
+                , const Eigen::array<Eigen::DenseIndex, rank> & index
+        ) : index(index), tensor(tensor) {}
+
+        bool operator==(const TensorIteratorHighToLow<rank, isConst> &other) const { return index == other.index; }
+
+        bool operator!=(const TensorIteratorHighToLow<rank, isConst> &other) const { return !(*this == other); }
+
+        reference operator*() { return (*tensor)(index); }
+
+        pointer operator->() { return &((*tensor)(index)); }
+
+        TensorIteratorHighToLow<rank, isConst> &operator++() {
+            size_t idx {rank - 1};
+            const auto &dimensions = tensor->dimensions();
+            while (true) {
+                if (index[idx] + 1 < dimensions[idx]) {
+                    ++index[idx];
+                    break;
+                } else {
+                    index[idx] = 0;
+                    if (idx == 0) {
+                        index = dimensions;
+                        return *this;
+                    }
+                    else
+                        --idx;
+                }
+            }
+            return *this;
+        }
+
+        TensorIteratorHighToLow<rank, isConst> end() const {
+            return TensorIteratorHighToLow<rank, isConst>(tensor, tensor->dimensions());
+        };
+
+        const Eigen::array<Eigen::DenseIndex, rank> &get_index() {
+            return index;
+        };
+    };
 
     template<unsigned rank, bool isConst = false>
     class MergeIterator {
     private:
-        const RuleTensorRaw <double, rank> *tensor;
+        const RuleTensorRaw<double, rank> *tensor;
         const MergeInfo *mergeInfo;
-        const std::vector<std::vector<size_t>> * rule_to_nonterminals;
+        const std::vector<std::vector<size_t>> *rule_to_nonterminals;
         size_t ruleId;
         const Eigen::array<Eigen::DenseIndex, rank> *goalIndex;
         std::array<unsigned, rank> hopIndex;
@@ -259,7 +320,9 @@ namespace Trainer {
                 , const Eigen::array<Eigen::DenseIndex, rank> *goal_index
                 , const MergeInfo *mergeInfo
                 , const std::vector<std::vector<size_t>> *rule_to_nonterminals
-        ) : tensor(tensor), mergeInfo(mergeInfo), rule_to_nonterminals(rule_to_nonterminals), ruleId(rule_id), goalIndex(goal_index) {
+        )
+                : tensor(tensor), mergeInfo(mergeInfo), rule_to_nonterminals(rule_to_nonterminals), ruleId(rule_id),
+                  goalIndex(goal_index) {
             std::fill(hopIndex.begin(), hopIndex.end(), 0);
             for (size_t idx = 0; idx < rank; ++idx) {
                 sourceIndex[idx] = (mergeInfo->mergeSources)
@@ -282,7 +345,7 @@ namespace Trainer {
 
         bool operator==(const MergeIterator<rank, isConst> &other) const { return sourceIndex == other.sourceIndex; }
 
-        bool operator!=(const MergeIterator<rank, isConst> &other) const { return not (*this == other); }
+        bool operator!=(const MergeIterator<rank, isConst> &other) const { return not(*this == other); }
 
         reference operator*() { return (*tensor)(sourceIndex); }
 
