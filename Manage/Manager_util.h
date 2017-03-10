@@ -19,7 +19,7 @@ namespace Manage {
     }
 
 
-    void deserialize_string_or_size_t(std::istream &in, std::string& str) {
+    void deserialize_string_or_size_t(std::istream& in, std::string& str) {
         size_t len;
         char sep;
         in >> len;  //deserialize size of string
@@ -32,7 +32,7 @@ namespace Manage {
     }
 
 
-    void deserialize_string_or_size_t(std::istream &in, size_t s){
+    void deserialize_string_or_size_t(std::istream& in, size_t& s){
         in >> s;
     }
 
@@ -42,10 +42,11 @@ namespace Manage {
             (std::is_same<T1, std::string>::value || std::is_same<T1, size_t>::value)
             , void
             >
-    serialize_labels(std::ostream &out, const std::vector<T1>& labels) {
+    serialize_labels(std::ostream& out, const std::vector<T1>& labels) {
         out << labels.size() << ';';
         for(auto const& label : labels) {
             serialize_string_or_size_t(out, label);
+            out << ";";
         }
     }
 
@@ -60,11 +61,13 @@ namespace Manage {
         std::string str;
         std::vector<T1> result;
         char sep;
+
         in >> noOfLabels;
         in >> sep;
-        for(size_t i=0; i < noOfLabels; ++i) {
+        for(size_t i = 0; i < noOfLabels; ++i) {
             deserialize_string_or_size_t(in, label);
-            result.emplace_back(label);
+            in >> sep;
+            result.push_back(label);
         }
         return result;
     }

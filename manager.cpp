@@ -85,7 +85,10 @@ int main() {
         Trainer::TraceManagerPtr<std::string, std::string> tm2 = Trainer::TraceManager2<std::string
                                                                                         , std::string
         >::deserialize(in);
-        std::clog << "Read in TraceManager with Trace#: " << tm2->size();
+        std::clog << "Read in TraceManager with Trace#: " << tm2->size() << "and Trace 1 contrains " << (*tm2)[0].get_hypergraph()->size();
+
+        tm2->serialize(std::cout);
     }
+
 
 }

@@ -270,7 +270,7 @@ namespace Manage {
             o << "NodeLabels:" << std::endl;
             serialize_labels<NodeLabelT>(o, nodeLabels);
             o << std::endl;
-            o << "EdgeLabels: " << std::endl;
+            o << "EdgeLabels:" << std::endl;
             serialize_labels<EdgeLabelT>(o, edgeLabels);
             o << std::endl;
 
@@ -303,23 +303,27 @@ namespace Manage {
                 throw std::string("Version Mismatch for Manager");
 
             std::getline(in, line); // read: "NodeLabels:"
+            if(line != "NodeLabels:")
+                throw std::string("Unexpected line '" + line + "' expected 'NodeLabels:'");
             std::vector<NodeLabelT> nodeLs;
             nodeLs = deserialize_labels<NodeLabelT>(in);
 
+            std::getline(in, line); // end the current line
             std::getline(in, line); // read: "EdgeLabels:"
+            if(line != "EdgeLabels:")
+                throw std::string("Unexpected line '" + line + "' expected 'EdgeLabels:'");
             std::vector<EdgeLabelT> edgeLs;
             edgeLs = deserialize_labels<EdgeLabelT>(in);
 
 
-            int noItems;
+            size_t noItems;
             in >> noItems;
             std::getline(in, line);
-            if(line != "Nodes:")
-//                throw std::string("Unexpected line '" + line + "' expected ' Nodes:'");
-                std::cerr << "Getting " << line << std::endl;
-            HypergraphPtr<NodeLabelT, EdgeLabelT> hypergraph = std::make_shared<Hypergraph>(nodeLs, edgeLs);
+            if(line != " Nodes:")
+                throw std::string("Unexpected line '" + line + "' expected ' Nodes:'");
+            HypergraphPtr<NodeLabelT, EdgeLabelT> hypergraph = std::make_shared<Hypergraph<NodeLabelT, EdgeLabelT>>(nodeLs, edgeLs);
 
-            for(int i = 0; i < noItems; ++i){
+            for(size_t i = 0; i < noItems; ++i){
                 Node<NodeLabelT> node = Node<NodeLabelT>::deserialize(in, i, hypergraph);
                 hypergraph->create(node.get_label()); // todo: add it directly?
             }
@@ -328,9 +332,8 @@ namespace Manage {
             in >> noItems;
             std::getline(in, line);
             if(line != " Edges:")
-//                throw std::string("Unexpected line '" + line + "' expected ' Edges:'");
-                std::cerr << "Getting " << line << std::endl;
-            for(int i = 0; i < noItems; ++i){
+                throw std::string("Unexpected line '" + line + "' expected ' Edges:'");
+            for(size_t i = 0; i < noItems; ++i){
                 HyperEdge<Node<NodeLabelT>, EdgeLabelT> edge =
                         HyperEdge<Node<NodeLabelT>, EdgeLabelT>::deserialize(in, i, hypergraph->edges, hypergraph);
                 hypergraph->add_hyperedge(edge.get_label(), edge.get_target(), edge.get_sources());
