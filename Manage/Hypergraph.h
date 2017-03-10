@@ -167,7 +167,7 @@ namespace Manage {
             in >> lID;
             in >> sep;
             deserialize_string_or_size_t(in, l);
-            return Node<std::string>(id, man, l, lID);
+            return Node<LabelT>(id, man, l, lID);
         }
 
     };
