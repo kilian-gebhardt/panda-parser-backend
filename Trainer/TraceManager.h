@@ -13,10 +13,12 @@
 #include "TrainingCommon.h"
 #include <set>
 #include <iostream>
+#include <fstream>
 
 namespace Trainer {
     template<typename Nonterminal, typename TraceID>
     class TraceManager2;
+
     template<typename Nonterminal, typename TraceID>
     using TraceManagerPtr = std::shared_ptr<TraceManager2<Nonterminal, TraceID>>;
 
@@ -438,15 +440,12 @@ namespace Trainer {
         }
 
 
-
-
-
         // Serialization works for LabelT of std::string and size_t
         template<typename T = oID>
         typename std::enable_if_t<
                 std::is_same<T, std::string>::value || std::is_same<T, size_t>::value
                 , void
-        >
+                                 >
         serialize(std::ostream &out) const {
             Manage::serialize_string_or_size_t(out, originalID);
             out << ";" << goal;
@@ -460,7 +459,7 @@ namespace Trainer {
         typename std::enable_if_t<
                 std::is_same<T, std::string>::value || std::is_same<T, size_t>::value
                 , Trace<Nonterminal, oID>
-        >
+                                 >
         deserialize(std::istream &in, Manage::ID id, TraceManagerPtr<Nonterminal, oID> man) {
             oID l;
             char sep;
@@ -505,15 +504,15 @@ namespace Trainer {
 
         // todo: Hook on create?
 
-        const std::shared_ptr<const std::vector<Nonterminal>>& get_node_labels() const {
+        const std::shared_ptr<const std::vector<Nonterminal>> &get_node_labels() const {
             return nodeLabels;
         }
 
-        const std::shared_ptr<const std::vector<EdgeLabelT>>& get_edge_labels() const {
+        const std::shared_ptr<const std::vector<EdgeLabelT>> &get_edge_labels() const {
             return edgeLabels;
         }
 
-        void serialize(std::ostream& o) {
+        void serialize(std::ostream &o) {
             o << "TraceManager Version 1" << std::endl;
 
             o << "NodeLabels:" << std::endl;
@@ -524,26 +523,26 @@ namespace Trainer {
             o << std::endl;
 
             o << Manager<Trace<Nonterminal, TraceID>>::size() << " Traces:" << std::endl;
-            for(const auto& trace : *this) {
+            for (const auto &trace : *this) {
                 trace->serialize(o);
             }
         }
 
-        static TraceManagerPtr<Nonterminal, TraceID> deserialize(std::istream& in){
+        static TraceManagerPtr<Nonterminal, TraceID> deserialize(std::istream &in) {
             std::string line;
             std::getline(in, line);
-            if(line != "TraceManager Version 1")
+            if (line != "TraceManager Version 1")
                 throw std::string("Version Mismatch for TraceManager");
 
             std::getline(in, line); // read: "NodeLabels:"
-            if(line != "NodeLabels:")
+            if (line != "NodeLabels:")
                 throw std::string("Unexpected line '" + line + "' expected 'NodeLabels:'");
             std::vector<Nonterminal> nodeLs;
             nodeLs = Manage::deserialize_labels<Nonterminal>(in);
 
             std::getline(in, line); // end the current line
             std::getline(in, line); // read: "EdgeLabels:"
-            if(line != "EdgeLabels:")
+            if (line != "EdgeLabels:")
                 throw std::string("Unexpected line '" + line + "' expected 'EdgeLabels:'");
             std::vector<EdgeLabelT> edgeLs;
             edgeLs = Manage::deserialize_labels<EdgeLabelT>(in);
@@ -551,7 +550,7 @@ namespace Trainer {
             int noItems;
             in >> noItems;
             std::getline(in, line);
-            if(line != " Traces:")
+            if (line != " Traces:")
                 throw std::string("Unexpected line '" + line + "' expected ' Traces'");
 
             TraceManagerPtr<Nonterminal, TraceID> traceManager = std::make_shared<TraceManager2<Nonterminal, TraceID>>(
@@ -559,18 +558,13 @@ namespace Trainer {
                     , std::make_shared<std::vector<EdgeLabelT >>(edgeLs)
             );
 
-            for(int i = 0; i < noItems; ++i){
-                Trace<Nonterminal, TraceID> trace { Trace<Nonterminal, TraceID>::deserialize(in, i, traceManager)};
+            for (int i = 0; i < noItems; ++i) {
+                Trace<Nonterminal, TraceID> trace{Trace<Nonterminal, TraceID>::deserialize(in, i, traceManager)};
                 traceManager->create(trace.get_original_id(), trace.get_hypergraph(), trace.get_goal());
             }
 
             return traceManager;
         }
-
-
-
-
-
 
 
         // Functions for Cython interface
@@ -628,9 +622,41 @@ namespace Trainer {
 
 
     template<typename Nonterminal, typename TraceID>
-    TraceManagerPtr<Nonterminal, TraceID> build_trace_manager_ptr(bool debug=false) {
-        return std::make_shared<TraceManager2<Nonterminal, TraceID>>(debug);
-    };
+    TraceManagerPtr<Nonterminal, TraceID> build_trace_manager_ptr(
+            std::shared_ptr<std::vector<Nonterminal>> nLabels
+            , std::shared_ptr<std::vector<EdgeLabelT>> eLabels
+            , bool debug = false
+    ) {
+        return std::make_shared<TraceManager2<Nonterminal, TraceID>>(nLabels, eLabels, debug);
+    }
+
+    template <typename Nonterminal, typename TraceID>
+    void serialize_trace(TraceManagerPtr<Nonterminal, TraceID> traceManager, const std::string & path) {
+        std::filebuf fb;
+        if (fb.open(path, std::ios::out)) {
+            std::ostream out(&fb);
+            traceManager->serialize(out);
+            fb.close();
+        } else {
+            std::clog << "Error writing file: \'" << path << "\'" << std::endl;
+        }
+    }
+
+    template <typename Nonterminal, typename TraceID>
+    TraceManagerPtr<Nonterminal, TraceID> load_trace_manager(const std::string & path) {
+        std::filebuf fb;
+        if (fb.open(path, std::ios::in)) {
+            std::istream in(&fb);
+            auto tm = TraceManager2<Nonterminal, TraceID>::deserialize(in);
+            std::clog << "Read in TraceManager from \'" << path << "\'" << std::endl
+                      << "with Trace#: " << tm->size() << std::endl;
+            fb.close();
+            return tm;
+        } else {
+            std::clog << "No such file: \'" << path << "\'" << std::endl;
+            return std::shared_ptr<TraceManager2<Nonterminal, TraceID>>();
+        }
+    }
 }
 
 
