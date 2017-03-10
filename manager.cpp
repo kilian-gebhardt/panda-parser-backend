@@ -13,10 +13,17 @@
 
 int main() {
     std::vector<std::string> nLabels{"hello", "world", "this"};
+    auto const nLabelsPtr = std::make_shared<const std::vector<std::string>>(nLabels);
     std::vector<EdgeLabelT> eLabels{42};
-    HypergraphPtr<std::string> hg = std::make_shared<Hypergraph<std::string>>(nLabels, eLabels);
+    auto const eLabelsPtr = std::make_shared<const std::vector<EdgeLabelT>>(eLabels);
 
-    auto node1 = hg->create("hello\te\te\naa");
+
+    HypergraphPtr<std::string> hg = std::make_shared<Hypergraph<std::string>>(
+            nLabelsPtr
+            , eLabelsPtr
+    );
+
+    auto node1 = hg->create("hello");
     auto node2 = hg->create("world");
     auto node3 = hg->create("this");
 
@@ -69,7 +76,10 @@ int main() {
 
 
     Trainer::TraceManagerPtr<std::string, std::string> traceManager
-            = std::make_shared<Trainer::TraceManager2<std::string, std::string>>();
+            = std::make_shared<Trainer::TraceManager2<std::string, std::string>>(
+                    nLabelsPtr
+                    , eLabelsPtr
+            );
     traceManager->create("The best HG!", hg, node1);
 
 

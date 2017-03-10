@@ -76,6 +76,11 @@ namespace LCFR {
 
 //        print_top_trace(grammar, trace, word);
 
+        std::vector<std::string> nodeLabels {"S", "A", "B", "C"};
+        auto const nodeLabelsPtr = std::make_shared<const std::vector<string>>(nodeLabels);
+        std::vector<EdgeLabelT> edgeLabels {0, 1, 2, 3, 4};
+        auto const edgeLabelsPtr = std::make_shared<const std::vector<EdgeLabelT>>(edgeLabels);
+
         auto hg{
                 convert_trace_to_hypergraph<string, string>(
                         prune_trace<string, string>(
@@ -83,8 +88,8 @@ namespace LCFR {
                                         grammar.get_initial_nont()
                                         , std::vector<Range>{Range(0L, word.size())}
                                 ))
-                        , std::vector<string> {"S", "A", "B", "C"}
-                        , std::vector<EdgeLabelT> {0, 1, 2, 3, 4}
+                        , nodeLabelsPtr
+                        , edgeLabelsPtr
                 )};
 
         std::clog << std::endl << "Nodes in the pruned trace: " << std::endl;

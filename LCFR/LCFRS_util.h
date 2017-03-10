@@ -227,8 +227,8 @@ namespace LCFR {
     HypergraphPtr<Nonterminal> convert_trace_to_hypergraph
             (
             const std::map<PassiveItem<Nonterminal>, TraceItem<Nonterminal, Terminal>> & trace
-            , const std::vector<Nonterminal> & nLabels
-            , const std::vector<EdgeLabelT> & eLabels
+            , const std::shared_ptr<const std::vector<Nonterminal>>& nLabels
+            , const std::shared_ptr<const std::vector<EdgeLabelT>>& eLabels
             ){
         // construct all nodes
         auto nodelist = std::map<PassiveItem<Nonterminal>, Element<Node<Nonterminal>>>();

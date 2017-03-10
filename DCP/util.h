@@ -15,8 +15,8 @@ namespace DCP {
     std::pair<HypergraphPtr<Nonterminal>, Element<Node<Nonterminal>>>
     transform_trace_to_hypergraph(
             const SDCPParser<Nonterminal, Terminal, Position> &parser
-            , std::vector<Nonterminal> nodeLabels
-            , std::vector<EdgeLabelT> edgeLabels
+            , const std::shared_ptr<const std::vector<Nonterminal>>& nodeLabels
+            , const std::shared_ptr<const std::vector<EdgeLabelT>>& edgeLabels
     ) {
         const MAPTYPE<ParseItem<Nonterminal, Position>, std::vector<std::pair<std::shared_ptr<Rule<Nonterminal
                                                                                                    , Terminal>>
@@ -52,12 +52,14 @@ namespace DCP {
 
     template<typename Nonterminal, typename Terminal, typename Position, typename TraceID>
     void add_trace_to_manager(const SDCPParser<Nonterminal, Terminal, Position> & parser
-                              , const std::vector<Nonterminal> & nodeLabels
-                              , const std::vector<EdgeLabelT> & edgeLabels
                               , Trainer::TraceManagerPtr<Nonterminal, TraceID> traceManager
     ) {
         std::pair<HypergraphPtr<Nonterminal>, Element<Node<Nonterminal>>> transformedTrace{
-                DCP::transform_trace_to_hypergraph<Nonterminal>(parser, nodeLabels, edgeLabels)};
+                DCP::transform_trace_to_hypergraph<Nonterminal>(
+                        parser
+                        , traceManager->get_node_labels()
+                        , traceManager->get_edge_labels()
+                )};
         traceManager->create(0L, transformedTrace.first, transformedTrace.second);
     }
 }

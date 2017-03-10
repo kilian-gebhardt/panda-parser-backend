@@ -326,15 +326,16 @@ int main() {
     std::vector<std::string> nodeLabels{"S", "A", "B", "C", "D", "E", "F", "G"};
     std::vector<EdgeLabelT> edgeLabels{rule1.id, rule2.id, rule3.id, rule4.id, rule5.id, rule6.id, rule7.id, rule8.id,
                                        rule9.id};
-
+    auto const nodeLabelsPtr = std::make_shared<std::vector<std::string>>(nodeLabels);
+    auto const edgeLabelsPtr = std::make_shared<std::vector<EdgeLabelT>>(edgeLabels);
 
     TraceManager<std::string, std::string, int> manager(false);
     TraceManagerPtr<std::string, unsigned long> traceManager{
-            std::make_shared<TraceManager2<std::string, unsigned long>>()};
+            std::make_shared<TraceManager2<std::string, unsigned long>>(nodeLabelsPtr, edgeLabelsPtr)};
 
     manager.add_trace_entry(parser.get_trace(), *parser.goal, 0);
 
-    DCP::add_trace_to_manager(parser, nodeLabels, edgeLabels, traceManager);
+    DCP::add_trace_to_manager(parser, traceManager);
 //    std::pair<HypergraphPtr<std::string>, Element<Node<std::string>>> transformedTrace{
 //            DCP::transform_trace_to_hypergraph<std::string>(parser, nodeLabels, edgeLabels)};
 //    traceManager->create(0L, transformedTrace.first, transformedTrace.second);

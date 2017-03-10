@@ -468,7 +468,11 @@ namespace Trainer {
             Manage::deserialize_string_or_size_t(in, l);
             in >> sep;
             in >> goalID;
-            HypergraphPtr<Nonterminal> hg = Hypergraph<Nonterminal>::deserialize(in);
+            HypergraphPtr<Nonterminal> hg = Hypergraph<Nonterminal>::deserialize(
+                    in
+                    , man->get_node_labels()
+                    , man->get_edge_labels()
+            );
             Element<Node<Nonterminal>> goalElement(goalID, hg);
 
             return Trace<Nonterminal, oID>(id, man, l, hg, goalElement);
@@ -486,18 +490,39 @@ namespace Trainer {
 
         MAPTYPE<Nonterminal, unsigned int> noOfItemsPerNonterminal;
 
+        std::shared_ptr<const std::vector<Nonterminal>> nodeLabels;
+        std::shared_ptr<const std::vector<EdgeLabelT>> edgeLabels;
 
     public:
 
-        TraceManager2(const bool debug = false) : debug(debug) {}
+        TraceManager2(
+                std::shared_ptr<const std::vector<Nonterminal>> nodeLs
+                , std::shared_ptr<const std::vector<EdgeLabelT>> edgeLs
+                , const bool debug = false
+        ) :
+                debug(debug), nodeLabels(nodeLs), edgeLabels(edgeLs) {}
+
 
         // todo: Hook on create?
 
+        const std::shared_ptr<const std::vector<Nonterminal>>& get_node_labels() const {
+            return nodeLabels;
+        }
 
-
+        const std::shared_ptr<const std::vector<EdgeLabelT>>& get_edge_labels() const {
+            return edgeLabels;
+        }
 
         void serialize(std::ostream& o) {
             o << "TraceManager Version 1" << std::endl;
+
+            o << "NodeLabels:" << std::endl;
+            Manage::serialize_labels<Nonterminal>(o, *nodeLabels);
+            o << std::endl;
+            o << "EdgeLabels:" << std::endl;
+            Manage::serialize_labels<EdgeLabelT>(o, *edgeLabels);
+            o << std::endl;
+
             o << Manager<Trace<Nonterminal, TraceID>>::size() << " Traces:" << std::endl;
             for(const auto& trace : *this) {
                 trace->serialize(o);
@@ -510,13 +535,29 @@ namespace Trainer {
             if(line != "TraceManager Version 1")
                 throw std::string("Version Mismatch for TraceManager");
 
+            std::getline(in, line); // read: "NodeLabels:"
+            if(line != "NodeLabels:")
+                throw std::string("Unexpected line '" + line + "' expected 'NodeLabels:'");
+            std::vector<Nonterminal> nodeLs;
+            nodeLs = Manage::deserialize_labels<Nonterminal>(in);
+
+            std::getline(in, line); // end the current line
+            std::getline(in, line); // read: "EdgeLabels:"
+            if(line != "EdgeLabels:")
+                throw std::string("Unexpected line '" + line + "' expected 'EdgeLabels:'");
+            std::vector<EdgeLabelT> edgeLs;
+            edgeLs = Manage::deserialize_labels<EdgeLabelT>(in);
+
             int noItems;
             in >> noItems;
             std::getline(in, line);
             if(line != " Traces:")
                 throw std::string("Unexpected line '" + line + "' expected ' Traces'");
 
-            TraceManagerPtr<Nonterminal, TraceID> traceManager = std::make_shared<TraceManager2<Nonterminal, TraceID>>();
+            TraceManagerPtr<Nonterminal, TraceID> traceManager = std::make_shared<TraceManager2<Nonterminal, TraceID>>(
+                    std::make_shared<std::vector<Nonterminal>>(nodeLs)
+                    , std::make_shared<std::vector<EdgeLabelT >>(edgeLs)
+            );
 
             for(int i = 0; i < noItems; ++i){
                 Trace<Nonterminal, TraceID> trace { Trace<Nonterminal, TraceID>::deserialize(in, i, traceManager)};

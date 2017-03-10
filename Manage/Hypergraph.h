@@ -176,9 +176,8 @@ namespace Manage {
     template<typename NodeLabelT, typename EdgeLabelT>
     class Hypergraph : public Manager<Node<NodeLabelT>> {
     private:
-        // todo: shared pointer!
-        std::vector<NodeLabelT> nodeLabels;
-        std::vector<EdgeLabelT> edgeLabels;
+        std::shared_ptr<const std::vector<NodeLabelT>> nodeLabels;
+        std::shared_ptr<const std::vector<EdgeLabelT>> edgeLabels;
 
         ManagerPtr<HyperEdge<Node<NodeLabelT>, EdgeLabelT>> edges{
                 std::make_shared<Manager<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>>()};
@@ -190,7 +189,8 @@ namespace Manage {
 
     public:
         Hypergraph(
-                std::vector<NodeLabelT> nlabels, std::vector<EdgeLabelT> elabels
+                const std::shared_ptr<const std::vector<NodeLabelT>>& nlabels
+                , const std::shared_ptr<const std::vector<EdgeLabelT>>& elabels
         )
                 : nodeLabels(nlabels), edgeLabels(elabels) {}
 
@@ -198,13 +198,20 @@ namespace Manage {
         Element<Node<NodeLabelT>> create(
                 NodeLabelT nLabel
         ) {
+
+            typename std::vector<NodeLabelT>::const_iterator pos = std::find(
+                    nodeLabels->cbegin()
+                    , nodeLabels->cend()
+                    , nLabel
+            );
+            if(pos == nodeLabels->cend()){
+                std::cerr << "Could not find node label '" << nLabel << "'" << std::endl;
+                exit(-1);
+            }
+
+
             size_t nLabelId = std::distance(
-                    nodeLabels.cbegin(), std::find(
-                            nodeLabels.cbegin()
-                            , nodeLabels.cend()
-                            , nLabel
-                    ));
-            // todo: abort if label not valid
+                    nodeLabels->cbegin(), pos);
             return Manager<Node<NodeLabelT>>::create(nLabel, nLabelId);
         }
 
@@ -215,12 +222,19 @@ namespace Manage {
                 , const Element<Node<NodeLabelT>> &target
                 , const std::vector<Element<Node<NodeLabelT>>> &sources
         ) {
+
+            typename std::vector<EdgeLabelT>::const_iterator pos = std::find(
+                    edgeLabels->cbegin()
+                    , edgeLabels->cend()
+                    , edgeLabel
+            );
+            if(pos == edgeLabels->cend()) {
+                std::cerr << "Could not find edge label '" << edgeLabel << "'" << std::endl;
+                exit(-1);
+            }
+
             size_t edgeLabelId = std::distance(
-                    edgeLabels.cbegin(), std::find(
-                            edgeLabels.cbegin()
-                            , edgeLabels.cend()
-                            , edgeLabel
-                    ));
+                    edgeLabels->cbegin(), pos);
             // todo: abort if label not valid
             Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>> edge = edges->create(
                     edgeLabel
@@ -267,12 +281,6 @@ namespace Manage {
         >
         serialize(std::ostream& o) {
             o << "Hypergraph Version 1" << std::endl;
-            o << "NodeLabels:" << std::endl;
-            serialize_labels<NodeLabelT>(o, nodeLabels);
-            o << std::endl;
-            o << "EdgeLabels:" << std::endl;
-            serialize_labels<EdgeLabelT>(o, edgeLabels);
-            o << std::endl;
 
             o << Manager<Node<NodeLabelT>>::size() << " Nodes:" << std::endl;
             for(const auto& node : *this) {
@@ -295,33 +303,24 @@ namespace Manage {
                             (std::is_same<T2, std::string>::value || std::is_same<T2, size_t>::value)
                 , HypergraphPtr<NodeLabelT, EdgeLabelT>
                 >
-        deserialize(std::istream& in){
+        deserialize(
+                std::istream& in
+                , std::shared_ptr<const std::vector<NodeLabelT>> nLabels
+                , std::shared_ptr<const std::vector<EdgeLabelT>> eLabels
+        ){
             std::string line;
             std::getline(in, line); // read the rest of the line (only linebreak)
             std::getline(in, line);
             if(line != "Hypergraph Version 1")
-                throw std::string("Version Mismatch for Manager");
-
-            std::getline(in, line); // read: "NodeLabels:"
-            if(line != "NodeLabels:")
-                throw std::string("Unexpected line '" + line + "' expected 'NodeLabels:'");
-            std::vector<NodeLabelT> nodeLs;
-            nodeLs = deserialize_labels<NodeLabelT>(in);
-
-            std::getline(in, line); // end the current line
-            std::getline(in, line); // read: "EdgeLabels:"
-            if(line != "EdgeLabels:")
-                throw std::string("Unexpected line '" + line + "' expected 'EdgeLabels:'");
-            std::vector<EdgeLabelT> edgeLs;
-            edgeLs = deserialize_labels<EdgeLabelT>(in);
-
+                throw std::string("Version Mismatch for Hypergraph!");
 
             size_t noItems;
             in >> noItems;
             std::getline(in, line);
             if(line != " Nodes:")
                 throw std::string("Unexpected line '" + line + "' expected ' Nodes:'");
-            HypergraphPtr<NodeLabelT, EdgeLabelT> hypergraph = std::make_shared<Hypergraph<NodeLabelT, EdgeLabelT>>(nodeLs, edgeLs);
+            HypergraphPtr<NodeLabelT, EdgeLabelT> hypergraph
+                    = std::make_shared<Hypergraph<NodeLabelT, EdgeLabelT>>(nLabels, eLabels);
 
             for(size_t i = 0; i < noItems; ++i){
                 Node<NodeLabelT> node = Node<NodeLabelT>::deserialize(in, i, hypergraph);
