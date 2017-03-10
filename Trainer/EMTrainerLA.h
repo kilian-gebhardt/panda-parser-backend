@@ -108,7 +108,7 @@ namespace Trainer {
 
         void train(LatentAnnotation &latentAnnotation) {
             for (unsigned epoch = 0; epoch < epochs; ++epoch) {
-                Counts counts = expector->expect(latentAnnotation);
+                Counts counts {expector->expect(latentAnnotation)};
 
                 std::cerr << "Epoch " << epoch << "/" << epochs << ": ";
 
@@ -116,7 +116,6 @@ namespace Trainer {
                 Eigen::Tensor<double, 0> corpusProbSum = counts.rootCounts.sum();
                 std::cerr << "corpus prob. sum " << corpusProbSum;
                 std::cerr << " corpus likelihood " << counts.logLikelihood;
-//                std::cerr << " root counts: " << counts.rootCounts << std::endl;
 
                 maximizer->maximize(latentAnnotation, counts);
 
@@ -174,6 +173,8 @@ namespace Trainer {
             Counts counts(latentAnnotation, *grammarInfo, storageManager);
             TraceIterator traceIterator;
 
+            #pragma omp declare reduction (+ : Counts : omp_out += omp_in ) initializer (omp_priv = omp_orig)
+            #pragma omp parallel for private(traceIterator) schedule(dynamic, 10) reduction (+:counts)
             for (traceIterator = start; traceIterator < end; ++traceIterator) {
                 const auto &trace = *traceIterator;
                 if (trace->get_hypergraph()->size() == 0)
@@ -438,11 +439,11 @@ namespace Trainer {
                 : grammarInfo(grammarInfo), debug(debug) {};
 
         void maximize(LatentAnnotation &latentAnnotation, const Counts &counts) {
-            unsigned nont = 0;
-            for (const std::vector<std::size_t> &group : grammarInfo->normalizationGroups) {
+            #pragma omp parallel for schedule(dynamic, 20)
+            for (size_t nont = 0; nont < grammarInfo->normalizationGroups.size(); ++nont) {
+                const std::vector<std::size_t> &group = grammarInfo->normalizationGroups[nont];
                 const std::size_t lhsSplits = latentAnnotation.nonterminalSplits[nont];
                 maximization(lhsSplits, counts, latentAnnotation, group);
-                ++nont;
             }
 
             // maximize root weights:
