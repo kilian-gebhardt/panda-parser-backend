@@ -4,10 +4,12 @@
 
 #ifndef STERMPARSER_MERGEPREPARATOR_H
 #define STERMPARSER_MERGEPREPARATOR_H
+
 #include <memory>
 #include "GrammarInfo.h"
 #include "LatentAnnotation.h"
 #include "TrainingCommon.h"
+#include <omp.h>
 
 namespace Trainer {
     class MergePreparator {
@@ -78,7 +80,7 @@ namespace Trainer {
      */
     class MergeNothingMergePreparator : public MergePreparator {
     public:
-        MergeNothingMergePreparator(std::shared_ptr<const GrammarInfo2> grammarInfo, bool debug=false)
+        MergeNothingMergePreparator(std::shared_ptr<const GrammarInfo2> grammarInfo, bool debug = false)
                 : MergePreparator(grammarInfo, debug) {};
 
         MergeInfo merge_prepare(const LatentAnnotation &latentAnnotation) {
@@ -103,22 +105,25 @@ namespace Trainer {
 
     template<typename Nonterminal, typename TraceID>
     class DefaultMergePreparator : public MergePreparator {
-        using TraceIterator = ConstManagerIterator<Trace<Nonterminal, TraceID>>;
+        using TraceIterator = ConstManagerIterator<Trace < Nonterminal, TraceID>>;
 
-        const TraceManagerPtr<Nonterminal, EdgeLabelT> traceManager;
+        const TraceManagerPtr <Nonterminal, EdgeLabelT> traceManager;
         std::shared_ptr<StorageManager> storageManager;
+        const unsigned threads;
 
         std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesInsideWeights;
         std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesOutsideWeights;
 
     public:
         DefaultMergePreparator(
-                TraceManagerPtr<Nonterminal, EdgeLabelT> traceManager
+                TraceManagerPtr <Nonterminal, EdgeLabelT> traceManager
                 , std::shared_ptr<StorageManager> storageManager
                 , std::shared_ptr<const GrammarInfo2> grammarInfo
+                , unsigned threads = 1
                 , bool debug = false
         )
-                : MergePreparator(grammarInfo, debug), traceManager(traceManager), storageManager(storageManager) {}
+                : MergePreparator(grammarInfo, debug), traceManager(traceManager), storageManager(storageManager),
+                  threads(threads) {}
 
         MergeInfo merge_prepare(const LatentAnnotation &latentAnnotation) {
 
@@ -128,8 +133,8 @@ namespace Trainer {
             if (tracesOutsideWeights.size() < traceManager->size())
                 tracesOutsideWeights.resize(traceManager->size());
 
-            std::vector<WeightVector> nonterminalFrequencies {estimateNontFreqLA(latentAnnotation)};
-            std::vector<std::vector<double>> mergeFactors {computeMergeFactors(nonterminalFrequencies)};
+            std::vector<WeightVector> nonterminalFrequencies{estimateNontFreqLA(latentAnnotation)};
+            std::vector<std::vector<double>> mergeFactors{computeMergeFactors(nonterminalFrequencies)};
 
             std::vector<std::vector<double>> mergeDelta;
             for (auto split : latentAnnotation.nonterminalSplits) {
@@ -165,21 +170,27 @@ namespace Trainer {
             struct NontFreq {
                 std::shared_ptr<StorageManager> storageManager;
                 std::vector<WeightVector> nonterminalFrequencies;
-                NontFreq(std::shared_ptr<StorageManager> storageManager
-                         , std::vector<WeightVector> && nonterminalFrequencies
+
+                NontFreq(
+                        std::shared_ptr<StorageManager> storageManager
+                        , std::vector<WeightVector> &&nonterminalFrequencies
                 ) : storageManager(storageManager), nonterminalFrequencies(nonterminalFrequencies) {};
-                NontFreq(const NontFreq & other) : storageManager(other.storageManager){
-                    for (const WeightVector & vector : other.nonterminalFrequencies) {
+
+                NontFreq(const NontFreq &other) : storageManager(other.storageManager) {
+                    for (const WeightVector &vector : other.nonterminalFrequencies) {
                         nonterminalFrequencies.push_back(storageManager->create_weight_vector<WeightVector>(vector.size()));
                         nonterminalFrequencies.back() = vector;
                     }
                 }
-                NontFreq &operator+=(const NontFreq & other) {
-                    std::transform(other.nonterminalFrequencies.cbegin()
-                                   , other.nonterminalFrequencies.cend()
-                                   , nonterminalFrequencies.begin()
-                                   , nonterminalFrequencies.begin()
-                                   , [](const WeightVector & x, const WeightVector & y) {return x + y;});
+
+                NontFreq &operator+=(const NontFreq &other) {
+                    std::transform(
+                            other.nonterminalFrequencies.cbegin()
+                            , other.nonterminalFrequencies.cend()
+                            , nonterminalFrequencies.begin()
+                            , nonterminalFrequencies.begin()
+                            , [](const WeightVector &x, const WeightVector &y) { return x + y; }
+                    );
                     return *this;
                 }
             };
@@ -187,9 +198,14 @@ namespace Trainer {
             NontFreq nonterminalFrequencies(storageManager, initialize_nonterminal_frequencies(latentAnnotation));
 
             // computing in(A_x) * out(A_x) for every A ∈ N and x ∈ X_A
+            #ifdef _OPENMP
+            omp_set_num_threads(threads);
+            #endif
+
             #pragma omp declare reduction(+ : NontFreq : omp_out += omp_in) initializer (omp_priv = omp_orig)
             #pragma omp parallel for schedule(dynamic, 10) reduction(+:nonterminalFrequencies)
-            for (TraceIterator traceIterator = traceManager->cbegin(); traceIterator < traceManager->cend(); ++traceIterator) {
+            for (TraceIterator traceIterator = traceManager->cbegin();
+                 traceIterator < traceManager->cend(); ++traceIterator) {
 
                 if (tracesInsideWeights[traceIterator - traceManager->cbegin()].size() !=
                     traceIterator->get_hypergraph()->size()) {
@@ -234,7 +250,7 @@ namespace Trainer {
             return nonterminalFrequencies.nonterminalFrequencies;
         }
 
-        inline std::vector<WeightVector> initialize_nonterminal_frequencies(const LatentAnnotation & latentAnnotation) {
+        inline std::vector<WeightVector> initialize_nonterminal_frequencies(const LatentAnnotation &latentAnnotation) {
             std::vector<WeightVector> nonterminalFrequencies;
             for (size_t nont = 0; nont < latentAnnotation.nonterminalSplits.size(); ++nont) {
                 WeightVector mw
@@ -375,13 +391,20 @@ namespace Trainer {
 
     public:
         ThresholdMergePreparator(
-                TraceManagerPtr<Nonterminal, TraceID> traceManager
+                TraceManagerPtr <Nonterminal, TraceID> traceManager
                 , std::shared_ptr<StorageManager> storageManager
                 , std::shared_ptr<const GrammarInfo2> grammarInfo
                 , double merge_threshold
+                , unsigned threads = 1
                 , bool debug = false
         )
-                : DefaultMergePreparator<Nonterminal, TraceID>(traceManager, storageManager, grammarInfo, debug),
+                : DefaultMergePreparator<Nonterminal, TraceID>(
+                traceManager
+                , storageManager
+                , grammarInfo
+                , threads
+                , debug
+        ),
                   merge_threshold(merge_threshold) {}
 
     protected:
@@ -402,12 +425,13 @@ namespace Trainer {
 
     public:
         PercentMergePreparator(
-                TraceManagerPtr<Nonterminal, TraceID> traceManager
+                TraceManagerPtr <Nonterminal, TraceID> traceManager
                 , std::shared_ptr<StorageManager> storageManager
                 , std::shared_ptr<const GrammarInfo2> grammarInfo
                 , double mergePercent
+                , unsigned threads = 1
                 , bool debug = false
-        ) : DefaultMergePreparator<Nonterminal, TraceID>(traceManager, storageManager, grammarInfo, debug),
+        ) : DefaultMergePreparator<Nonterminal, TraceID>(traceManager, storageManager, grammarInfo, threads, debug),
             mergePercent(mergePercent) {}
 
     protected:

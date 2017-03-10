@@ -30,6 +30,7 @@ namespace Trainer {
         std::shared_ptr<MergePreparator> mergePreparator;
         std::shared_ptr<Merger> merger;
         unsigned em_epochs{20};
+        unsigned THREADS{1};
 
 
     public:
@@ -39,17 +40,31 @@ namespace Trainer {
                 , std::shared_ptr<StorageManager> storageManager = std::make_shared<StorageManager>()
         ) : traceManager(traceManager), grammarInfo(grammarInfo), storageManager(storageManager) {}
 
+        SplitMergeTrainerBuilder &set_threads(unsigned THREADS) {
+            this->THREADS = THREADS;
+            return *this;
+        }
+
         SplitMergeTrainerBuilder &set_simple_expector() {
+            return set_simple_expector(THREADS);
+        }
+
+        SplitMergeTrainerBuilder &set_simple_expector(unsigned threads) {
             expector = std::make_shared<SimpleExpector<Nonterminal, TraceID>>(
                     traceManager
                     , grammarInfo
                     , storageManager
+                    , threads
             );
             return *this;
         }
 
         SplitMergeTrainerBuilder &set_simple_maximizer() {
-            maximizer = std::make_shared<SimpleMaximizer>(grammarInfo);
+            return set_simple_maximizer(THREADS);
+        }
+
+        SplitMergeTrainerBuilder &set_simple_maximizer(unsigned threads) {
+            maximizer = std::make_shared<SimpleMaximizer>(grammarInfo, threads);
             return *this;
         }
 
@@ -64,21 +79,30 @@ namespace Trainer {
         }
 
         SplitMergeTrainerBuilder &set_percent_merger(double percent = 50.0) {
+            return set_percent_merger(percent, THREADS);
+        }
+
+        SplitMergeTrainerBuilder &set_percent_merger(double percent, unsigned threads) {
             mergePreparator = std::make_shared<PercentMergePreparator<Nonterminal, TraceID>>(
                     traceManager
                     , storageManager
                     , grammarInfo
                     , percent
+                    , threads
             );
             return *this;
         }
 
         SplitMergeTrainerBuilder &set_threshold_merger(double threshold = 0.5) {
+            return set_threshold_merger(threshold, THREADS);
+        }
+        SplitMergeTrainerBuilder &set_threshold_merger(double threshold, unsigned threads) {
             mergePreparator = std::make_shared<ThresholdMergePreparator<Nonterminal, TraceID>>(
                     traceManager
                     , storageManager
                     , grammarInfo
                     , threshold
+                    , threads
             );
             return *this;
         }

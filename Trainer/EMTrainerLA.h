@@ -14,6 +14,9 @@
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 #include "LatentAnnotation.h"
 #include <memory>
+#ifdef _OPENMP
+# include <omp.h>
+#endif
 
 namespace Trainer {
     class Counts : boost::addable<Counts> {
@@ -135,6 +138,7 @@ namespace Trainer {
         const TraceManagerPtr <Nonterminal, TraceID> traceManager;
         std::shared_ptr<const GrammarInfo2> grammarInfo;
         std::shared_ptr<StorageManager> storageManager;
+        const unsigned threads;
         const bool debug;
 
         std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesInsideWeights;
@@ -145,9 +149,14 @@ namespace Trainer {
                 TraceManagerPtr <Nonterminal, TraceID> traceManager
                 , std::shared_ptr<const GrammarInfo2> grammarInfo
                 , std::shared_ptr<StorageManager> storageManager
+                , unsigned threads = 1
                 , bool debug = false
         )
-                : traceManager(traceManager), grammarInfo(grammarInfo), storageManager(storageManager), debug(debug) {};
+                : traceManager(traceManager)
+                , grammarInfo(grammarInfo)
+                , storageManager(storageManager)
+                , threads(threads)
+                , debug(debug) {};
 
         Counts expect(const LatentAnnotation &latentAnnotation) {
             if (tracesInsideWeights.size() < traceManager->size()) {
@@ -173,6 +182,9 @@ namespace Trainer {
             Counts counts(latentAnnotation, *grammarInfo, storageManager);
             TraceIterator traceIterator;
 
+#ifdef _OPENMP
+            omp_set_num_threads(threads);
+#endif
             #pragma omp declare reduction (+ : Counts : omp_out += omp_in ) initializer (omp_priv = omp_orig)
             #pragma omp parallel for private(traceIterator) schedule(dynamic, 10) reduction (+:counts)
             for (traceIterator = start; traceIterator < end; ++traceIterator) {
@@ -432,14 +444,18 @@ namespace Trainer {
 
     class SimpleMaximizer : public Maximizer {
         std::shared_ptr<const GrammarInfo2> grammarInfo;
+        const unsigned threads;
         const bool debug;
 
     public:
-        SimpleMaximizer(std::shared_ptr<const GrammarInfo2> grammarInfo, bool debug = false)
-                : grammarInfo(grammarInfo), debug(debug) {};
+        SimpleMaximizer(std::shared_ptr<const GrammarInfo2> grammarInfo, unsigned threads = 1, bool debug = false)
+                : grammarInfo(grammarInfo), threads(threads), debug(debug) {};
 
         void maximize(LatentAnnotation &latentAnnotation, const Counts &counts) {
+#ifdef _OPENMP
+            omp_set_num_threads(threads);
             #pragma omp parallel for schedule(dynamic, 20)
+#endif
             for (size_t nont = 0; nont < grammarInfo->normalizationGroups.size(); ++nont) {
                 const std::vector<std::size_t> &group = grammarInfo->normalizationGroups[nont];
                 const std::size_t lhsSplits = latentAnnotation.nonterminalSplits[nont];
