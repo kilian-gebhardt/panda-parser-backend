@@ -231,24 +231,30 @@ namespace Trainer {
 
     template<unsigned rank, bool isConst = false>
     class TensorIteratorHighToLow {
-    protected:
-        Eigen::array<Eigen::DenseIndex, rank> index;
-        RuleTensorRaw<double, rank> *tensor;
     public:
         using value_type = typename std::conditional<isConst, const double, double>::type;
         using difference_type = void;
         using pointer = typename std::conditional<isConst, const double *, double *>::type;
         using reference = typename std::conditional<isConst, const double &, double &>::type;
         using iterator_category = std::forward_iterator_tag;
+        using tensor_type = typename std::conditional<isConst
+                                                      , const RuleTensorRaw <double, rank>
+                                                      , RuleTensorRaw <double, rank>
+                                                     >::type;
+    protected:
+        Eigen::array<Eigen::DenseIndex, rank> index;
+        tensor_type *tensor;
+
+    public:
 
         TensorIteratorHighToLow() : tensor(nullptr) { std::fill(index.begin(), index.end(), 0); }
 
-        TensorIteratorHighToLow(RuleTensorRaw<double, rank> *tensor) : tensor(tensor) {
+        TensorIteratorHighToLow(tensor_type * tensor) : tensor(tensor) {
             std::fill(index.begin(), index.end(), 0);
         }
 
         TensorIteratorHighToLow(
-                RuleTensorRaw<double, rank> *tensor
+                tensor_type *tensor
                 , const Eigen::array<Eigen::DenseIndex, rank> & index
         ) : index(index), tensor(tensor) {}
 
