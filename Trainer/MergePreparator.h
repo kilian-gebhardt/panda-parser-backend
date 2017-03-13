@@ -208,7 +208,12 @@ namespace Trainer {
                  traceIterator < traceManager->cend(); ++traceIterator) {
 
                 if (tracesInsideWeights[traceIterator - traceManager->cbegin()].size() !=
-                    traceIterator->get_hypergraph()->size()) {
+                    traceIterator->get_hypergraph()->size() or
+                        tracesOutsideWeights[traceIterator - traceManager->cbegin()].size() !=
+                        traceIterator->get_hypergraph()->size()) {
+
+                    tracesInsideWeights[traceIterator - traceManager->cbegin()].clear();
+                    tracesOutsideWeights[traceIterator - traceManager->cbegin()].clear();
                     for (const auto &node : *(traceIterator->get_hypergraph())) {
                         tracesInsideWeights[traceIterator - traceManager->cbegin()].emplace(
                                 node
