@@ -194,9 +194,11 @@ namespace Trainer {
 
                 // create insert inside and outside weight for each node if necessary
                 if (tracesInsideWeights[traceIterator - traceManager->cbegin()].size() !=
-                    trace->get_hypergraph()->size()) {
-                    tracesInsideWeights.clear();
-                    tracesOutsideWeights.clear();
+                    trace->get_hypergraph()->size() or
+                        tracesOutsideWeights[traceIterator - traceManager->cbegin()].size() !=
+                        trace->get_hypergraph()->size()) {
+                    tracesInsideWeights[traceIterator - traceManager->cbegin()].clear();
+                    tracesOutsideWeights[traceIterator - traceManager->cbegin()].clear();
                     for (const auto &node : *(trace->get_hypergraph())) {
                         tracesInsideWeights[traceIterator - traceManager->cbegin()].emplace(
                                 node
