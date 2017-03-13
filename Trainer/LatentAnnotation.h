@@ -64,7 +64,53 @@ namespace Trainer {
                 , storageManager
         ) {}
 
+        double get_weight(const size_t ruleID, const std::vector<size_t> & index) const {
+            switch ((*ruleWeights)[ruleID].which() + 1) {
+                case 1: return get_weight_ranked<1>(ruleID, index);
+                case 2: return get_weight_ranked<2>(ruleID, index);
+                case 3: return get_weight_ranked<3>(ruleID, index);
+                case 4: return get_weight_ranked<4>(ruleID, index);
+                default:
+                    std::cerr << "Rule of rank " << (*ruleWeights)[ruleID].which() + 1 << " unsupported." << std::endl;
+                    abort();
+            }
+        }
+
+        std::vector<std::vector<double>> get_rule_weights() const {
+            std::vector<std::vector<double>> weights;
+            for (const auto & tensor : *ruleWeights) {
+                weights.emplace_back();
+                switch(tensor.which() + 1) {
+                    case 1: de_convert_format<1>(weights.back(), tensor); break;
+                    case 2: de_convert_format<2>(weights.back(), tensor); break;
+                    case 3: de_convert_format<3>(weights.back(), tensor); break;
+                    case 4: de_convert_format<4>(weights.back(), tensor); break;
+                    default:
+                        std::cerr << "Rule of rank " << tensor.which() + 1 << " unsupported." << std::endl;
+                        abort();
+                }
+            }
+            return weights;
+        }
+
+        std::vector<double> get_root_weights() const {
+            std::vector<double> root;
+            for (Eigen::Index idx = 0; idx < rootWeights.dimension(0); ++idx)
+                root.push_back(rootWeights(idx));
+            return root;
+        }
+
     private:
+
+        template <long rank>
+        double get_weight_ranked(const size_t ruleID, const std::vector<size_t> & index) const  {
+            RuleTensorRaw<double, rank>& tensor_raw
+                    = boost::get < Trainer::RuleTensorRaw < double, rank>>((*ruleWeights)[ruleID]);
+            Eigen::array<size_t, rank> index_array;
+            std::copy(index.cbegin(), index.cend(), index_array.begin());
+            return tensor_raw(index_array);
+        }
+
         unsigned convert_to_eigen(
                 const std::vector <std::vector<double>> &rule_weights
                 , std::vector <Trainer::RuleTensor<double>> &rule_tensors
@@ -105,12 +151,19 @@ namespace Trainer {
         }
 
         template<long rank>
-        inline void convert_format_no_creation(
+        static inline void convert_format_no_creation(
                 const std::vector<double> &weights, Trainer::RuleTensor<double> &tensor
         ) {
             RuleTensorRaw<double, rank>& tensor_raw = boost::get < Trainer::RuleTensorRaw < double, rank>>(tensor);
             TensorIteratorHighToLow<rank> tensorIterator(&tensor_raw);
             std::copy(weights.begin(), weights.end(), tensorIterator);
+        }
+
+        template<int rank>
+        static inline void de_convert_format(std::vector<double> & weight, const RuleTensor<double> & tensor) {
+            const RuleTensorRaw<double, rank> & tensor_raw = boost::get < Trainer::RuleTensorRaw < double, rank>>(tensor);
+            TensorIteratorHighToLow<rank, true> tensorIterator(&tensor_raw);
+            std::copy(tensorIterator, tensorIterator.end(), std::back_inserter(weight));
         }
 
         static std::vector<std::vector<double>> lift_doubles(const std::vector<double> &ruleWeights) {
