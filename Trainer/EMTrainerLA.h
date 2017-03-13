@@ -50,11 +50,12 @@ namespace Trainer {
                 : storageManager(other.storageManager), logLikelihood(other.logLikelihood),
                   ruleCounts(std::make_unique<std::vector<RuleTensor<double>>>()),
                   rootCounts(Eigen::Tensor<double, 1>(other.rootCounts.dimensions())) {
-            rootCounts = other.rootCounts;
             for (const auto &ruleTensor : *other.ruleCounts) {
-                RuleTensor<double> count = storageManager->copy_tensor(ruleTensor);
-                ruleCounts->push_back(count);
+                ruleCounts->push_back(
+                        storageManager->copy_tensor(ruleTensor)
+                );
             }
+            rootCounts = other.rootCounts;
         }
 
         Counts &operator+=(const Counts &other) {
@@ -165,7 +166,7 @@ namespace Trainer {
             if (tracesOutsideWeights.size() < traceManager->size()) {
                 tracesOutsideWeights.resize(traceManager->size());
             }
-            return expectation_la(latentAnnotation, traceManager->cbegin(), traceManager->cend());
+            return expectation_la(latentAnnotation);
         }
 
         void clean_up() {
@@ -176,18 +177,15 @@ namespace Trainer {
     private:
         inline Counts expectation_la(
                 const LatentAnnotation &latentAnnotation
-                , const TraceIterator start
-                , const TraceIterator end
         ) {
             Counts counts(latentAnnotation, *grammarInfo, storageManager);
-            TraceIterator traceIterator;
 
 #ifdef _OPENMP
             omp_set_num_threads(threads);
 #endif
             #pragma omp declare reduction (+ : Counts : omp_out += omp_in ) initializer (omp_priv = omp_orig)
-            #pragma omp parallel for private(traceIterator) schedule(dynamic, 10) reduction (+:counts)
-            for (traceIterator = start; traceIterator < end; ++traceIterator) {
+            #pragma omp parallel for schedule(dynamic, 10) reduction (+:counts)
+            for (TraceIterator traceIterator = traceManager->cbegin(); traceIterator < traceManager->cend(); ++traceIterator) {
                 const auto &trace = *traceIterator;
                 if (trace->get_hypergraph()->size() == 0)
                     continue;

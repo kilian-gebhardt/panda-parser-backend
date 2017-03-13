@@ -89,7 +89,7 @@ namespace Trainer {
         typename std::enable_if_t<std::is_same<T, Eigen::TensorMap<Eigen::Tensor<double, 1>>>::value, T>
         create_weight_vector(size_t size) {
             double *ptr = get_region(size);
-            return WeightVector(ptr, size);
+            return Eigen::TensorMap<Eigen::Tensor<double, 1>>(ptr, size);
         }
 
         template<typename T>
@@ -169,7 +169,7 @@ namespace Trainer {
         inline
         typename std::enable_if_t<std::is_same<T, Eigen::Tensor<double, rank>>::value, T>
         copy_tensor_ranked(const RuleTensor<double> & ruleTensor) {
-            auto ruleTensorRaw = boost::get<RuleTensorRaw<double, rank>>(ruleTensor);
+            const auto & ruleTensorRaw = boost::get<RuleTensorRaw<double, rank>>(ruleTensor);
             Eigen::Tensor<double, rank> copyTensor(ruleTensorRaw.dimensions());
             copyTensor = ruleTensorRaw;
             return copyTensor;
@@ -179,7 +179,7 @@ namespace Trainer {
         inline
         typename std::enable_if_t<std::is_same<T, Eigen::TensorMap<Eigen::Tensor<double, rank>>>::value, T>
         copy_tensor_ranked(const RuleTensor<double> & ruleTensor) {
-            auto ruleTensorRaw = boost::get<RuleTensorRaw<double, rank>>(ruleTensor);
+            const auto & ruleTensorRaw = boost::get<RuleTensorRaw<double, rank>>(ruleTensor);
             double *storage = get_region((size_t) ruleTensorRaw.size());
             Eigen::TensorMap<Eigen::Tensor<double, rank>> copyTensor(storage, ruleTensorRaw.dimensions());
             copyTensor = ruleTensorRaw;
