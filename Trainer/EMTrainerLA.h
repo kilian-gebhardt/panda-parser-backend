@@ -160,6 +160,11 @@ namespace Trainer {
                 , debug(debug) {};
 
         Counts expect(const LatentAnnotation &latentAnnotation) {
+            if (traceManager->cend() - traceManager->cbegin() != traceManager->size()) {
+                std::cerr << "end - begin " << traceManager->cend() - traceManager->cbegin() << std::endl;
+                std::cerr << "size: " << traceManager->size();
+                std::abort();
+            }
             if (tracesInsideWeights.size() < traceManager->size()) {
                 tracesInsideWeights.resize(traceManager->size());
             }
@@ -179,7 +184,6 @@ namespace Trainer {
                 const LatentAnnotation &latentAnnotation
         ) {
             Counts counts(latentAnnotation, *grammarInfo, storageManager);
-
 #ifdef _OPENMP
             omp_set_num_threads(threads);
 #endif
@@ -190,6 +194,14 @@ namespace Trainer {
                 if (trace->get_hypergraph()->size() == 0)
                     continue;
 
+                if (tracesOutsideWeights.size() <= traceIterator - traceManager->cbegin()
+                        or tracesInsideWeights.size() <= traceIterator - traceManager->cbegin()) {
+                    std::cerr << "tried to access non-existent inside or outside weight map" << std::endl;
+                    std::cerr << "it - begin " << traceIterator - traceManager->cbegin() << std::endl;
+                    std::cerr << "out size: " << tracesOutsideWeights.size() << std::endl;
+                    std::cerr << "in size: " << tracesInsideWeights.size() << std::endl;
+                    abort();
+                }
                 // create insert inside and outside weight for each node if necessary
                 if (tracesInsideWeights[traceIterator - traceManager->cbegin()].size() !=
                     trace->get_hypergraph()->size() or
