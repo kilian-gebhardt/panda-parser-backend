@@ -81,14 +81,10 @@ namespace LCFR {
         std::vector<EdgeLabelT> edgeLabels {0, 1, 2, 3, 4};
         auto const edgeLabelsPtr = std::make_shared<const std::vector<EdgeLabelT>>(edgeLabels);
 
+        parser.prune_trace();
         auto hg{
-                convert_trace_to_hypergraph<string, string>(
-                        prune_trace<string, string>(
-                                trace, PassiveItem<string>(
-                                        grammar.get_initial_nont()
-                                        , std::vector<Range>{Range(0L, word.size())}
-                                ))
-                        , nodeLabelsPtr
+                parser.convert_trace_to_hypergraph(
+                          nodeLabelsPtr
                         , edgeLabelsPtr
                 )};
 

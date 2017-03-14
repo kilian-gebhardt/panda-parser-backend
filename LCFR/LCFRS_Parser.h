@@ -5,21 +5,24 @@
 #ifndef STERM_PARSER_LCFRS_PARSER_H
 #define STERM_PARSER_LCFRS_PARSER_H
 
+#include <memory>
 #include <iostream>
 #include <map>
 #include <deque>
 #include <stack>
+#include <queue>
+#include <set>
+#include "../Manage/Hypergraph.h"
+#include "../Names.h"
 #include "LCFRS.h"
 
-namespace LCFR{
+namespace LCFR {
+    using Range = std::pair<unsigned int, unsigned int>;
 
-    typedef std::pair<unsigned int, unsigned int> Range;
-    std::ostream& operator <<(std::ostream& o, const Range& r){
+    std::ostream& operator <<(std::ostream& o, const Range& r) {
         o << "(" << r.first << "," << r.second << ")";
         return o;
     }
-
-
 
     template  <typename Nonterminal>
     class ItemIndex {
@@ -79,7 +82,7 @@ namespace LCFR{
 
         friend std::ostream& operator <<(std::ostream& o, const PassiveItem<Nonterminal>& item){
             o << "<" << item.get_nont() << ", [";
-            for(auto range : item.get_ranges()){
+            for(const Range & range : item.get_ranges()){
                 o << range;
             }
             o << "]>";
@@ -348,9 +351,6 @@ namespace LCFR{
 
 
 
-
-
-
     template <typename Nonterminal, typename Terminal>
     class LCFRS_Parser {
 
@@ -390,7 +390,7 @@ namespace LCFR{
 
         }
 
-
+    private:
         void work_queue(){
             while( ! queue.empty()) {
 
@@ -606,11 +606,141 @@ namespace LCFR{
             }
         }
 
+    public:
+        void prune_trace() {
+            prune_trace(PassiveItem<Nonterminal>(
+                grammar.get_initial_nont()
+                , std::vector<Range>{Range(0L, word.size())}));
+        }
 
+        void prune_trace(PassiveItem<Nonterminal> initialItem){
+
+            std::map<PassiveItem<Nonterminal>, TraceItem<Nonterminal,Terminal>> result{};
+            std::queue<PassiveItem<Nonterminal>> itemQueue{};
+            std::set<PassiveItem<Nonterminal>> done{};
+            itemQueue.push(initialItem);
+            while(!itemQueue.empty()){
+                const PassiveItem<Nonterminal> item = itemQueue.front();
+                itemQueue.pop();
+
+                if(done.find(item) != done.cend())
+                    continue;
+
+                const TraceItem<Nonterminal, Terminal>& trItem = trace[item];
+                result[item] = trItem;
+                for(auto const& outgoingList : trItem.parses){
+                    for(auto const& newItem : outgoingList.second)
+                        itemQueue.push(*newItem); // todo: continue here!
+                }
+            }
+
+            trace = result;
+        };
+
+        HypergraphPtr<Nonterminal> convert_trace_to_hypergraph
+                (
+                        const std::shared_ptr<const std::vector<Nonterminal>>& nLabels
+                        , const std::shared_ptr<const std::vector<EdgeLabelT>>& eLabels
+                ){
+            // construct all nodes
+            auto nodelist = std::map<PassiveItem<Nonterminal>, Element<Node<Nonterminal>>>();
+            HypergraphPtr<Nonterminal> hg {std::make_shared<Hypergraph<Nonterminal>>(nLabels, eLabels)};
+            for (auto const& item : trace) {
+                nodelist.emplace(item.first, hg->create(item.first.get_nont()));
+            }
+
+            // construct hyperedges
+            for (auto const& item : trace) {
+                Element<Node<Nonterminal>> outgoing = nodelist.at(*(item.second.uniquePtr));
+                std::vector<Element<Node<Nonterminal>>> incoming;
+                for(auto const& parse : item.second.parses){
+                    incoming.clear();
+                    incoming.reserve(parse.second.size());
+                    for(auto const& pItem : parse.second)
+                        incoming.push_back(nodelist.at(*pItem));
+
+                    hg->add_hyperedge(parse.first->get_rule_id(), outgoing, incoming);
+                }
+
+            }
+
+            return hg;
+
+        };
 
         const std::map<PassiveItem<Nonterminal>,TraceItem<Nonterminal,Terminal>>& get_trace() const {
             return trace;
         };
+
+
+        std::map<unsigned long
+                 ,std::pair<Nonterminal
+                            , std::vector<std::pair<unsigned long, unsigned long>>>>
+        get_passive_items_map(
+
+        ) {
+            std::map<PassiveItem<Nonterminal>, unsigned long> passiveItemMap;
+            return get_passive_items_map(passiveItemMap);
+        };
+
+        std::map<unsigned long
+                 ,std::pair<Nonterminal
+                            , std::vector<std::pair<unsigned long, unsigned long>>>>
+        get_passive_items_map(
+                std::map<PassiveItem<Nonterminal>, unsigned long> & passiveItemMap
+        ){
+            auto result = std::map<unsigned long,std::pair<Nonterminal
+                                                           , std::vector<std::pair<unsigned long, unsigned long>>>>();
+
+            unsigned long pId{0};
+            for (auto tEntry : trace){
+                Nonterminal nont = tEntry.first.get_nont();
+                std::vector<std::pair<unsigned long, unsigned long>> ranges{};
+                for (auto range : tEntry.first.get_ranges()){
+                    ranges.push_back(std::pair<unsigned long, unsigned long>(range.first, range.second));
+                }
+                result[pId] = std::pair<Nonterminal, std::vector<std::pair<unsigned long, unsigned long>>>
+                        (nont, ranges);
+                passiveItemMap[tEntry.first] = pId;
+
+                ++pId;
+            }
+
+            return result;
+        }
+
+
+        std::map<unsigned long, std::vector<std::pair<unsigned long, std::vector<unsigned long>>>>
+        convert_trace(){
+
+            // convert_trace relies on the work of get_passive_items_map()
+            std::map<PassiveItem<Nonterminal>, unsigned long> passiveItemMap;
+            get_passive_items_map(passiveItemMap);
+
+            auto result = std::map<unsigned long, std::vector<std::pair<unsigned long, std::vector<unsigned long>>>>();
+
+            for (auto tEntry : trace){
+                const unsigned long pId = passiveItemMap[tEntry.first];
+                auto newTrace = std::vector<std::pair<unsigned long, std::vector<unsigned long>>>();
+                for (auto parse : tEntry.second.parses){
+                    const unsigned long ruleId = parse.first->get_rule_id();
+                    auto pItems = std::vector<unsigned long>();
+                    for (auto ptrPassiveItem : parse.second){
+                        pItems.push_back(passiveItemMap[*ptrPassiveItem]);
+                    }
+                    newTrace.push_back(std::make_pair(ruleId, pItems));
+                }
+                result[pId] = newTrace;
+            }
+
+            return result;
+        }
+
+        std::pair<Nonterminal, std::vector<std::pair<unsigned long, unsigned long>>> get_initial_passive_item() const {
+            return std::make_pair(grammar.get_initial_nont()
+                                  , std::vector<std::pair<unsigned long, unsigned long>>{std::make_pair(0,word.size())});
+
+        }
 
     };
 
