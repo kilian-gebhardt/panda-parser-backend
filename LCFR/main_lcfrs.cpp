@@ -89,10 +89,9 @@ namespace LCFR {
                 )};
 
         std::clog << std::endl << "Nodes in the pruned trace: " << std::endl;
-        for (auto const &elmenent : *hg) {
+        for (auto const &elmenent : *(hg.first)) {
             std::clog << elmenent << " ";
         }
-
 
         return 0;
     }

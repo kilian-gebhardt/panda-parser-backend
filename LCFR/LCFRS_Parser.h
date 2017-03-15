@@ -637,11 +637,12 @@ namespace LCFR {
             trace = result;
         };
 
-        HypergraphPtr<Nonterminal> convert_trace_to_hypergraph
+        std::pair<HypergraphPtr<Nonterminal>, Element<Node<Nonterminal>>>
+        convert_trace_to_hypergraph
                 (
                         const std::shared_ptr<const std::vector<Nonterminal>>& nLabels
                         , const std::shared_ptr<const std::vector<EdgeLabelT>>& eLabels
-                ){
+                ) const {
             // construct all nodes
             auto nodelist = std::map<PassiveItem<Nonterminal>, Element<Node<Nonterminal>>>();
             HypergraphPtr<Nonterminal> hg {std::make_shared<Hypergraph<Nonterminal>>(nLabels, eLabels)};
@@ -664,8 +665,10 @@ namespace LCFR {
 
             }
 
-            return hg;
-
+            return std::make_pair(hg, nodelist.at(
+                    PassiveItem<Nonterminal>(grammar.get_initial_nont()
+                            , std::vector<Range>(1, {0, word.size()})))
+            );
         };
 
         const std::map<PassiveItem<Nonterminal>,TraceItem<Nonterminal,Terminal>>& get_trace() const {
