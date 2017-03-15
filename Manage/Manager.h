@@ -43,8 +43,8 @@ namespace Manage{
         inline bool operator!=(const Element<InfoT, isConst>& r) const noexcept {return id != r.id; }
         inline bool operator< (const Element<InfoT, isConst>& r) const noexcept {return id < r.id; }
         inline bool operator<=(const Element<InfoT, isConst>& r) const noexcept {return id <= r.id; }
-        inline bool operator> (const Element<InfoT, isConst>& r) const noexcept {return id <= r.id; }
-        inline bool operator>=(const Element<InfoT, isConst>& r) const noexcept {return id <= r.id; }
+        inline bool operator> (const Element<InfoT, isConst>& r) const noexcept {return id > r.id; }
+        inline bool operator>=(const Element<InfoT, isConst>& r) const noexcept {return id >= r.id; }
 
         friend std::ostream& operator <<(std::ostream& o, const Element<InfoT, isConst>& item){
             o << item.id;
