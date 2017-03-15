@@ -132,16 +132,18 @@ namespace Trainer {
 
     template<typename Nonterminal, typename TraceID>
     class SimpleExpector : public Expector {
+    protected:
         template<typename T1, typename T2>
         using MAPTYPE = typename std::unordered_map<T1, T2>;
         using TraceIterator = ConstManagerIterator<Trace < Nonterminal, TraceID>>;
-
         const TraceManagerPtr <Nonterminal, TraceID> traceManager;
         std::shared_ptr<const GrammarInfo2> grammarInfo;
         std::shared_ptr<StorageManager> storageManager;
+    private:
         const unsigned threads;
         const bool debug;
 
+    protected:
         std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesInsideWeights;
         std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesOutsideWeights;
 
@@ -229,11 +231,9 @@ namespace Trainer {
                 const auto &insideWeights = tracesInsideWeights[traceIterator - traceManager->cbegin()];
                 const auto &outsideWeights = tracesOutsideWeights[traceIterator - traceManager->cbegin()];
 
-                const auto &rootInsideWeight = insideWeights.at(trace->get_goal());
-                const auto &rootOutsideWeight = outsideWeights.at(trace->get_goal());
-
-                Eigen::Tensor<double, 1> traceRootProbabilities = rootInsideWeight * rootOutsideWeight;
+                Eigen::Tensor<double, 1> traceRootProbabilities {compute_trace_root_probabilities(traceIterator, latentAnnotation)};
                 Eigen::Tensor<double, 0> traceRootProbability = traceRootProbabilities.sum();
+                const double scale = compute_counting_scalar(traceRootProbabilities, traceIterator, latentAnnotation);
 
                 if (not std::isnan(traceRootProbability(0))
                     and not std::isinf(traceRootProbability(0))
@@ -271,6 +271,7 @@ namespace Trainer {
                                         , lhnOutsideWeight
                                         , traceRootProbability(0)
                                         , (*counts.ruleCounts)[ruleId]
+                                        , scale
                                 );
                                 break;
                             case 2:
@@ -281,6 +282,7 @@ namespace Trainer {
                                         , traceRootProbability(0)
                                         , insideWeights
                                         , (*counts.ruleCounts)[ruleId]
+                                        , scale
                                 );
                                 break;
                             case 3:
@@ -291,6 +293,7 @@ namespace Trainer {
                                         , traceRootProbability(0)
                                         , insideWeights
                                         , (*counts.ruleCounts)[ruleId]
+                                        , scale
                                 );
                                 break;
                             case 4:
@@ -301,6 +304,7 @@ namespace Trainer {
                                         , traceRootProbability(0)
                                         , insideWeights
                                         , (*counts.ruleCounts)[ruleId]
+                                        , scale
                                 );
                                 break;
                             default:
@@ -314,17 +318,36 @@ namespace Trainer {
             return counts;
         }
 
+    protected:
+        Eigen::Tensor<double, 1> compute_trace_root_probabilities(TraceIterator traceIterator
+                                                                          , const LatentAnnotation & latentAnnotation) {
+            const auto &rootInsideWeight
+                    = tracesInsideWeights[traceIterator - traceManager->cbegin()].at(traceIterator->get_goal());
+            const auto &rootOutsideWeight
+                    = tracesOutsideWeights[traceIterator - traceManager->cbegin()].at(traceIterator->get_goal());
+            return Eigen::Tensor<double, 1> {rootOutsideWeight * rootInsideWeight};
+        }
+
+        virtual double compute_counting_scalar( const Eigen::Tensor<double, 1> & rootWeight
+                                               , TraceIterator traceIterator
+                                               , const LatentAnnotation & latentAnnotation) {
+            return 1.0;
+        }
+
+    private:
+
         inline void compute_rule_count1(
                 const RuleTensor<double> &ruleWeight
                 , const RuleTensorRaw<double, 1> &lhnOutsideWeight
                 , const double traceRootProbability
                 , RuleTensor<double> &ruleCount
+                , const double scale = 1.0
         ) {
             constexpr unsigned ruleRank{1};
 
             const auto &ruleWeightRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleWeight);
 
-            auto ruleValue = ruleWeightRaw * lhnOutsideWeight;
+            auto ruleValue = ruleWeightRaw * lhnOutsideWeight * scale;
 
             auto &ruleCountRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleCount);
 
@@ -345,6 +368,7 @@ namespace Trainer {
                 , const double traceRootProbability
                 , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &insideWeights
                 , RuleTensor<double> &ruleCount
+                , const double scale = 1.0
         ) {
             constexpr unsigned ruleRank{2};
 
@@ -355,7 +379,8 @@ namespace Trainer {
                                      .broadcast(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1)})
                              * rhsWeight.reshape(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1)})
                                      .broadcast(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1}).eval()
-                             * ruleWeightRaw;
+                             * ruleWeightRaw
+                             * scale;
 
             auto &ruleCountRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleCount);
 
@@ -376,6 +401,7 @@ namespace Trainer {
                 , const double traceRootProbability
                 , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &insideWeights
                 , RuleTensor<double> &ruleCount
+                , const double scale = 1.0
         ) {
             constexpr unsigned ruleRank{3};
 
@@ -398,7 +424,8 @@ namespace Trainer {
                                              Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0),
                                                                           ruleWeightRaw.dimension(1), 1}
                                      ).eval()
-                             * ruleWeightRaw;;
+                             * ruleWeightRaw
+                             * scale;
 
             auto &ruleCountRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleCount);
 
@@ -419,6 +446,7 @@ namespace Trainer {
                 , const double traceRootProbability
                 , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &insideWeights
                 , RuleTensor<double> &ruleCount
+                , const double scale = 1.0
         ) {
 
             const auto &ruleWeightRaw = boost::get<RuleTensorRaw<double, rank>>(ruleWeight);
@@ -442,6 +470,7 @@ namespace Trainer {
                 broadcastDimensions[nont] = reshapeDimensions[nont];
                 reshapeDimensions[nont] = 1;
             }
+            rule_val = rule_val * scale;
 
             auto &ruleCountRaw = boost::get<RuleTensorRaw<double, rank>>(ruleCount);
             if (traceRootProbability > 0) {
@@ -452,6 +481,68 @@ namespace Trainer {
                 );
             }
         }
+    };
+
+    template <typename Nonterminal, typename TraceID>
+    class DiscriminativeExpector : public SimpleExpector<Nonterminal, TraceID> {
+        using TraceIterator = ConstManagerIterator<Trace < Nonterminal, TraceID>>;
+        TraceManagerPtr <Nonterminal, TraceID> conditionalTraceManager;
+        std::shared_ptr<StorageManager> myStorageManager;
+
+        virtual double compute_counting_scalar( const Eigen::Tensor<double, 1> & rootWeight
+                                                , TraceIterator traceIterator
+                                                , const LatentAnnotation & latentAnnotation) {
+
+            TraceIterator cit {conditionalTraceManager->cbegin() + (traceIterator - this->traceManager->cbegin())};
+            const auto & trace = *cit;
+
+            MAPTYPE<Element<Node<Nonterminal>>, WeightVector> insideWeights;
+            for (const auto &node : *(trace->get_hypergraph())) {
+                insideWeights[node] = myStorageManager
+                        ->create_weight_vector<WeightVector>(latentAnnotation.nonterminalSplits[node->get_label_id()]);
+                insideWeights[node].setZero();
+            }
+
+            trace->inside_weights_la(
+                    *latentAnnotation.ruleWeights
+                    , insideWeights
+            );
+
+            if (false)
+                for (auto & node : trace->get_topological_order()) {
+                    std::cerr << node << " : " << insideWeights.at(node);
+                    if (node == cit->get_goal())
+                        std::cerr << " " << "goal " << std::endl;
+                    else
+                        std::cerr << std::endl;
+                }
+
+            Eigen::Tensor<double, 0> p_xy_joined = rootWeight.sum();
+            Eigen::Tensor<double, 0> p_x {(latentAnnotation.rootWeights * insideWeights.at(cit->get_goal())).sum()};
+            std::cerr << "p(x,y)/p(x) = " << p_xy_joined(0) << '/' << p_x(0) << ", ";
+
+            double scale = p_x(0) / p_xy_joined(0);
+            if (std::isinf(scale) or scale < 1.0 or std::isnan(scale))
+                return 1.0;
+            else
+                return scale;
+        }
+
+    public:
+        DiscriminativeExpector(TraceManagerPtr <Nonterminal, TraceID> traceManager
+                               , TraceManagerPtr <Nonterminal, TraceID> conditionalTraceManager
+                               , std::shared_ptr<const GrammarInfo2> grammarInfo
+                               , std::shared_ptr<StorageManager> storageManager
+                               , unsigned threads = 1
+                               , bool debug = false
+        ) : SimpleExpector<Nonterminal, TraceID>::SimpleExpector(
+                traceManager
+                , grammarInfo
+                , storageManager
+                , threads
+                , debug
+                )
+            , conditionalTraceManager(conditionalTraceManager), myStorageManager(storageManager) {}
     };
 
     class SimpleMaximizer : public Maximizer {

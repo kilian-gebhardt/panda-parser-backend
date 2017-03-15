@@ -141,16 +141,17 @@ namespace Trainer {
             return std::make_pair(inside, outside);
         }
 
-
-        inline void io_weights_la(
+        inline void inside_weights_la(
                 const std::vector<Trainer::RuleTensor<double>> &rules
-                , const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
-                , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
         ) const {
-
             // TODO implement for general case (== no topological order) approximation of inside weights
             // computation of inside weights
+
+            if (get_topological_order().size() != hypergraph->size()) {
+                std::cerr << "Hypergraph " << id << " cannot be ordered topologically." << std::endl;
+                abort();
+            }
 
             for (const auto &node : get_topological_order()) {
                 Trainer::WeightVector &targetWeight = insideWeights.at(node);
@@ -179,8 +180,16 @@ namespace Trainer {
 
 //                std::cerr << "inside weight " << node << std::endl;
 //                std::cerr << targetWeight << std::endl;
-
             }
+        }
+
+        inline void io_weights_la(
+                const std::vector<Trainer::RuleTensor<double>> &rules
+                , const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root
+                , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
+                , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
+        ) const {
+            inside_weights_la(rules, insideWeights);
 
             // TODO implement for general case (== no topological order) solution by gauss jordan
             for (auto nodeIterator = get_topological_order().rbegin();

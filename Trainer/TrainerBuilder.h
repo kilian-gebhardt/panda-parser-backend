@@ -59,6 +59,31 @@ namespace Trainer {
             return *this;
         }
 
+        SplitMergeTrainerBuilder &set_discriminative_expector(
+                TraceManagerPtr<Nonterminal, TraceID> discriminativeTraceManager
+        ) {
+            return set_discriminative_expector(discriminativeTraceManager, THREADS);
+        }
+
+        SplitMergeTrainerBuilder &set_discriminative_expector(
+                TraceManagerPtr<Nonterminal, TraceID> discriminativeTraceManager
+                , unsigned threads
+        ) {
+            if (traceManager->size() == discriminativeTraceManager->size()) {
+                expector = std::make_shared<DiscriminativeExpector<Nonterminal, TraceID>>(
+                        traceManager
+                        , discriminativeTraceManager
+                        , grammarInfo
+                        , storageManager
+                        , threads
+                );
+            } else {
+                std::cerr << "Sizes of TraceManagers do not match." << std::endl << "primary: " << traceManager->size()
+                          << std::endl << "discriminative: " << discriminativeTraceManager->size() << std::endl;
+            }
+            return *this;
+        }
+
         SplitMergeTrainerBuilder &set_simple_maximizer() {
             return set_simple_maximizer(THREADS);
         }
