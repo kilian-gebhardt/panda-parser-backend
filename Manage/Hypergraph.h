@@ -252,20 +252,17 @@ namespace Manage {
         }
 
 
-        const std::vector<Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>> &
+        const std::vector<Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>>&
         get_incoming_edges(Element<Node<NodeLabelT>> e)
-        const {
-            return incoming_edges.at(e);
+        {
+            return incoming_edges[e];
         }
 
 
-        const std::vector<std::pair<Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>, size_t>>
+        const std::vector<std::pair<Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>, size_t>>&
         get_outgoing_edges(Element<Node<NodeLabelT>> e)
-        const {
-            if (outgoing_edges.count(e))
-                return outgoing_edges.at(e);
-            else
-                return {};
+        {
+            return outgoing_edges[e];
         }
 
 
