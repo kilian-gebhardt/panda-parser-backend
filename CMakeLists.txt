@@ -17,7 +17,7 @@ set(MANAGER_SOURCES
 set(LCFRS_SOURCES
         LCFR/LCFRS.h
         LCFR/main_lcfrs.cpp LCFR/LCFRS_Parser.h LCFR/LCFRS_util.h
-        Manage/Manager.h Manage/Hypergraph.h)
+        Manage/Manager.h Manage/Hypergraph.h LCFR/manager_util.h)
 
 
 
