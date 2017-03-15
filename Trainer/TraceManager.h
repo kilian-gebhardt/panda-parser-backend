@@ -329,7 +329,11 @@ namespace Trainer {
                 reshapeDimension[rhsPos] = 1;
             }
 
-            targetWeight += tmpValue.sum(Eigen::array<long, 1>{1});
+            Eigen::array<long, ruleRank - 1> sum_array;
+            for (unsigned idx = 0; idx < ruleRank - 1; ++idx) {
+                    sum_array[idx] = idx + 1;
+            }
+            targetWeight += tmpValue.sum(sum_array);
         }
 
 
