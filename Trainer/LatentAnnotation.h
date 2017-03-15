@@ -100,6 +100,24 @@ namespace Trainer {
             return root;
         }
 
+        bool is_proper(std::shared_ptr<const GrammarInfo2> grammarInfo) const {
+            for (size_t nont = 0; nont < grammarInfo->normalizationGroups.size(); ++nont) {
+                auto & group = grammarInfo->normalizationGroups[nont];
+                Eigen::Tensor<double, 1> normalizationDivisor(nonterminalSplits[nont]);
+                normalizationDivisor.setZero();
+                for (size_t ruleId : group) {
+                    compute_normalization_divisor(normalizationDivisor, (*ruleWeights)[ruleId]);
+                }
+                for (auto idx = 0; idx < normalizationDivisor.dimension(0); ++idx) {
+                    if (std::abs(normalizationDivisor(idx) - 1) > 0.01) {
+                        std::cerr << "non proper LA at idx " << idx << ": " << normalizationDivisor << std::endl;
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
     private:
 
         template <long rank>

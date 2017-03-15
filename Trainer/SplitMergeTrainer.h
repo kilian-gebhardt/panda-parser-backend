@@ -260,6 +260,10 @@ namespace Trainer {
                     ++rule_id;
                 }
             }
+
+            if (not laMerged.is_proper(splitter->grammarInfo))
+                abort();
+
             emTrainer->train(laMerged);
             return laMerged;
         }
