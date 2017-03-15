@@ -6,6 +6,7 @@
 #define STERM_PARSER_HYPERGRAPH_H
 
 #include <algorithm>
+#include <numeric>
 #include "Manager.h"
 #include "Manager_util.h"
 
@@ -338,10 +339,60 @@ namespace Manage {
             return hypergraph;
         }
 
-
-
-
     };
+
+    template <typename NodeLabelT, typename EdgeLabelT>
+    bool is_sub_hypergraph(
+            const HypergraphPtr<NodeLabelT, EdgeLabelT>& graph
+            , const HypergraphPtr<NodeLabelT, EdgeLabelT>& sub
+            , const Element<Node<NodeLabelT>>& gNode
+            , const Element<Node<NodeLabelT>>& sNode
+    ){
+        if(gNode->get_label() != sNode->get_label())
+            return false;
+
+
+        const std::vector<Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>>& sEdges = sub->get_incoming_edges(sNode);
+        std::vector<Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>> gEdges = graph->get_incoming_edges(gNode);
+
+        if(sEdges.size() > gEdges.size())
+            return false;
+
+        bool result = false;
+        std::vector<size_t> perm(gEdges.size());
+        std::iota(perm.begin(), perm.end(), 0);
+        do {
+            bool foundSubgraph = true;
+            for(size_t i = 0; i < sEdges.size() && foundSubgraph; ++i){
+                if(gEdges[perm[i]]->get_label() != sEdges[i]->get_label()) {
+                    foundSubgraph = false;
+                    break;
+                }
+
+                const auto& gSources = gEdges[perm[i]]->get_sources();
+                const auto& sSources = sEdges[i]->get_sources();
+                if(gSources.size() != sSources.size()){
+                    foundSubgraph = false;
+                    break;
+                }
+                std::vector<size_t> perm2(gSources.size());
+                std::iota(perm2.begin(), perm2.end(), 0);
+                bool foundSubEdge = false;
+                do {
+                    bool allSourcesFound = true;
+                    for(size_t j = 0; j < gSources.size() && allSourcesFound; ++j){
+                        allSourcesFound = allSourcesFound
+                                        && is_sub_hypergraph(graph, sub, gSources[perm2[j]], sSources[j]);
+                    }
+                    foundSubEdge = foundSubEdge || allSourcesFound;
+                } while(!foundSubEdge && std::next_permutation(perm2.begin(), perm2.end()));
+                foundSubgraph = foundSubgraph && foundSubEdge;
+            }
+            result = result || foundSubgraph;
+        } while(!result && std::next_permutation(perm.begin(), perm.end()));
+
+        return result;
+    }
 
 
 }

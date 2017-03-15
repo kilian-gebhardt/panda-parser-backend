@@ -101,4 +101,50 @@ int main() {
     }
 
 
+
+
+    std::clog << "######################## \n ################## \n ##################### \n Testing Subgraph: \n";
+
+    std::vector<int> graphNLabels {1, 2, 3, 4, 5, 6, 7, 8};
+    auto graphNLabelsPtr = std::make_shared<std::vector<int>>(graphNLabels);
+    std::vector<EdgeLabelT> graphELabels {42, 43, 44, 45};
+    auto graphELabelsPtr = std::make_shared<std::vector<EdgeLabelT>>(graphELabels);
+    HypergraphPtr<int> graph = std::make_shared<Hypergraph<int>>(graphNLabelsPtr, graphELabelsPtr);
+
+    std::vector<Element<Node<int>>> graphNodes;
+    for(const auto l : graphNLabels)
+        graphNodes.push_back(graph->create(l));
+
+    graph->add_hyperedge(42, graphNodes[0], std::vector<Element<Node<int>>>{graphNodes[2], graphNodes[1], graphNodes[3]});
+    graph->add_hyperedge(43, graphNodes[1], std::vector<Element<Node<int>>>{graphNodes[4], graphNodes[5]});
+    graph->add_hyperedge(44, graphNodes[3], std::vector<Element<Node<int>>>{graphNodes[6], graphNodes[5]});
+    graph->add_hyperedge(45, graphNodes[3], std::vector<Element<Node<int>>>{graphNodes[7]});
+
+
+    std::vector<int> subNLabels {1, 2, 3, 4, 5, 6, 7, 8};
+    auto subNLabelsPtr = std::make_shared<std::vector<int>>(subNLabels);
+    std::vector<EdgeLabelT> subELabels {42, 43, 44, 45};
+    auto subELabelsPtr = std::make_shared<std::vector<EdgeLabelT>>(subELabels);
+    HypergraphPtr<int> sub = std::make_shared<Hypergraph<int>>(subNLabelsPtr, subELabelsPtr);
+
+
+    std::vector<Element<Node<int>>> subNodes;
+    for(const auto l : subNLabels)
+        subNodes.push_back(sub->create(l));
+
+    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be true (empty)" << std::endl;
+
+
+    sub->add_hyperedge(42, subNodes[0], std::vector<Element<Node<int>>>{subNodes[3], subNodes[1], subNodes[2]});
+    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be true (42)" << std::endl;
+
+    sub->add_hyperedge(43, subNodes[1], std::vector<Element<Node<int>>>{subNodes[5], subNodes[4]});
+    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be true (43)" << std::endl;
+
+
+    sub->add_hyperedge(44, subNodes[3], std::vector<Element<Node<int>>>{subNodes[5], subNodes[6]});
+    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be true (44)" << std::endl;
+
+    sub->add_hyperedge(43, subNodes[3], std::vector<Element<Node<int>>>{subNodes[7]});
+    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be false (wrong edge)" << std::endl;
 }
