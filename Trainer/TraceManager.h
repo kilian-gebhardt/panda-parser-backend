@@ -670,6 +670,13 @@ namespace Trainer {
             return std::shared_ptr<TraceManager2<Nonterminal, TraceID>>();
         }
     }
+
+    template<typename Nonterminal, typename TraceID>
+    void add_hypergraph_to_trace(TraceManagerPtr<Nonterminal, TraceID> traceManager
+                                 , HypergraphPtr<Nonterminal> hypergraph
+                                 , Element<Node<Nonterminal>> root) {
+        traceManager->create(0L, hypergraph, root);
+    };
 }
 
 
