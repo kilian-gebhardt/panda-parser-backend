@@ -45,6 +45,23 @@ namespace Trainer {
                 , const std::vector<std::size_t> nontSplitsAfterMerge
                 , const std::vector<std::vector<double>> mergeFactors
         ) : mergeSources(mergeSources), nontSplitsAfterMerge(nontSplitsAfterMerge), mergeFactors(mergeFactors) {}
+
+        bool is_proper() {
+            bool proper = true;
+            for (size_t nont = 0; nont < nontSplitsAfterMerge.size(); ++nont) {
+                for (size_t split = 0; split < nontSplitsAfterMerge[nont]; ++split) {
+                    double factorsum = 0.0;
+                    for (double mergeSource : mergeSources[nont][split])
+                        factorsum += mergeFactors[nont][mergeSource];
+                    if (mergeSources[nont][split].size() > 1 and std::abs(factorsum - 1.0) > std::exp(-5)) {
+                        std::cerr << "merge factor sum != 1: " << nont << " " << split << " sum: " << factorsum
+                                  << std::endl;
+                        proper = false;
+                    }
+                }
+            }
+            return proper;
+        }
     };
 
     std::ostream &operator<<(std::ostream &os, const MergeInfo &mergeInfo) {

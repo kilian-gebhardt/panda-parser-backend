@@ -218,6 +218,10 @@ namespace Trainer {
         ) : emTrainer(emTrainer), splitter(splitter), mergePreparator(mergePreparator), merger(merger), debug(debug) {}
 
         LatentAnnotation split_merge_cycle(const LatentAnnotation &la) {
+            if (not la.is_proper(splitter->grammarInfo))
+                if (debug)
+                    abort();
+
             if (debug) {
                 std::cerr << *(splitter->grammarInfo) << std::endl;
 
@@ -241,6 +245,10 @@ namespace Trainer {
             emTrainer->train(laSplit);
             auto mergeInfo = mergePreparator->merge_prepare(laSplit);
 
+            if (not mergeInfo.is_proper())
+                if (debug)
+                    abort();
+
             if (debug) {
                 std::cerr << mergeInfo;
                 std::cerr << "rules weights before merge" << std::endl;
@@ -262,9 +270,14 @@ namespace Trainer {
             }
 
             if (not laMerged.is_proper(splitter->grammarInfo))
-                abort();
+                if (debug)
+                    abort();
 
             emTrainer->train(laMerged);
+
+            if (not laMerged.is_proper(splitter->grammarInfo))
+                if (debug)
+                    abort();
             return laMerged;
         }
 

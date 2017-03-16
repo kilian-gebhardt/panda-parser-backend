@@ -101,6 +101,7 @@ namespace Trainer {
         }
 
         bool is_proper(std::shared_ptr<const GrammarInfo2> grammarInfo) const {
+            bool proper = true;
             for (size_t nont = 0; nont < grammarInfo->normalizationGroups.size(); ++nont) {
                 auto & group = grammarInfo->normalizationGroups[nont];
                 Eigen::Tensor<double, 1> normalizationDivisor(nonterminalSplits[nont]);
@@ -109,13 +110,13 @@ namespace Trainer {
                     compute_normalization_divisor(normalizationDivisor, (*ruleWeights)[ruleId]);
                 }
                 for (auto idx = 0; idx < normalizationDivisor.dimension(0); ++idx) {
-                    if (std::abs(normalizationDivisor(idx) - 1) > 0.01) {
+                    if (std::abs(normalizationDivisor(idx) - 1) > std::exp(-5)) {
                         std::cerr << "non proper LA at idx " << idx << ": " << normalizationDivisor << std::endl;
-                        return false;
+                        proper = false;
                     }
                 }
             }
-            return true;
+            return proper;
         }
 
     private:
