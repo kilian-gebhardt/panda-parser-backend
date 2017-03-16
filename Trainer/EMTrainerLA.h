@@ -488,6 +488,7 @@ namespace Trainer {
         using TraceIterator = ConstManagerIterator<Trace < Nonterminal, TraceID>>;
         TraceManagerPtr <Nonterminal, TraceID> conditionalTraceManager;
         std::shared_ptr<StorageManager> myStorageManager;
+        const double maxScale;
 
         virtual double compute_counting_scalar( const Eigen::Tensor<double, 1> & rootWeight
                                                 , TraceIterator traceIterator
@@ -525,7 +526,7 @@ namespace Trainer {
             if (std::isinf(scale) or scale < 1.0 or std::isnan(scale))
                 return 1.0;
             else
-                return scale;
+                return std::min(scale, maxScale);
         }
 
     public:
@@ -533,6 +534,7 @@ namespace Trainer {
                                , TraceManagerPtr <Nonterminal, TraceID> conditionalTraceManager
                                , std::shared_ptr<const GrammarInfo2> grammarInfo
                                , std::shared_ptr<StorageManager> storageManager
+                               , double maxScale = std::numeric_limits<double>::infinity()
                                , unsigned threads = 1
                                , bool debug = false
         ) : SimpleExpector<Nonterminal, TraceID>::SimpleExpector(
@@ -542,7 +544,7 @@ namespace Trainer {
                 , threads
                 , debug
                 )
-            , conditionalTraceManager(conditionalTraceManager), myStorageManager(storageManager) {}
+            , conditionalTraceManager(conditionalTraceManager), myStorageManager(storageManager), maxScale(maxScale) {}
     };
 
     class SimpleMaximizer : public Maximizer {

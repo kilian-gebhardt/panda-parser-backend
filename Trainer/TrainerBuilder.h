@@ -61,12 +61,14 @@ namespace Trainer {
 
         SplitMergeTrainerBuilder &set_discriminative_expector(
                 TraceManagerPtr<Nonterminal, TraceID> discriminativeTraceManager
+                , const double maxScale = std::numeric_limits<double>::infinity()
         ) {
             return set_discriminative_expector(discriminativeTraceManager, THREADS);
         }
 
         SplitMergeTrainerBuilder &set_discriminative_expector(
                 TraceManagerPtr<Nonterminal, TraceID> discriminativeTraceManager
+                , const double maxScale
                 , unsigned threads
         ) {
             if (traceManager->size() == discriminativeTraceManager->size()) {
@@ -75,6 +77,7 @@ namespace Trainer {
                         , discriminativeTraceManager
                         , grammarInfo
                         , storageManager
+                        , maxScale
                         , threads
                 );
             } else {
