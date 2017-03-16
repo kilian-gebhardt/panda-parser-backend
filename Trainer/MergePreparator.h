@@ -41,9 +41,9 @@ namespace Trainer {
                 const size_t halfSplits = nontSplits[nont] / 2;
                 for (size_t split = 0; split < halfSplits; ++split) {
                     if (debug) std::cerr << delta[split] << " ";
-                    if (delta[split] >= merge_threshold - 0.00001
+                    if (delta[split] >= merge_threshold * 0.999
                         // always merge if Δ >= 1
-                        || delta[split] >= 1 - 0.00001
+                        || delta[split] >= 0.999
                         // always merge initial symbol
                         || grammarInfo->start == nont) {
                         mergeSelection.back().emplace_back();
@@ -270,16 +270,16 @@ namespace Trainer {
             std::cerr << "Computing merge factors." << std::endl;
             std::vector<std::vector<double>> p;
             for (auto las_weights : mergeWeights) {
-                p.emplace_back(std::vector<double>());
+                p.emplace_back(std::vector<double>(las_weights.dimension(0)));
                 const size_t half_splits{las_weights.dimension(0) / 2};
                 for (unsigned i = 0; i < half_splits; ++i) {
                     double combined_weight = las_weights(i) + las_weights(i + half_splits);
                     if ((not std::isnan(combined_weight)) and combined_weight > 0) {
-                        p.back().push_back(las_weights(i) / combined_weight);
-                        p.back().push_back(las_weights(i + half_splits) / combined_weight);
+                        p.back()[i]               = las_weights(i) / combined_weight;
+                        p.back()[i + half_splits] = las_weights(i + half_splits) / combined_weight;
                     } else {
-                        p.back().push_back(0.5);
-                        p.back().push_back(0.5);
+                        p.back()[i] = 0.5;
+                        p.back()[i + half_splits] = 0.5;
                     }
                 }
             }
@@ -456,6 +456,11 @@ namespace Trainer {
             }
 
             std::sort(std::begin(orderedMergeWeights), std::end(orderedMergeWeights), std::greater<double>());
+
+            std::cerr << "ordered merge weights: ";
+            for (auto weight : orderedMergeWeights)
+                std::cerr << weight << " ";
+            std::cerr << std::endl;
 
             // todo: option to skip over merge_weights >= 1
 
