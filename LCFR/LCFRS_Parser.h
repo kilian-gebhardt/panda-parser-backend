@@ -652,15 +652,15 @@ namespace LCFR {
 
             // construct hyperedges
             for (auto const& item : trace) {
-                Element<Node<Nonterminal>> outgoing = nodelist.at(*(item.second.uniquePtr));
-                std::vector<Element<Node<Nonterminal>>> incoming;
+                Element<Node<Nonterminal>> target = nodelist.at(*(item.second.uniquePtr));
+                std::vector<Element<Node<Nonterminal>>> sources;
                 for(auto const& parse : item.second.parses){
-                    incoming.clear();
-                    incoming.reserve(parse.second.size());
+                    sources.clear();
+                    sources.reserve(parse.second.size());
                     for(auto const& pItem : parse.second)
-                        incoming.push_back(nodelist.at(*pItem));
+                        sources.push_back(nodelist.at(*pItem));
 
-                    hg->add_hyperedge(parse.first->get_rule_id(), outgoing, incoming);
+                    hg->add_hyperedge(parse.first->get_rule_id(), target, sources);
                 }
 
             }
