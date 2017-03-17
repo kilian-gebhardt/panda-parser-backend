@@ -139,9 +139,9 @@ namespace Trainer {
         const TraceManagerPtr <Nonterminal, TraceID> traceManager;
         std::shared_ptr<const GrammarInfo2> grammarInfo;
         std::shared_ptr<StorageManager> storageManager;
+        const bool debug;
     private:
         const unsigned threads;
-        const bool debug;
 
     protected:
         std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesInsideWeights;
@@ -520,7 +520,8 @@ namespace Trainer {
 
             Eigen::Tensor<double, 0> p_xy_joined = rootWeight.sum();
             Eigen::Tensor<double, 0> p_x {(latentAnnotation.rootWeights * insideWeights.at(cit->get_goal())).sum()};
-            std::cerr << "p(x,y)/p(x) = " << p_xy_joined(0) << '/' << p_x(0) << ", ";
+            if (SimpleExpector<Nonterminal, TraceID>::debug or p_xy_joined(0) > p_x(0))
+                std::cerr << "p(x,y)/p(x) = " << p_xy_joined(0) << '/' << p_x(0) << ", ";
 
             double scale = p_x(0) / p_xy_joined(0);
             if (std::isinf(scale) or scale < 1.0 or std::isnan(scale))
@@ -544,7 +545,30 @@ namespace Trainer {
                 , threads
                 , debug
                 )
-            , conditionalTraceManager(conditionalTraceManager), myStorageManager(storageManager), maxScale(maxScale) {}
+            , conditionalTraceManager(conditionalTraceManager), myStorageManager(storageManager), maxScale(maxScale) {
+            if (not traceManager->size() == conditionalTraceManager->size()) {
+                std::cerr << "size missmatch of trace manager (" << traceManager->size()
+                          <<") and conditional trace manager (" << conditionalTraceManager->size() << ")" << std::endl;
+                abort();
+            }
+            // check that each hypergraph in traceManager is a subgraph of its correspondent in conditionalTraceManager
+            // subgraph checking is NP-complete and our implementation is quite naive:
+            // i.e., it takes forever in practical settings
+            if (debug) {
+                for (size_t idx = 0; idx < traceManager->size(); ++idx) {
+                    if (not Manage::is_sub_hypergraph(
+                            (conditionalTraceManager->cbegin() + idx)->get_hypergraph()
+                            , (traceManager->cbegin() + idx)->get_hypergraph()
+                            , (conditionalTraceManager->cbegin() + idx)->get_goal()
+                            , (traceManager->cbegin() + idx)->get_goal())) {
+                        std::cerr << "Hypergraph " << idx << " violates subhypergraph property." << std::endl;
+                        abort();
+                    }
+                }
+            }
+
+
+        }
     };
 
     class SimpleMaximizer : public Maximizer {
