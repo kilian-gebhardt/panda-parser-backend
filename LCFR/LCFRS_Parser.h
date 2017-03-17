@@ -745,6 +745,28 @@ namespace LCFR {
 
         }
 
+        void print_trace() {
+            std::map<PassiveItem<Nonterminal>, unsigned long> passiveItemMap;
+            get_passive_items_map(passiveItemMap);
+
+            // convert_trace relies on the work of get_passive_items_map()
+            for (auto tEntry : trace){
+                const unsigned long pId = passiveItemMap[tEntry.first];
+                std::clog << tEntry.first << " " << tEntry.first.get_nont() << ": ";
+                for (auto parse : tEntry.second.parses){
+                    std::clog << " { ";
+                    const unsigned long ruleId = parse.first->get_rule_id();
+                    std::clog << " rule " << ruleId << " using ";
+                    for (auto ptrPassiveItem : parse.second){
+                        std::clog << *ptrPassiveItem << " ";
+                    }
+                    std::clog << " } ";
+                }
+                std::clog << std::endl;
+            }
+            std::clog << std::endl;
+        }
+
     };
 
 
