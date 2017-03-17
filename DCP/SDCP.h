@@ -396,7 +396,7 @@ namespace DCP {
 
     template<typename Nonterminal, typename Terminal>
     std::ostream &operator<<(std::ostream &os, const Rule<Nonterminal, Terminal> &rule) {
-        os << rule.lhn;
+        os << "id="<< rule.id << ": " << rule.lhn;
         int i = 0;
         for (auto attributes : rule.inside_attributes) {
             if (i > 0)
