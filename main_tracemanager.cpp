@@ -455,7 +455,9 @@ int main() {
 
     auto grammarInfo = std::make_shared<const GrammarInfo2>(rule_to_nont_idx_size_t, 0);
     auto splitMergeTrainerBuilder = Trainer::SplitMergeTrainerBuilder<std::string, unsigned long>(traceManager, grammarInfo);
-    auto splitMergeTrainer = splitMergeTrainerBuilder.set_merge_nothing().build();
+    auto splitMergeTrainer = splitMergeTrainerBuilder
+            .set_discriminative_expector(traceManager)
+            .set_merge_nothing().build();
 
     std::vector<size_t> nonterminal_splits(8, 1);
 //    convert_format()

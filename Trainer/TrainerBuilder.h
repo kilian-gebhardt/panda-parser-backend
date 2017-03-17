@@ -63,7 +63,7 @@ namespace Trainer {
                 TraceManagerPtr<Nonterminal, TraceID> discriminativeTraceManager
                 , const double maxScale = std::numeric_limits<double>::infinity()
         ) {
-            return set_discriminative_expector(discriminativeTraceManager, THREADS);
+            return set_discriminative_expector(discriminativeTraceManager, maxScale, THREADS);
         }
 
         SplitMergeTrainerBuilder &set_discriminative_expector(
