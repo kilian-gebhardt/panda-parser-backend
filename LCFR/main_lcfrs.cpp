@@ -71,28 +71,34 @@ namespace LCFR {
         parser.do_parse();
 
 
-        map<PassiveItem<string>, TraceItem<string, string>> trace = parser.get_trace();
-        clog << "Parses:" << endl;
+        if(parser.recognized()) {
+
+            map<PassiveItem<string>, TraceItem<string, string>> trace = parser.get_trace();
+            clog << "Parses:" << endl;
 
 //        print_top_trace(grammar, trace, word);
 
-        std::vector<std::string> nodeLabels {"S", "A", "B", "C"};
-        auto const nodeLabelsPtr = std::make_shared<const std::vector<string>>(nodeLabels);
-        std::vector<EdgeLabelT> edgeLabels {0, 1, 2, 3, 4};
-        auto const edgeLabelsPtr = std::make_shared<const std::vector<EdgeLabelT>>(edgeLabels);
+            std::vector<std::string> nodeLabels {"S", "A", "B", "C"};
+            auto const nodeLabelsPtr = std::make_shared<const std::vector<string>>(nodeLabels);
+            std::vector<EdgeLabelT> edgeLabels {0, 1, 2, 3, 4};
+            auto const edgeLabelsPtr = std::make_shared<const std::vector<EdgeLabelT>>(edgeLabels);
 
-        parser.prune_trace();
-        auto hg{
-                parser.convert_trace_to_hypergraph(
-                          nodeLabelsPtr
-                        , edgeLabelsPtr
-                )};
+            parser.prune_trace();
 
-        std::clog << std::endl << "Nodes in the pruned trace: " << std::endl;
-        for (auto const &elmenent : *(hg.first)) {
-            std::clog << elmenent << " ";
+
+            auto hg{
+                    parser.convert_trace_to_hypergraph(
+                            nodeLabelsPtr
+                            , edgeLabelsPtr
+                    )};
+
+            std::clog << std::endl << "Nodes in the pruned trace: " << std::endl;
+            for (auto const &elmenent : *(hg.first)) {
+                std::clog << elmenent << " ";
+            }
+        }else { // parser.recognized() is false
+            std::clog << "There was no succesfull parse!" << std::endl;
         }
-
         return 0;
     }
 }

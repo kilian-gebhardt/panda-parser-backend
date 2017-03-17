@@ -607,6 +607,14 @@ namespace LCFR {
         }
 
     public:
+
+        bool recognized() const {
+            return trace.find(PassiveItem<Nonterminal>(
+                    grammar.get_initial_nont()
+                    , std::vector<Range>{Range(0L, word.size())})
+            ) != trace.cend();
+        }
+
         void prune_trace() {
             prune_trace(PassiveItem<Nonterminal>(
                 grammar.get_initial_nont()
@@ -618,7 +626,8 @@ namespace LCFR {
             std::map<PassiveItem<Nonterminal>, TraceItem<Nonterminal,Terminal>> result{};
             std::queue<PassiveItem<Nonterminal>> itemQueue{};
             std::set<PassiveItem<Nonterminal>> done{};
-            itemQueue.push(initialItem);
+            if(trace.find(initialItem) != trace.cend())
+                itemQueue.push(initialItem); // only continue if parse successfull
             while(!itemQueue.empty()){
                 const PassiveItem<Nonterminal> item = itemQueue.front();
                 itemQueue.pop();
@@ -626,12 +635,14 @@ namespace LCFR {
                 if(done.find(item) != done.cend())
                     continue;
 
-                const TraceItem<Nonterminal, Terminal>& trItem = trace[item];
+
+                const TraceItem<Nonterminal, Terminal> &trItem = trace.at(item);
                 result[item] = trItem;
-                for(auto const& outgoingList : trItem.parses){
-                    for(auto const& newItem : outgoingList.second)
-                        itemQueue.push(*newItem); // todo: continue here!
+                for (auto const& outgoingList : trItem.parses) {
+                    for (auto const &newItem : outgoingList.second)
+                        itemQueue.push(*newItem);
                 }
+
             }
 
             trace = result;
@@ -643,6 +654,11 @@ namespace LCFR {
                         const std::shared_ptr<const std::vector<Nonterminal>>& nLabels
                         , const std::shared_ptr<const std::vector<EdgeLabelT>>& eLabels
                 ) const {
+
+            if(!recognized()){
+                std::cerr << "Word was not recogrized, cannot convert to trace";
+                abort();
+            }
             // construct all nodes
             auto nodelist = std::map<PassiveItem<Nonterminal>, Element<Node<Nonterminal>>>();
             HypergraphPtr<Nonterminal> hg {std::make_shared<Hypergraph<Nonterminal>>(nLabels, eLabels)};
