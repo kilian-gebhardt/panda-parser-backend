@@ -54,7 +54,6 @@ namespace LCFR {
     public:
         LCFRSFactory(const Nonterminal initial):
             currentLHS{LHS<Nonterminal,Terminal>(initial)}
-            , argument{std::vector<TerminalOrVariable<Terminal> >()}
             , grammar{LCFRS<Nonterminal,Terminal>(initial)}
         {}
 
