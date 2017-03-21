@@ -252,5 +252,9 @@ Val reduce(const Accum accum, const std::vector<Val> & vec, Val init, const unsi
     return init;
 };
 
+void output_helper(std::string s) {
+    std::cerr << s << std::endl;
+}
+
 
 #endif //STERMPARSER_UTIL_H

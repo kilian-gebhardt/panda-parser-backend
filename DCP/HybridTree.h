@@ -182,10 +182,5 @@ namespace DCP {
             position = get_next(position);
         }
     }
-
-    void output_helper(std::string s) {
-        std::cerr << s << std::endl;
-    }
-
 } //end namespace DCP
 #endif //STERMPARSER_HYBRIDTREE_H
