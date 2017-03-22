@@ -135,11 +135,10 @@ namespace Trainer {
             return *this;
         }
 
-        SplitMergeTrainerBuilder &set_split_randomization(double percent = 1.0) {
-            splitter = std::make_shared<Splitter>(percent, grammarInfo, storageManager);
+        SplitMergeTrainerBuilder &set_split_randomization(double percent = 1.0, unsigned seed = 0) {
+            splitter = std::make_shared<Splitter>(percent, seed, grammarInfo, storageManager);
             return *this;
         }
-
 
         SplitMergeTrainer<Nonterminal, TraceID>
         build() {
@@ -158,7 +157,7 @@ namespace Trainer {
 
 
             return SplitMergeTrainer<Nonterminal, TraceID>(emTrainer, splitter, mergePreparator, merger);
-        };
+        }
     };
 }
 

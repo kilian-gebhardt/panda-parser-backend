@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <vector>
 #include <functional>
+#include <random>
 #include "TrainingCommon.h"
 #include "EMTrainerLA.h"
 #include "GrammarInfo.h"
@@ -16,22 +17,29 @@
 namespace Trainer {
     class Splitter {
         const double randPercent;
+        std::mt19937 generator;
+        std::uniform_real_distribution<double> distribution;
     public:
         std::shared_ptr<const GrammarInfo2> grammarInfo;
     private:
         std::shared_ptr<StorageManager> storageManager;
 
-        double rand_split() {
-            return fRand((100 - randPercent) / 100.0, (100 + randPercent) / 100.0);
+        inline double rand_split() {
+            return distribution(generator);
         }
 
     public:
         Splitter(
                 double randPercent
+                , unsigned seed
                 , std::shared_ptr<const GrammarInfo2> grammarInfo
                 , std::shared_ptr<StorageManager> storageManager
         )
-                : randPercent(randPercent), grammarInfo(grammarInfo), storageManager(storageManager) {}
+                : randPercent(randPercent)
+                , generator(seed)
+                , distribution((100.0 - randPercent) / 100.0, (100.0 + randPercent) / 100.0)
+                , grammarInfo(grammarInfo)
+                , storageManager(storageManager) {}
 
         LatentAnnotation split(const LatentAnnotation &la) {
             std::vector<size_t> nonterminalSplits;
@@ -76,6 +84,10 @@ namespace Trainer {
 
             return LatentAnnotation(nonterminalSplits, std::move(rootWeights), std::move(ruleWeights));
         };
+
+    void reset_random_seed(unsigned seed) {
+            generator = std::mt19937(seed);
+        }
 
     private:
         RuleTensor<double> create_split_tensor(const RuleTensor<double> &wrappedTensor) {
@@ -203,7 +215,9 @@ namespace Trainer {
     template<typename Nonterminal, typename TraceID>
     class SplitMergeTrainer {
         std::shared_ptr<EMTrainerLA> emTrainer;
+    public:
         std::shared_ptr<Splitter> splitter;
+    private:
         std::shared_ptr<MergePreparator> mergePreparator;
         std::shared_ptr<Merger> merger;
         const bool debug;
