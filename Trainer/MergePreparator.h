@@ -76,7 +76,7 @@ namespace Trainer {
     };
 
     /**
-     * Merges none of the splits, expect for start symbol whose splits are always merged.
+     * Merges none of the splits, except for start symbol whose splits are always merged.
      */
     class MergeNothingMergePreparator : public MergePreparator {
     public:
@@ -166,6 +166,11 @@ namespace Trainer {
         }
 
     private:
+        /**
+         * What this function computes corresponds to the mergeWeights of the Berkeley parser.
+         * @param latentAnnotation
+         * @return
+         */
         inline std::vector<WeightVector> estimateNontFreqLA(const LatentAnnotation &latentAnnotation) {
             struct NontFreq {
                 std::shared_ptr<StorageManager> storageManager;
@@ -266,10 +271,14 @@ namespace Trainer {
             return nonterminalFrequencies;
         }
 
-        inline std::vector<std::vector<double>> computeMergeFactors(const std::vector<WeightVector> &mergeWeights) {
+        /**
+         * @param nontFreqLA (== mergeWeight in Berkeley parser)
+         * @return the p from the Berkeley parser
+         */
+        inline std::vector<std::vector<double>> computeMergeFactors(const std::vector<WeightVector> &nontFreqLA) {
             std::cerr << "Computing merge factors." << std::endl;
             std::vector<std::vector<double>> p;
-            for (auto las_weights : mergeWeights) {
+            for (auto las_weights : nontFreqLA) {
                 p.emplace_back(std::vector<double>(las_weights.dimension(0)));
                 const size_t half_splits{las_weights.dimension(0) / 2};
                 for (unsigned i = 0; i < half_splits; ++i) {
@@ -445,32 +454,32 @@ namespace Trainer {
             std::cerr << "best " << mergePercent << " % ";
             std::cerr << std::endl;
 
-            std::vector<double> orderedMergeWeights;
+            std::vector<double> orderedMergeDeltas;
 
             // order merges according to likelihood_loss
             for (const auto &delta : mergeDelta) {
-                orderedMergeWeights.insert(
-                        std::end(orderedMergeWeights)
+                orderedMergeDeltas.insert(
+                        std::end(orderedMergeDeltas)
                         , std::begin(delta)
                         , std::end(delta));
             }
 
-            std::sort(std::begin(orderedMergeWeights), std::end(orderedMergeWeights), std::greater<double>());
+            std::sort(std::begin(orderedMergeDeltas), std::end(orderedMergeDeltas), std::greater<double>());
 
-            std::cerr << "ordered merge weights: ";
-            for (auto weight : orderedMergeWeights)
+            std::cerr << "ordered merge Δs: ";
+            for (auto weight : orderedMergeDeltas)
                 std::cerr << weight << " ";
             std::cerr << std::endl;
 
             // todo: option to skip over merge_weights >= 1
 
-            size_t index = (size_t) (mergePercent / 100.0 * orderedMergeWeights.size());
-            if (index > orderedMergeWeights.size())
-                index = orderedMergeWeights.size() - 1;
+            size_t index = (size_t) (mergePercent / 100.0 * orderedMergeDeltas.size());
+            if (index > orderedMergeDeltas.size())
+                index = orderedMergeDeltas.size() - 1;
 
-            std::cerr << "index for ordered merges " << index << " / " << orderedMergeWeights.size() << std::endl;
+            std::cerr << "index for ordered merges " << index << " / " << orderedMergeDeltas.size() << std::endl;
 
-            return orderedMergeWeights[index];
+            return orderedMergeDeltas[index];
         }
     };
 }
