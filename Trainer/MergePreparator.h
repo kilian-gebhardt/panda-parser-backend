@@ -41,9 +41,11 @@ namespace Trainer {
                 const size_t halfSplits = nontSplits[nont] / 2;
                 for (size_t split = 0; split < halfSplits; ++split) {
                     if (debug) std::cerr << delta[split] << " ";
-                    if (delta[split] >= merge_threshold * 0.999
+                    // merge if Δ >= merge_thershold * 0.999, i.e. log(Δ) >= log(θ) + log(0.999)  (logarithmic)
+                    if (delta[split] >= merge_threshold + std::log(0.999)
                         // always merge if Δ >= 1
-                        || delta[split] >= 0.999
+                        // i.e. log(Δ) >= 0 + log(0.999)
+                        || delta[split] >= std::log(0.999)
                         // always merge initial symbol
                         || grammarInfo->start == nont) {
                         mergeSelection.back().emplace_back();
@@ -89,10 +91,10 @@ namespace Trainer {
 
             for (auto splits : latentAnnotation.nonterminalSplits) {
                 mergeFactors.emplace_back(splits, 0.5);
-                mergeDelta.emplace_back(splits / 2, 0.4);
+                mergeDelta.emplace_back(splits / 2, std::log(0.4));
             }
 
-            double merge_threshold = 0.5;
+            double merge_threshold = std::log(0.5);
 
             return build_merge_info(
                     std::move(mergeFactors)
@@ -138,7 +140,7 @@ namespace Trainer {
 
             std::vector<std::vector<double>> mergeDelta;
             for (auto split : latentAnnotation.nonterminalSplits) {
-                mergeDelta.emplace_back(split / 2, 1.0);
+                mergeDelta.emplace_back(split / 2, std::log(1.0));
             }
 
             computeMergeDeltas(
@@ -234,6 +236,7 @@ namespace Trainer {
                         , latentAnnotation.rootWeights
                         , tracesInsideWeights[traceIterator - traceManager->cbegin()]
                         , tracesOutsideWeights[traceIterator - traceManager->cbegin()]
+                        , true
                 );
 
                 const auto &insideWeights = tracesInsideWeights[traceIterator - traceManager->cbegin()];
@@ -384,7 +387,7 @@ namespace Trainer {
                         }
 
                         double &delta = mergeDelta[nont][idx];
-                        delta *= Q;
+                        delta += std::log(Q);
                     }
 
                     prefixSums.clear();

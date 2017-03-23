@@ -144,6 +144,8 @@ namespace Trainer {
         inline void inside_weights_la(
                 const std::vector<Trainer::RuleTensor<double>> &rules
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
+                , MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
+                , bool scaling = false
         ) const {
             // TODO implement for general case (== no topological order) approximation of inside weights
             // computation of inside weights
@@ -157,20 +159,21 @@ namespace Trainer {
                 Trainer::WeightVector &targetWeight = insideWeights.at(node);
 
                 targetWeight.setZero();
+                int & targetScale = insideLogScales[node] = 0;
 
                 for (const auto &edge : get_hypergraph()->get_incoming_edges(node)) {
                     switch (edge->get_sources().size() + 1) {
                         case 1:
-                            inside_weight_step1(targetWeight, edge, rules);
+                            inside_weight_step1(targetWeight, edge, rules, targetScale);
                             break;
                         case 2:
-                            inside_weight_step2(insideWeights, targetWeight, edge, rules);
+                            inside_weight_step2(insideWeights, targetWeight, edge, rules, targetScale, insideLogScales);
                             break;
                         case 3:
-                            inside_weight_step3(insideWeights, targetWeight, edge, rules);
+                            inside_weight_step3(insideWeights, targetWeight, edge, rules, targetScale, insideLogScales);
                             break;
                         case 4:
-                            inside_weight_step<4>(insideWeights, targetWeight, edge, rules);
+                            inside_weight_step<4>(insideWeights, targetWeight, edge, rules, targetScale, insideLogScales);
                             break;
                         default:
                             std::cerr << "Rules with more than 3 RHS nonterminals are not implemented." << std::endl;
@@ -178,18 +181,34 @@ namespace Trainer {
                     }
                 }
 
+                if (scaling)
+                    targetScale = scaleTensor(targetWeight, targetScale);
 //                std::cerr << "inside weight " << node << std::endl;
 //                std::cerr << targetWeight << std::endl;
             }
         }
+
+        inline void inside_weights_la(
+                const std::vector<Trainer::RuleTensor<double>> &rules
+                , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
+                , bool scaling = false
+        ) const {
+                MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
+                inside_weights_la(rules, insideWeights, insideLogScales);
+        }
+
 
         inline void io_weights_la(
                 const std::vector<Trainer::RuleTensor<double>> &rules
                 , const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
+                , bool scaling = false
         ) const {
-            inside_weights_la(rules, insideWeights);
+            MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
+            MAPTYPE<Element<Node<Nonterminal>>, int> outsideLogScales;
+
+            inside_weights_la(rules, insideWeights, insideLogScales, scaling);
 
             // TODO implement for general case (== no topological order) solution by gauss jordan
             for (auto nodeIterator = get_topological_order().rbegin();
@@ -197,6 +216,7 @@ namespace Trainer {
                 const Element<Node<Nonterminal>> &node = *nodeIterator;
 
                 Trainer::WeightVector &outsideWeight = outsideWeights.at(node);
+                int & targetLogScale = outsideLogScales[node] = 0;
 
                 if (node == get_goal())
                     outsideWeight = root;
@@ -211,19 +231,22 @@ namespace Trainer {
                             std::cerr << "The trace is inconsistent!";
                             abort();
                         case 2:
-                            outside_weight_step2(rules, outsideWeights, outsideWeight, outgoing);
+                            outside_weight_step2(rules, outsideWeights, outsideWeight, outgoing, targetLogScale, outsideLogScales);
                             break;
                         case 3:
-                            outside_weight_step3(rules, insideWeights, outsideWeights, outsideWeight, outgoing);
+                            outside_weight_step3(rules, insideWeights, outsideWeights, outsideWeight, outgoing, targetLogScale, insideLogScales, outsideLogScales);
                             break;
                         case 4:
-                            outside_weight_step<4>(rules, insideWeights, outsideWeights, outsideWeight, outgoing);
+                            outside_weight_step<4>(rules, insideWeights, outsideWeights, outsideWeight, outgoing, targetLogScale, insideLogScales, outsideLogScales);
                             break;
                         default:
                             std::cerr << "Rules with more than 3 RHS nonterminals are not implemented." << std::endl;
                             abort();
                     }
                 }
+
+                if (scaling)
+                    targetLogScale = scaleTensor(outsideWeight, targetLogScale);
 //            std::cerr << "outside weight " << node << std::endl << outsideWeight << std::endl;
             }
         }
@@ -233,6 +256,7 @@ namespace Trainer {
                 Trainer::WeightVector &targetWeight
                 , const Element<HyperEdge<Nonterminal>> &edge
                 , const std::vector<Trainer::RuleTensor<double>> &rules
+                , int & targetLogScale
         ) const {
             constexpr unsigned ruleRank{1};
 
@@ -241,7 +265,8 @@ namespace Trainer {
 
 //        std::cerr << "rule tensor " << edge->get_label_id() << " address " << rules[edge->get_label_id()] << std::endl << ruleWeight << std::endl;
 //        std::cerr << "target weight " << targetWeight << std::endl;
-            targetWeight += ruleWeight;
+
+            targetWeight += ruleWeight * calcScaleFactor(targetLogScale);
         }
 
 
@@ -250,6 +275,8 @@ namespace Trainer {
                 , Trainer::WeightVector &targetWeight
                 , const Element<HyperEdge<Nonterminal>> &edge
                 , const std::vector<Trainer::RuleTensor<double>> &rules
+                , int & targetLogScale
+                , const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
         ) const {
             constexpr unsigned ruleRank{2};
 
@@ -263,7 +290,14 @@ namespace Trainer {
             auto tmpValue = ruleWeight.contract(
                     itemWeight, Eigen::array<Eigen::IndexPair<int>, 1>{Eigen::IndexPair<int>(1, 0)}
             );
-            targetWeight += tmpValue;
+
+            const int rhs1LogScale = insideLogScales.at(edge->get_sources()[rhsPos - 1]);
+            if (std::abs(rhs1LogScale) > std::abs(targetLogScale)) {
+                targetWeight = targetWeight * calcScaleFactor(rhs1LogScale - targetLogScale) + tmpValue;
+                targetLogScale = rhs1LogScale;
+            } else {
+                targetWeight = targetWeight + tmpValue * calcScaleFactor(targetLogScale - rhs1LogScale);
+            }
         }
 
         inline void inside_weight_step3(
@@ -271,6 +305,8 @@ namespace Trainer {
                 , Trainer::WeightVector &targetWeight
                 , const Element<HyperEdge<Nonterminal>> &edge
                 , const std::vector<Trainer::RuleTensor<double>> &rules
+                , int & targetLogScale
+                , const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
         ) const {
             constexpr unsigned ruleRank{3};
 
@@ -292,7 +328,15 @@ namespace Trainer {
             auto tmpValue2 = tmpValue1.contract(
                     rhsItemWeight1, Eigen::array<Eigen::IndexPair<int>, 1>{Eigen::IndexPair<int>(1, 0)}
             );
-            targetWeight += tmpValue2;
+            const int rhs_scales =   insideLogScales.at(edge->get_sources()[rhsPos1 - 1])
+                                   + insideLogScales.at(edge->get_sources()[rhsPos2 - 1]);
+
+            if (std::abs(rhs_scales) > std::abs(targetLogScale)) {
+                targetWeight = targetWeight * calcScaleFactor(rhs_scales - targetLogScale) + tmpValue2;
+                targetLogScale = rhs_scales;
+            } else {
+                targetWeight = targetWeight + tmpValue2 * calcScaleFactor(targetLogScale - rhs_scales);
+            }
         }
 
 
@@ -302,6 +346,8 @@ namespace Trainer {
                 , Trainer::WeightVector &targetWeight
                 , const Element<HyperEdge<Nonterminal>> &edge
                 , const std::vector<Trainer::RuleTensor<double>> &rules
+                , int & targetLogScale
+                , const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
         ) const {
 
 //        std::cerr << std::endl << "Computing inside weight summand" << std::endl;
@@ -320,8 +366,10 @@ namespace Trainer {
                 broadcastDimension[i] = ruleDimension[i];
             }
 
+            int tmpScale = 0;
             for (unsigned rhsPos = 1; rhsPos < ruleRank; ++rhsPos) {
                 const auto &item_weight = insideWeights.at(edge->get_sources()[rhsPos - 1]);
+                tmpScale += insideLogScales.at(edge->get_sources()[rhsPos - 1]);
                 reshapeDimension[rhsPos] = broadcastDimension[rhsPos];
                 broadcastDimension[rhsPos] = 1;
                 tmpValue *= item_weight.reshape(reshapeDimension).broadcast(broadcastDimension);
@@ -333,7 +381,13 @@ namespace Trainer {
             for (unsigned idx = 0; idx < ruleRank - 1; ++idx) {
                     sum_array[idx] = idx + 1;
             }
-            targetWeight += tmpValue.sum(sum_array);
+
+            if (abs(tmpScale) > abs(targetLogScale)) {
+                targetWeight = targetWeight * calcScaleFactor(tmpScale - targetLogScale) + tmpValue.sum(sum_array);
+                targetLogScale = tmpScale;
+            }
+            else
+                targetWeight = targetWeight + tmpValue.sum(sum_array) * calcScaleFactor(targetLogScale - tmpScale);
         }
 
 
@@ -342,6 +396,8 @@ namespace Trainer {
                 , const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
                 , Trainer::WeightVector &outsideWeight
                 , const std::pair<Element<HyperEdge<Nonterminal>>, unsigned int> &outgoing
+                , int & targetLogScale
+                , const MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales
         ) const {
 
             const auto &parent = outgoing.first->get_target();
@@ -355,7 +411,13 @@ namespace Trainer {
                     parentWeight, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
             );
 
-            outsideWeight += outsideWeightSummand;
+            const int parentLogScale = outsideLogScales.at(parent);
+            if (std::abs(parentLogScale) > std::abs(targetLogScale)) {
+                outsideWeight = outsideWeight * calcScaleFactor(parentLogScale - targetLogScale) + outsideWeightSummand;
+                targetLogScale = parentLogScale;
+            } else {
+                outsideWeight = outsideWeight + outsideWeightSummand * calcScaleFactor(targetLogScale - parentLogScale);
+            }
         }
 
 
@@ -365,6 +427,9 @@ namespace Trainer {
                 , const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
                 , Trainer::WeightVector &outsideWeight
                 , const std::pair<Element<HyperEdge<Nonterminal>>, unsigned int> &outgoing
+                , int & targetLogScale
+                , const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
+                , const MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales
         ) const {
             const auto &siblings = outgoing.first->get_sources();
             const auto &parent = outgoing.first->get_target();
@@ -384,7 +449,14 @@ namespace Trainer {
                     parentWeight, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
             );
 
-            outsideWeight += tmpValue2;
+            const int tmpScale = outsideLogScales.at(parent) + insideLogScales.at(siblings[position == 0 ? 1 : 0]);
+
+            if (abs(tmpScale) > abs(targetLogScale)) {
+                outsideWeight = outsideWeight * calcScaleFactor(tmpScale - targetLogScale) + tmpValue2;
+                targetLogScale = tmpScale;
+            }
+            else
+                outsideWeight = outsideWeight + tmpValue2 * calcScaleFactor(targetLogScale - tmpScale);
         }
 
 
@@ -395,6 +467,9 @@ namespace Trainer {
                 , const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
                 , Trainer::WeightVector &outsideWeight
                 , const std::pair<Element<HyperEdge<Nonterminal>>, unsigned int> &outgoing
+                , int & targetLogScale
+                , const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
+                , const MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales
         ) const {
             const auto &siblings = outgoing.first->get_sources();
             const auto &parent = outgoing.first->get_target();
@@ -412,6 +487,7 @@ namespace Trainer {
             }
 
             const auto &parent_weight = outsideWeights.at(parent);
+            int tmpScale = outsideLogScales.at(parent);
 
             Eigen::Tensor<double, ruleRank> tmpValue = ruleWeight;
 //        std::cerr << "init tmpValue" << std::endl<< tmpValue << std::endl << std::endl;
@@ -428,6 +504,7 @@ namespace Trainer {
                     continue;
 
                 const auto &item_weight = insideWeights.at(siblings[rhsPos - 1]);
+                tmpScale += insideLogScales.at(siblings[rhsPos - 1]);
 //            std::cerr << "inside weight " << rhsPos << std::endl<< item_weight << std::endl << std::endl;
                 reshapeDimension[rhsPos] = broadcastDimension[rhsPos];
                 broadcastDimension[rhsPos] = 1;
@@ -449,7 +526,13 @@ namespace Trainer {
 //        std::cerr << "final tmpValue" << std::endl<< tmpValue << std::endl << std::endl;
 //        std::cerr << "outside weight summand" << std::endl << outsideWeightSummand << std::endl << std::endl;
 
-            outsideWeight += outsideWeightSummand;
+
+            if (abs(tmpScale) > abs(targetLogScale)) {
+                outsideWeight = outsideWeight * calcScaleFactor(tmpScale - targetLogScale) + outsideWeightSummand;
+                targetLogScale = tmpScale;
+            }
+            else
+                outsideWeight = outsideWeight + outsideWeightSummand * calcScaleFactor(targetLogScale - tmpScale);
         }
 
 

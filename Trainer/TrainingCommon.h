@@ -64,6 +64,60 @@ namespace Trainer {
         }
     };
 
+    constexpr int LOGSCALE = 100;
+    constexpr double SCALE = std::exp(LOGSCALE);
+
+    double calcScaleFactor(double logScale, double scale) {
+        if (logScale == std::numeric_limits<int>::min()) {
+            return 0.0;// System.out.println("give me a break!");
+        }
+        if (logScale == 0.0)
+            return 1.0;
+        if (logScale == 1.0)
+            return scale;
+        if (logScale == 2.0)
+            return scale * scale;
+        if (logScale == 3.0)
+            return scale * scale * scale;
+        if (logScale == -1.0)
+            return 1.0 / scale;
+        if (logScale == -2.0)
+            return 1.0 / scale / scale;
+        if (logScale == -3.0)
+            return 1.0 / scale / scale / scale;
+        return std::pow(scale, logScale);
+    }
+
+    double calcScaleFactor(double logScale) {
+		return calcScaleFactor(logScale, SCALE);
+	}
+
+    /**
+     * Inspired by Berkeley parser's edu.berkeley.nlp.util.ScalingTools.scaleArray function
+     * @param vector
+     */
+    int scaleTensor(WeightVector & vector, int previousScale) {
+        Eigen::Tensor<double, 0> max = vector.maximum();
+        int logScale = 0;
+        double scale = 1.0;
+        if (std::isinf(max(0)) or max(0) == 0)
+            return previousScale;
+        while (max(0) > SCALE) {
+            max(0) = max(0) / SCALE;
+            scale /= SCALE;
+            logScale += 1;
+        }
+        while (max(0) > 0.0 and max(0) < 1.0 / SCALE) {
+            max(0) = max(0) * SCALE;
+            scale *= SCALE;
+            logScale -= 1;
+        }
+        if (logScale != 0)
+            vector = vector * scale;
+        return previousScale + logScale;
+    }
+
+
     std::ostream &operator<<(std::ostream &os, const MergeInfo &mergeInfo) {
         os << "Merge Info: " << std::endl << "Merge factors: " << std::endl;
         {

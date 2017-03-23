@@ -9,7 +9,7 @@ set(SOURCE_FILES Legacy/main.cpp DCP/HybridTree.h DCP/SDCP.h DCP/SDCP_Parser.h u
 
 set(EIGEN_SOURCES DCP/HybridTree.h DCP/SDCP.h DCP/SDCP_Parser.h util.h Legacy/Trace.h Legacy/SplitMergeUtil.h Legacy/eigen_test.cpp Legacy/EigenUtil.h)
 
-set(TRACEMANAGER_SOURCES main_tracemanager.cpp DCP/HybridTree.h DCP/SDCP.h DCP/SDCP_Parser.h util.h Legacy/Trace.h Legacy/SplitMergeUtil.h Legacy/EigenUtil.h Trainer/TraceManager.h Trainer/StorageManager.h Trainer/SplitMergeTrainer.h Trainer/EMTrainerLA.h Trainer/TrainingCommon.h Names.h Trainer/EMTrainer.h Trainer/TrainerBuilder.h DCP/util.h Trainer/MergePreparator.h)
+set(TRACEMANAGER_SOURCES main_tracemanager.cpp DCP/HybridTree.h DCP/SDCP.h DCP/SDCP_Parser.h util.h Legacy/Trace.h Legacy/SplitMergeUtil.h Legacy/EigenUtil.h Trainer/TraceManager.h Trainer/StorageManager.h Trainer/SplitMergeTrainer.h Trainer/EMTrainerLA.h Trainer/TrainingCommon.h Names.h Trainer/EMTrainer.h Trainer/TrainerBuilder.h DCP/util.h Trainer/MergePreparator.h Trainer/Smoother.h)
 
 set(MANAGER_SOURCES
         manager.cpp Manage/Manager.h Manage/Hypergraph.h Trainer/GrammarInfo.h Manage/Manager_util.h)

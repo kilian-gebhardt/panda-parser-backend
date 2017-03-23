@@ -13,6 +13,7 @@
 #include "EMTrainerLA.h"
 #include "GrammarInfo.h"
 #include "MergePreparator.h"
+#include "Smoother.h"
 
 namespace Trainer {
     class Splitter {
@@ -220,16 +221,22 @@ namespace Trainer {
     private:
         std::shared_ptr<MergePreparator> mergePreparator;
         std::shared_ptr<Merger> merger;
+        std::shared_ptr<Smoother> smoother;
         const bool debug;
-
     public:
         SplitMergeTrainer(
                 std::shared_ptr<EMTrainerLA> emTrainer
                 , std::shared_ptr<Splitter> splitter
                 , std::shared_ptr<MergePreparator> mergePreparator
                 , std::shared_ptr<Merger> merger
+                , std::shared_ptr<Smoother> smoother
                 , bool debug = false
-        ) : emTrainer(emTrainer), splitter(splitter), mergePreparator(mergePreparator), merger(merger), debug(debug) {}
+        ) : emTrainer(emTrainer)
+                , splitter(splitter)
+                , mergePreparator(mergePreparator)
+                , merger(merger)
+                , smoother(smoother)
+                , debug(debug) {}
 
         LatentAnnotation split_merge_cycle(const LatentAnnotation &la) {
             if (not la.is_proper(splitter->grammarInfo))
@@ -292,6 +299,16 @@ namespace Trainer {
             if (not laMerged.is_proper(splitter->grammarInfo))
                 if (debug)
                     abort();
+
+            // smoothing only if effective
+            if (smoother->get_smoothing_factor() > 0.0) {
+                smoother->smooth(laMerged);
+                emTrainer->train(laMerged);
+                if (not laMerged.is_proper(splitter->grammarInfo))
+                    if (debug)
+                        abort();
+            }
+
             return laMerged;
         }
 

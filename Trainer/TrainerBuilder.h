@@ -29,6 +29,7 @@ namespace Trainer {
         std::shared_ptr<Splitter> splitter;
         std::shared_ptr<MergePreparator> mergePreparator;
         std::shared_ptr<Merger> merger;
+        std::shared_ptr<Smoother> smoother;
         unsigned em_epochs{20};
         unsigned THREADS{1};
 
@@ -121,7 +122,7 @@ namespace Trainer {
             return *this;
         }
 
-        SplitMergeTrainerBuilder &set_threshold_merger(double threshold = 0.5) {
+        SplitMergeTrainerBuilder &set_threshold_merger(double threshold = std::log(0.5)) {
             return set_threshold_merger(threshold, THREADS);
         }
         SplitMergeTrainerBuilder &set_threshold_merger(double threshold, unsigned threads) {
@@ -140,6 +141,11 @@ namespace Trainer {
             return *this;
         }
 
+        SplitMergeTrainerBuilder &set_smoothing_factor(double smoothingFactor = 0.01) {
+            smoother = std::make_shared<Smoother>(grammarInfo, smoothingFactor);
+            return *this;
+        }
+
         SplitMergeTrainer<Nonterminal, TraceID>
         build() {
             if (expector == nullptr)
@@ -154,9 +160,10 @@ namespace Trainer {
                 set_percent_merger();
             if (merger == nullptr)
                 merger = std::make_shared<Merger>(grammarInfo, storageManager);
+            if (smoother == nullptr)
+                set_smoothing_factor();
 
-
-            return SplitMergeTrainer<Nonterminal, TraceID>(emTrainer, splitter, mergePreparator, merger);
+            return SplitMergeTrainer<Nonterminal, TraceID>(emTrainer, splitter, mergePreparator, merger, smoother);
         }
     };
 }
