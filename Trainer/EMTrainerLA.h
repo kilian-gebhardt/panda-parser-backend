@@ -320,7 +320,7 @@ namespace Trainer {
 
     protected:
         Eigen::Tensor<double, 1> compute_trace_root_probabilities(TraceIterator traceIterator
-                                                                          , const LatentAnnotation & latentAnnotation) {
+                                                                          , const LatentAnnotation &) {
             const auto &rootInsideWeight
                     = tracesInsideWeights[traceIterator - traceManager->cbegin()].at(traceIterator->get_goal());
             const auto &rootOutsideWeight
@@ -328,9 +328,9 @@ namespace Trainer {
             return Eigen::Tensor<double, 1> {rootOutsideWeight * rootInsideWeight};
         }
 
-        virtual double compute_counting_scalar( const Eigen::Tensor<double, 1> & rootWeight
-                                               , TraceIterator traceIterator
-                                               , const LatentAnnotation & latentAnnotation) {
+        virtual double compute_counting_scalar( const Eigen::Tensor<double, 1> & /*rootWeight*/
+                                               , TraceIterator
+                                               , const LatentAnnotation &) {
             return 1.0;
         }
 

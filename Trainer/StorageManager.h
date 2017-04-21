@@ -98,7 +98,7 @@ namespace Trainer {
             return Eigen::Tensor<double, 1>(size);
         };
 
-        inline void free_weight_vector(Eigen::Tensor<double, 1> &weightVector) {
+        inline void free_weight_vector(Eigen::Tensor<double, 1> &) {
             // nothing needs to be done
         }
 

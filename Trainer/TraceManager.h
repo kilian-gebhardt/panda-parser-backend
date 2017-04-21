@@ -194,7 +194,7 @@ namespace Trainer {
                 , bool scaling = false
         ) const {
                 MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
-                inside_weights_la(rules, insideWeights, insideLogScales);
+                inside_weights_la(rules, insideWeights, insideLogScales, scaling);
         }
 
 
