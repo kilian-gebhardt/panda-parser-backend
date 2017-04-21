@@ -457,7 +457,8 @@ int main() {
     auto splitMergeTrainerBuilder = Trainer::SplitMergeTrainerBuilder<std::string, unsigned long>(traceManager, grammarInfo);
     auto splitMergeTrainer = splitMergeTrainerBuilder
             .set_discriminative_expector(traceManager)
-            .set_merge_nothing().build();
+            .set_percent_merger()
+            .set_simple_validator(traceManager).build();
 
     std::vector<size_t> nonterminal_splits(8, 1);
 //    convert_format()

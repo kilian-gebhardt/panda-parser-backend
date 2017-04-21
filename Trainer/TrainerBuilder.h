@@ -30,6 +30,8 @@ namespace Trainer {
         std::shared_ptr<MergePreparator> mergePreparator;
         std::shared_ptr<Merger> merger;
         std::shared_ptr<Smoother> smoother;
+        std::shared_ptr<LikelihoodLA> validator;
+        unsigned maxDrops {6};
         unsigned em_epochs{20};
         unsigned THREADS{1};
 
@@ -102,6 +104,26 @@ namespace Trainer {
             return *this;
         }
 
+        SplitMergeTrainerBuilder& set_simple_validator(
+                TraceManagerPtr<Nonterminal, TraceID> validationTraceManager
+                , unsigned maxDrops = 6
+        ) {
+            return set_simple_validator(validationTraceManager, maxDrops, THREADS);
+        }
+
+        SplitMergeTrainerBuilder& set_simple_validator(
+                TraceManagerPtr<Nonterminal, TraceID> validationTraceManager
+                , unsigned maxDrops
+                , unsigned threads
+        ) {
+            validator = std::make_shared<SimpleLikelihoodLA<Nonterminal, TraceID>>(validationTraceManager
+                                                                                   , grammarInfo
+                                                                                   , storageManager
+                                                                                   , threads);
+            this->maxDrops = maxDrops;
+            return *this;
+        }
+
         SplitMergeTrainerBuilder &set_merge_nothing() {
             mergePreparator = std::make_shared<MergeNothingMergePreparator>(grammarInfo);
             return *this;
@@ -152,7 +174,11 @@ namespace Trainer {
                 set_simple_expector();
             if (maximizer == nullptr)
                 set_simple_maximizer();
-            emTrainer = std::make_shared<EMTrainerLA>(em_epochs, expector, maximizer);
+
+            if (validator == nullptr)
+                emTrainer = std::make_shared<EMTrainerLA>(em_epochs, expector, maximizer);
+            else
+                emTrainer = std::make_shared<EMTrainerLAValidation>(em_epochs, expector, maximizer, validator, maxDrops);
 
             if (splitter == nullptr)
                 set_split_randomization();

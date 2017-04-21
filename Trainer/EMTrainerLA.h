@@ -102,6 +102,7 @@ namespace Trainer {
     };
 
     class EMTrainerLA {
+    protected:
         const unsigned epochs;
         std::shared_ptr<Expector> expector;
         std::shared_ptr<Maximizer> maximizer;
@@ -110,7 +111,7 @@ namespace Trainer {
         EMTrainerLA(unsigned epochs, std::shared_ptr<Expector> expector, std::shared_ptr<Maximizer> maximizer)
                 : epochs(epochs), expector(expector), maximizer(maximizer) {};
 
-        void train(LatentAnnotation &latentAnnotation) {
+        virtual void train(LatentAnnotation &latentAnnotation) {
             for (unsigned epoch = 0; epoch < epochs; ++epoch) {
                 Counts counts {expector->expect(latentAnnotation)};
 
@@ -130,8 +131,61 @@ namespace Trainer {
 
     };
 
+    class LikelihoodLA {
+    public:
+        virtual double log_likelihood(const LatentAnnotation & latentAnnotation) = 0;
+        virtual void clean_up() = 0;
+    };
+
+    class EMTrainerLAValidation : public EMTrainerLA {
+        std::shared_ptr<LikelihoodLA> validator;
+        unsigned maxDrops {6};
+    public:
+        EMTrainerLAValidation(unsigned epochs
+                              , std::shared_ptr<Expector> expector
+                              , std::shared_ptr<Maximizer> maximizer
+                              , std::shared_ptr<LikelihoodLA> validator
+                              , unsigned maxDrops = 6)
+                : EMTrainerLA(epochs, expector, maximizer) , validator(validator), maxDrops(maxDrops) {};
+
+        virtual void train(LatentAnnotation &latentAnnotation) {
+            double previousValidationLikelihood = minus_infinity;
+            unsigned drops = 0;
+            for (unsigned epoch = 0; epoch < epochs; ++epoch) {
+                std::cerr << "Epoch " << epoch << "/" << epochs << ": ";
+
+                double validationLikelihood = validator->log_likelihood(latentAnnotation);
+                if (validationLikelihood < previousValidationLikelihood)
+                    ++drops;
+                else
+                    drops = 0;
+                previousValidationLikelihood = validationLikelihood;
+                std::cerr << " validation corpus likelihood " << validationLikelihood;
+
+                if (drops >= maxDrops) {
+                    std::cerr << std::endl;
+                    break;
+                }
+
+                Counts counts {expector->expect(latentAnnotation)};
+
+                // output likelihood information based on old probability assignment
+                Eigen::Tensor<double, 0> corpusProbSum = counts.rootCounts.sum();
+                std::cerr << " training corpus prob. sum " << corpusProbSum;
+                std::cerr << " training corpus likelihood " << counts.logLikelihood;
+
+                maximizer->maximize(latentAnnotation, counts);
+
+                std::cerr << " root weights: " << latentAnnotation.rootWeights << std::endl;
+            }
+            expector->clean_up();
+            validator->clean_up();
+        }
+
+    };
+
     template<typename Nonterminal, typename TraceID>
-    class SimpleExpector : public Expector {
+    class SimpleLikelihoodLA : public LikelihoodLA {
     protected:
         template<typename T1, typename T2>
         using MAPTYPE = typename std::unordered_map<T1, T2>;
@@ -142,8 +196,132 @@ namespace Trainer {
         const bool debug;
     private:
         const unsigned threads;
+    protected:
+        std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesInsideWeights;
+
+    public:
+        SimpleLikelihoodLA(
+                TraceManagerPtr <Nonterminal, TraceID> traceManager
+                , std::shared_ptr<const GrammarInfo2> grammarInfo
+                , std::shared_ptr<StorageManager> storageManager
+                , unsigned threads = 1
+                , bool debug = false
+        )
+        : traceManager(traceManager)
+        , grammarInfo(grammarInfo)
+        , storageManager(storageManager)
+        , threads(threads)
+        , debug(debug) {};
+
+        virtual double log_likelihood(const LatentAnnotation &latentAnnotation) {
+            if (traceManager->cend() - traceManager->cbegin() != traceManager->size()) {
+                std::cerr << "end - begin " << traceManager->cend() - traceManager->cbegin() << std::endl;
+                std::cerr << "size: " << traceManager->size();
+                std::abort();
+            }
+            if (tracesInsideWeights.size() < traceManager->size()) {
+                tracesInsideWeights.resize(traceManager->size());
+            }
+            return log_likelihood_la(latentAnnotation);
+        }
+
+        void clean_up() {
+            storageManager->free_weight_maps(tracesInsideWeights);
+        }
+
+    private:
+        inline double log_likelihood_la(
+                const LatentAnnotation &latentAnnotation
+        ) {
+            double logLikelihood{0.0};
+#ifdef _OPENMP
+            omp_set_num_threads(threads);
+#endif
+// #pragma omp declare reduction (+ : omp_out += omp_in ) initializer (omp_priv = omp_orig)
+#pragma omp parallel for schedule(dynamic, 10) reduction (+:logLikelihood)
+            for (TraceIterator traceIterator = traceManager->cbegin();
+                 traceIterator < traceManager->cend(); ++traceIterator) {
+                const auto &trace = *traceIterator;
+                if (trace->get_hypergraph()->size() == 0)
+                    continue;
+
+                if (tracesInsideWeights.size() <= traceIterator - traceManager->cbegin()) {
+                    std::cerr << "tried to access non-existent inside or outside weight map" << std::endl;
+                    std::cerr << "it - begin " << traceIterator - traceManager->cbegin() << std::endl;
+                    std::cerr << "in size: " << tracesInsideWeights.size() << std::endl;
+                    abort();
+                }
+                // create inside weight for each node if necessary
+                if (tracesInsideWeights[traceIterator - traceManager->cbegin()].size() !=
+                    trace->get_hypergraph()->size()) {
+                    tracesInsideWeights[traceIterator - traceManager->cbegin()].clear();
+                    for (const auto &node : *(trace->get_hypergraph())) {
+                        tracesInsideWeights[traceIterator - traceManager->cbegin()].emplace(
+                                node
+                                , storageManager->create_weight_vector<WeightVector>(latentAnnotation.nonterminalSplits[node->get_label_id()]));
+                    }
+                }
+
+                MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
+
+                trace->inside_weights_la(
+                        *latentAnnotation.ruleWeights
+                        , tracesInsideWeights[traceIterator - traceManager->cbegin()]
+                        , insideLogScales
+                );
+
+                Eigen::Tensor<double, 1> traceRootProbabilities{
+                        compute_trace_root_probabilities(traceIterator, latentAnnotation)};
+                Eigen::Tensor<double, 0> traceRootProbability = traceRootProbabilities.sum();
+
+                if (not std::isnan(traceRootProbability(0))
+                    and not std::isinf(traceRootProbability(0))
+                    and traceRootProbability(0) > 0) {
+                    logLikelihood += log(traceRootProbability(0));
+                } else {
+                    //std::cerr << "trace Root Probability " << traceRootProbability(0) << std::endl;
+                    // sentences with 0 probability are simply ignored, cf.
+                    // https://github.com/slavpetrov/berkeleyparser/blob/release-1.0/src/edu/berkeley/nlp/PCFGLA/GrammarTrainer.java?ts=2#L558
+
+                    // alternatively one could add a positive constant to each probability
+                    // to get a useful validation measure
+
+                    // logLikelihood += minus_infinity;
+                    continue;
+                }
+
+                if (debug)
+                    std::cerr << "instance root probability: " << std::endl << traceRootProbabilities << std::endl;
+            }
+
+            return logLikelihood;
+        }
 
     protected:
+        Eigen::Tensor<double, 1> compute_trace_root_probabilities(TraceIterator traceIterator
+                                                                  , const LatentAnnotation & latentAnnotation) {
+            const auto &rootInsideWeight
+                    = tracesInsideWeights[traceIterator - traceManager->cbegin()].at(traceIterator->get_goal());
+            const auto &rootOutsideWeight = latentAnnotation.rootWeights;
+            return Eigen::Tensor<double, 1> {rootOutsideWeight * rootInsideWeight};
+        }
+    };
+
+    template<typename Nonterminal, typename TraceID>
+    class SimpleExpector : public Expector {
+    protected:
+        template<typename T1, typename T2>
+        using MAPTYPE = typename std::unordered_map<T1, T2>;
+        using TraceIterator = ConstManagerIterator<Trace < Nonterminal, TraceID>>;
+        const TraceManagerPtr <Nonterminal, TraceID> traceManager;
+        std::shared_ptr<const GrammarInfo2> grammarInfo;
+        std::shared_ptr<StorageManager> storageManager;
+
+    private:
+        const unsigned threads;
+
+    protected:
+        const bool debug;
         std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesInsideWeights;
         std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesOutsideWeights;
 
