@@ -263,6 +263,7 @@ namespace Trainer {
             }
 
             LatentAnnotation laSplit{splitter->split(la)};
+            emTrainer->setTrainingMode(Splitting);
             emTrainer->train(laSplit);
             auto mergeInfo = mergePreparator->merge_prepare(laSplit);
 
@@ -294,6 +295,7 @@ namespace Trainer {
                 if (debug)
                     abort();
 
+            emTrainer->setTrainingMode(Merging);
             emTrainer->train(laMerged);
 
             if (not laMerged.is_proper(splitter->grammarInfo))
@@ -303,6 +305,7 @@ namespace Trainer {
             // smoothing only if effective
             if (smoother->get_smoothing_factor() > 0.0) {
                 smoother->smooth(laMerged);
+                emTrainer->setTrainingMode(Smoothing);
                 emTrainer->train(laMerged);
                 if (not laMerged.is_proper(splitter->grammarInfo))
                     if (debug)

@@ -101,15 +101,38 @@ namespace Trainer {
         virtual void maximize(LatentAnnotation &, const Counts &) = 0;
     };
 
+    enum TrainingMode { Default, Splitting, Merging, Smoothing };
+
+
     class EMTrainerLA {
     protected:
-        const unsigned epochs;
+        std::map<TrainingMode, unsigned> modeEpochs;
+        unsigned epochs;
         std::shared_ptr<Expector> expector;
         std::shared_ptr<Maximizer> maximizer;
-    public:
+        TrainingMode trainingMode { Default };
 
+        virtual void updateSettings() {
+            if (modeEpochs.count(trainingMode))
+                epochs = modeEpochs[trainingMode];
+            else
+                epochs = modeEpochs[Default];
+        }
+
+    public:
         EMTrainerLA(unsigned epochs, std::shared_ptr<Expector> expector, std::shared_ptr<Maximizer> maximizer)
-                : epochs(epochs), expector(expector), maximizer(maximizer) {};
+                : epochs(epochs), expector(expector), maximizer(maximizer) {
+            modeEpochs[Default] = epochs;
+        };
+
+        void setTrainingMode(TrainingMode trainingMode) {
+            EMTrainerLA::trainingMode = trainingMode;
+            updateSettings();
+        }
+
+        void setEMepochs(unsigned epochs, TrainingMode mode=Default) {
+            modeEpochs[mode] = epochs;
+        }
 
         virtual void train(LatentAnnotation &latentAnnotation) {
             for (unsigned epoch = 0; epoch < epochs; ++epoch) {
@@ -138,15 +161,31 @@ namespace Trainer {
     };
 
     class EMTrainerLAValidation : public EMTrainerLA {
+        std::map<TrainingMode, unsigned> modeMaxDrops;
         std::shared_ptr<LikelihoodLA> validator;
         unsigned maxDrops {6};
+
+        virtual void updateSettings() {
+            EMTrainerLA::updateSettings();
+            if (modeMaxDrops.count(trainingMode))
+                maxDrops = modeMaxDrops[trainingMode];
+            else
+                maxDrops = modeMaxDrops[Default];
+        }
+
     public:
         EMTrainerLAValidation(unsigned epochs
                               , std::shared_ptr<Expector> expector
                               , std::shared_ptr<Maximizer> maximizer
                               , std::shared_ptr<LikelihoodLA> validator
                               , unsigned maxDrops = 6)
-                : EMTrainerLA(epochs, expector, maximizer) , validator(validator), maxDrops(maxDrops) {};
+                : EMTrainerLA(epochs, expector, maximizer) , validator(validator), maxDrops(maxDrops) {
+            modeMaxDrops[Default] = maxDrops;
+        };
+
+        void setMaxDrops(unsigned maxDrops, TrainingMode mode=Default) {
+            modeMaxDrops[mode] = maxDrops;
+        }
 
         virtual void train(LatentAnnotation &latentAnnotation) {
             double previousValidationLikelihood = minus_infinity;

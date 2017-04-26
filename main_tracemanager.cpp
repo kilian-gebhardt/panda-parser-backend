@@ -459,6 +459,11 @@ int main() {
             .set_discriminative_expector(traceManager)
             .set_percent_merger()
             .set_simple_validator(traceManager).build();
+    auto emTrainerLA = (const std::shared_ptr<EMTrainerLAValidation> &) splitMergeTrainerBuilder.getEmTrainer();
+    emTrainerLA->setEMepochs(20, Splitting);
+    emTrainerLA->setEMepochs(10, Merging);
+    emTrainerLA->setEMepochs(5, Smoothing);
+    emTrainerLA->setMaxDrops(2, Smoothing);
 
     std::vector<size_t> nonterminal_splits(8, 1);
 //    convert_format()

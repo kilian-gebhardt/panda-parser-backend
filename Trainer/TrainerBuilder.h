@@ -191,6 +191,10 @@ namespace Trainer {
 
             return SplitMergeTrainer<Nonterminal, TraceID>(emTrainer, splitter, mergePreparator, merger, smoother);
         }
+
+        const std::shared_ptr<EMTrainerLA> &getEmTrainer() const {
+            return emTrainer;
+        }
     };
 }
 
