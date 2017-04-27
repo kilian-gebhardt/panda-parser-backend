@@ -190,7 +190,8 @@ namespace Trainer {
         virtual void train(LatentAnnotation &latentAnnotation) {
             double previousValidationLikelihood = minus_infinity;
             unsigned drops = 0;
-            for (unsigned epoch = 0; epoch < epochs; ++epoch) {
+            unsigned epoch = 0;
+            for (; epoch < epochs; ++epoch) {
                 std::cerr << "Epoch " << epoch << "/" << epochs << ": ";
 
                 double validationLikelihood = validator->log_likelihood(latentAnnotation);
@@ -216,6 +217,10 @@ namespace Trainer {
                 maximizer->maximize(latentAnnotation, counts);
 
                 std::cerr << " root weights: " << latentAnnotation.rootWeights << std::endl;
+            }
+            if (epoch == epochs) {
+                double validationLikelihood = validator->log_likelihood(latentAnnotation);
+                std::cerr << " validation corpus likelihood " << validationLikelihood << std::endl;
             }
             expector->clean_up();
             validator->clean_up();
