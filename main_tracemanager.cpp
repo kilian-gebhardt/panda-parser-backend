@@ -15,6 +15,7 @@
 #include "Trainer/TrainingCommon.h"
 #include "Trainer/LatentAnnotation.h"
 #include "Trainer/TrainerBuilder.h"
+#include "Trainer/HypergraphRanker.h"
 
 using namespace Trainer;
 
@@ -476,6 +477,12 @@ int main() {
     Trainer::LatentAnnotation la(nonterminal_splits, root_weights, latentified, *grammarInfo, storageManager);
     auto la_1 = splitMergeTrainer.split_merge_cycle(la);
     auto la_2 = splitMergeTrainer.split_merge_cycle(la_1);
+
+    HypergraphRanker<std::string, unsigned long> hr(traceManager, grammarInfo, std::make_shared<StorageManager>(storageManager));
+    auto ranking = hr.rank(la_2);
+    std::cerr << "Ranking " << std::endl;
+    for (auto p : ranking)
+        std::cerr << p.first << " " << p.second << std::endl;
 
     return 0;
 }
