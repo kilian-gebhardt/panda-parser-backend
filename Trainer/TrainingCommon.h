@@ -5,12 +5,12 @@
 #ifndef STERMPARSER_TRAININGCOMMON_H
 #define STERMPARSER_TRAININGCOMMON_H
 
-#include "TraceManager.h"
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 #include <boost/variant.hpp>
 #include <vector>
 #include <cstddef>
 #include <unordered_map>
+#include <iostream>
 
 
 namespace Trainer {
