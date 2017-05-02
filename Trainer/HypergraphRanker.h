@@ -26,7 +26,7 @@ namespace Trainer {
     private:
         const unsigned threads;
     protected:
-        std::vector<MAPTYPE<Element<Node<Nonterminal>>, WeightVector>> tracesInsideWeights;
+        MAPTYPE<Element<Node<Nonterminal>>, WeightVector> traceInsideWeights;
     public:
 
         using MyPair = typename std::pair<size_t, double>;
@@ -50,14 +50,11 @@ namespace Trainer {
                 std::cerr << "size: " << traceManager->size();
                 std::abort();
             }
-            if (tracesInsideWeights.size() < traceManager->size()) {
-                tracesInsideWeights.resize(traceManager->size());
-            }
             return rank_la(latentAnnotation);
         }
 
         void clean_up() {
-            storageManager->free_weight_maps(tracesInsideWeights);
+//            storageManager->free_weight_maps(traceInsideWeights);
         }
 
     private:
@@ -74,28 +71,19 @@ namespace Trainer {
                 if (trace->get_hypergraph()->size() == 0)
                     continue;
 
-                if (tracesInsideWeights.size() <= traceIterator - traceManager->cbegin()) {
-                    std::cerr << "tried to access non-existent inside or outside weight map" << std::endl;
-                    std::cerr << "it - begin " << traceIterator - traceManager->cbegin() << std::endl;
-                    std::cerr << "in size: " << tracesInsideWeights.size() << std::endl;
-                    abort();
-                }
-                // create inside weight for each node if necessary
-                if (tracesInsideWeights[traceIterator - traceManager->cbegin()].size() !=
-                    trace->get_hypergraph()->size()) {
-                    tracesInsideWeights[traceIterator - traceManager->cbegin()].clear();
-                    for (const auto &node : *(trace->get_hypergraph())) {
-                        tracesInsideWeights[traceIterator - traceManager->cbegin()].emplace(
-                                node
-                                , storageManager->create_weight_vector<WeightVector>(latentAnnotation.nonterminalSplits[node->get_label_id()]));
-                    }
+                // create inside weight for each node
+                traceInsideWeights.clear();
+                for (const auto &node : *(trace->get_hypergraph())) {
+                    traceInsideWeights.emplace(
+                            node
+                            , storageManager->create_weight_vector<WeightVector>(latentAnnotation.nonterminalSplits[node->get_label_id()]));
                 }
 
                 MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
 
                 trace->inside_weights_la(
                         *latentAnnotation.ruleWeights
-                        , tracesInsideWeights[traceIterator - traceManager->cbegin()]
+                        , traceInsideWeights
                         , insideLogScales
                 );
 
@@ -121,7 +109,7 @@ namespace Trainer {
         Eigen::Tensor<double, 1> compute_trace_root_probabilities(TraceIterator traceIterator
                                                                   , const LatentAnnotation & latentAnnotation) {
             const auto &rootInsideWeight
-                    = tracesInsideWeights[traceIterator - traceManager->cbegin()].at(traceIterator->get_goal());
+                    = traceInsideWeights.at(traceIterator->get_goal());
             const auto &rootOutsideWeight = latentAnnotation.rootWeights;
             return Eigen::Tensor<double, 1> {rootOutsideWeight * rootInsideWeight};
         }
