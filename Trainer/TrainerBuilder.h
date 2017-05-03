@@ -30,7 +30,7 @@ namespace Trainer {
         std::shared_ptr<MergePreparator> mergePreparator;
         std::shared_ptr<Merger> merger;
         std::shared_ptr<Smoother> smoother;
-        std::shared_ptr<LikelihoodLA> validator;
+        std::shared_ptr<ValidationLA> validator;
         unsigned maxDrops {6};
         unsigned em_epochs{20};
         unsigned THREADS{1};
@@ -123,6 +123,24 @@ namespace Trainer {
             this->maxDrops = maxDrops;
             return *this;
         }
+
+        SplitMergeTrainerBuilder& set_score_validator(
+                  std::shared_ptr<CandidateScoreValidator<Nonterminal, TraceID>> validator
+                , unsigned maxDrops = 6
+        ) {
+            return set_score_validator(validator, maxDrops, THREADS);
+        }
+
+        SplitMergeTrainerBuilder& set_score_validator(
+                  std::shared_ptr<CandidateScoreValidator<Nonterminal, TraceID>> validator
+                , unsigned maxDrops
+                , unsigned threads
+        ) {
+            this->validator = validator;
+            this->maxDrops = maxDrops;
+            return *this;
+        }
+
 
         SplitMergeTrainerBuilder &set_merge_nothing() {
             mergePreparator = std::make_shared<MergeNothingMergePreparator>(grammarInfo);
