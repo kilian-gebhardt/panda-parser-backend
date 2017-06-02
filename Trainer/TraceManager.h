@@ -536,6 +536,92 @@ namespace Trainer {
         }
 
 
+
+        template<typename Val>
+        std::pair<MAPTYPE<Element<Node<Nonterminal>>, Val>
+                  , MAPTYPE<Element<Node<Nonterminal>>, Val>>
+        io_weights_fixpoint(std::vector<Val> &ruleWeights) const {
+
+            MAPTYPE<Element<Node<Nonterminal>>, Val> inside{};
+            MAPTYPE<Element<Node<Nonterminal>>, Val> outside{};
+
+            // initialize values to zero
+            for (const auto &node : *hypergraph) {
+                inside[node] = Val::zero();
+                outside[node] = Val::zero();
+            }
+
+
+            // inside weights
+            Val maxChange;
+            while(true) {
+                maxChange = Val::zero();
+                for (const auto &node : *hypergraph) {
+                    Val old = inside[node];
+                    inside[node] = Val::zero();
+                    for (const auto &incomingEdge : hypergraph->get_incoming_edges(node)) {
+                        Val val(ruleWeights[incomingEdge->get_label_id()]);
+                        for (const auto &sourceNode : incomingEdge->get_sources())
+                            val *= inside.at(sourceNode);
+
+                        inside[node] += val;
+                    }
+
+
+                    // calculate change
+                    Val delta = inside[node] - old;
+                    if(delta < 0)
+                        delta *= -1;
+                    // update max change
+                    maxChange = std::max(maxChange, delta);
+                }
+
+                if(maxChange < 0.001){
+                    break;
+                }
+            }
+
+            // compute outside values
+
+            while(true) {
+                maxChange = Val::zero();
+                for (const auto &node : *hypergraph) {
+                    Val old = outside[node];
+                    if(node == goal)
+                        outside[node] = Val::one();
+                    else
+                        outside[node] = Val::zero();
+                    for (const auto &outgoingEdge : hypergraph->get_outgoing_edges(node)) {
+                        Val val(ruleWeights[outgoingEdge.first->get_label_id()]);
+                        val *= outside[outgoingEdge.first->get_target()];
+                        for (size_t i = 0; i < outgoingEdge.first->get_sources().size(); i++) {
+                            if (i != outgoingEdge.second)
+                                val *= inside.at(outgoingEdge.first->get_sources()[i]);
+                        }
+
+                        outside[node] += val;
+                    }
+
+
+                    // calculate change
+                    Val delta = outside[node] - old;
+                    if (delta < 0)
+                        delta *= -1;
+                    // update max change
+                    maxChange = std::max(maxChange, delta);
+                }
+
+                if(maxChange < 0.001){
+                    break;
+                }
+
+            }
+            return std::make_pair(inside, outside);
+        };
+
+
+
+
         // Serialization works for LabelT of std::string and size_t
         template<typename T = oID>
         typename std::enable_if_t<
@@ -595,7 +681,7 @@ namespace Trainer {
                 , std::shared_ptr<const std::vector<EdgeLabelT>> edgeLs
                 , const bool debug = false
         ) :
-                debug(debug), nodeLabels(nodeLs), edgeLabels(edgeLs) {}
+                nodeLabels(nodeLs), edgeLabels(edgeLs), debug(debug) {}
 
 
         // todo: Hook on create?

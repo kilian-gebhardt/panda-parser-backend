@@ -9,9 +9,25 @@
 #include <map>
 #include "Manage/Hypergraph.h"
 #include "Trainer/TraceManager.h"
+#include "util.h"
 
+
+void test_main();
+void test_subgraph();
+void test_fp_io();
 
 int main() {
+
+    test_main();
+
+    test_subgraph();
+
+    test_fp_io();
+
+}
+
+
+void test_main() {
     std::vector<std::string> nLabels{"hello", "world", "this"};
     auto const nLabelsPtr = std::make_shared<const std::vector<std::string>>(nLabels);
     std::vector<EdgeLabelT> eLabels{42};
@@ -95,56 +111,123 @@ int main() {
         Trainer::TraceManagerPtr<std::string, std::string> tm2 = Trainer::TraceManager2<std::string
                                                                                         , std::string
         >::deserialize(in);
-        std::clog << "Read in TraceManager with Trace#: " << tm2->size() << "and Trace 1 contrains " << (*tm2)[0].get_hypergraph()->size();
+        std::clog << "Read in TraceManager with Trace#: " << tm2->size() << "and Trace 1 contrains "
+                  << (*tm2)[0].get_hypergraph()->size();
 
         tm2->serialize(std::cout);
     }
+}
 
 
 
 
+
+void test_subgraph() {
     std::clog << "######################## \n ################## \n ##################### \n Testing Subgraph: \n";
 
-    std::vector<int> graphNLabels {1, 2, 3, 4, 5, 6, 7, 8};
+    std::vector<int> graphNLabels{1, 2, 3, 4, 5, 6, 7, 8};
     auto graphNLabelsPtr = std::make_shared<std::vector<int>>(graphNLabels);
-    std::vector<EdgeLabelT> graphELabels {42, 43, 44, 45};
+    std::vector<EdgeLabelT> graphELabels{42, 43, 44, 45};
     auto graphELabelsPtr = std::make_shared<std::vector<EdgeLabelT>>(graphELabels);
     HypergraphPtr<int> graph = std::make_shared<Hypergraph<int>>(graphNLabelsPtr, graphELabelsPtr);
 
     std::vector<Element<Node<int>>> graphNodes;
-    for(const auto l : graphNLabels)
+    for (const auto l : graphNLabels)
         graphNodes.push_back(graph->create(l));
 
-    graph->add_hyperedge(42, graphNodes[0], std::vector<Element<Node<int>>>{graphNodes[2], graphNodes[1], graphNodes[3]});
+    graph->add_hyperedge(
+            42, graphNodes[0], std::vector<Element<Node<int>>>{graphNodes[2], graphNodes[1], graphNodes[3]}
+    );
     graph->add_hyperedge(43, graphNodes[1], std::vector<Element<Node<int>>>{graphNodes[4], graphNodes[5]});
     graph->add_hyperedge(44, graphNodes[3], std::vector<Element<Node<int>>>{graphNodes[6], graphNodes[5]});
     graph->add_hyperedge(45, graphNodes[3], std::vector<Element<Node<int>>>{graphNodes[7]});
 
 
-    std::vector<int> subNLabels {1, 2, 3, 4, 5, 6, 7, 8};
+    std::vector<int> subNLabels{1, 2, 3, 4, 5, 6, 7, 8};
     auto subNLabelsPtr = std::make_shared<std::vector<int>>(subNLabels);
-    std::vector<EdgeLabelT> subELabels {42, 43, 44, 45};
+    std::vector<EdgeLabelT> subELabels{42, 43, 44, 45};
     auto subELabelsPtr = std::make_shared<std::vector<EdgeLabelT>>(subELabels);
     HypergraphPtr<int> sub = std::make_shared<Hypergraph<int>>(subNLabelsPtr, subELabelsPtr);
 
 
     std::vector<Element<Node<int>>> subNodes;
-    for(const auto l : subNLabels)
+    for (const auto l : subNLabels)
         subNodes.push_back(sub->create(l));
 
-    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be true (empty)" << std::endl;
+    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be true (empty)"
+              << std::endl;
 
 
     sub->add_hyperedge(42, subNodes[0], std::vector<Element<Node<int>>>{subNodes[3], subNodes[1], subNodes[2]});
-    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be true (42)" << std::endl;
+    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be true (42)"
+              << std::endl;
 
     sub->add_hyperedge(43, subNodes[1], std::vector<Element<Node<int>>>{subNodes[5], subNodes[4]});
-    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be true (43)" << std::endl;
+    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be true (43)"
+              << std::endl;
 
 
     sub->add_hyperedge(44, subNodes[3], std::vector<Element<Node<int>>>{subNodes[5], subNodes[6]});
-    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be true (44)" << std::endl;
+    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be true (44)"
+              << std::endl;
 
     sub->add_hyperedge(43, subNodes[3], std::vector<Element<Node<int>>>{subNodes[7]});
-    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be false (wrong edge)" << std::endl;
+
+    std::clog << Manage::is_sub_hypergraph(graph, sub, graphNodes[0], subNodes[0]) << " should be false (wrong edge)"
+              << std::endl;
+
+}
+
+
+
+
+
+
+
+
+void test_fp_io() {
+    std::clog
+            << "\n######################## \n ################## \n ##################### \n Testing Fixpoint IO: \n";
+
+    std::vector<int> graphNLabels{0, 1, 2, 3, 4, 5, 6, 7, 8};
+    auto graphNLabelsPtr = std::make_shared<std::vector<int>>(graphNLabels);
+    std::vector<EdgeLabelT> graphELabels{41, 42, 43, 44, 45, 46, 47};
+    auto graphELabelsPtr = std::make_shared<std::vector<EdgeLabelT>>(graphELabels);
+    HypergraphPtr<int> graph = std::make_shared<Hypergraph<int>>(graphNLabelsPtr, graphELabelsPtr);
+
+    std::vector<Element<Node<int>>> graphNodes;
+    for (const auto l : graphNLabels)
+        graphNodes.push_back(graph->create(l));
+
+    graph->add_hyperedge(41, graphNodes[0], std::vector<Element<Node<int>>>{graphNodes[1], graphNodes[2]});
+    graph->add_hyperedge(42, graphNodes[1], std::vector<Element<Node<int>>>{graphNodes[3]});
+    graph->add_hyperedge(43, graphNodes[2], std::vector<Element<Node<int>>>{graphNodes[3]});
+    graph->add_hyperedge(44, graphNodes[2], std::vector<Element<Node<int>>>{graphNodes[1], graphNodes[2]});
+    graph->add_hyperedge(45, graphNodes[3], std::vector<Element<Node<int>>>());
+    graph->add_hyperedge(46, graphNodes[0], std::vector<Element<Node<int>>>{graphNodes[4]});
+    graph->add_hyperedge(47, graphNodes[4], std::vector<Element<Node<int>>>());
+
+    std::vector<Double> ruleWeights {0.8, 1, 0.7, 0.3, 1, 0.2, 1};
+
+    auto tMPtr = std::make_shared<Trainer::TraceManager2<int, int>>(graphNLabelsPtr, graphELabelsPtr);
+
+    tMPtr->create(1, graph, graphNodes[0]);
+
+    auto w = (*tMPtr)[0].io_weights_fixpoint(ruleWeights);
+    std::cerr << "Inside Weights:\n";
+    for (auto i : w.first)
+        std::cerr << i.first << ": " << i.second << "     ";
+    std::cerr << std::endl;
+
+    std::cerr << "Outside Weights:\n";
+    for (auto i : w.second)
+        std::cerr << i.first << ": " << i.second << "     ";
+    std::cerr << std::endl;
+
+
+    auto top = (*tMPtr)[0].get_topological_order();
+    for(const auto &i : top){
+        std::cerr << i << " ";
+    }
+
 }
