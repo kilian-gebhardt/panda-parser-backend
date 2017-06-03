@@ -99,10 +99,29 @@ namespace Trainer {
 
         };
 
+
         template<typename Val>
         std::pair<MAPTYPE<Element<Node<Nonterminal>>, Val>
                   , MAPTYPE<Element<Node<Nonterminal>>, Val>>
         io_weights(std::vector<Val> &ruleWeights) const {
+
+            auto top = get_topological_order();
+            if(top.size() == hypergraph->size()) {
+                std::cerr << "Calculate IO-weights using topological order" << std::endl;
+                return io_weights_topological(ruleWeights);
+            }
+            else {
+                std::cerr << "Calculate IO-weights using fixpoint approximation" << std::endl;
+                return io_weights_fixpoint(ruleWeights);
+            }
+
+        };
+
+
+        template<typename Val>
+        std::pair<MAPTYPE<Element<Node<Nonterminal>>, Val>
+                  , MAPTYPE<Element<Node<Nonterminal>>, Val>>
+        io_weights_topological(std::vector<Val> &ruleWeights) const {
 
             // calculate inside weigths
             // TODO: implement for general case (== no topological order) approximation of inside weights

@@ -213,7 +213,7 @@ void test_fp_io() {
 
     tMPtr->create(1, graph, graphNodes[0]);
 
-    auto w = (*tMPtr)[0].io_weights_fixpoint(ruleWeights);
+    auto w = (*tMPtr)[0].io_weights(ruleWeights);
     std::cerr << "Inside Weights:\n";
     for (auto i : w.first)
         std::cerr << i.first << ": " << i.second << "     ";
