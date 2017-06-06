@@ -61,6 +61,12 @@ namespace Trainer {
             return goal;
         }
 
+
+        const bool has_topological_order() const {
+            return get_topological_order().size() == hypergraph->size();
+        }
+
+        // TODO: This is not a const function, is it?
         const std::vector<Element<Node<Nonterminal>>> &get_topological_order() const {
             if (topologicalOrder.size() == hypergraph->size())
                 return topologicalOrder;
@@ -105,8 +111,7 @@ namespace Trainer {
                   , MAPTYPE<Element<Node<Nonterminal>>, Val>>
         io_weights(std::vector<Val> &ruleWeights) const {
 
-            auto top = get_topological_order();
-            if(top.size() == hypergraph->size()) {
+            if(has_topological_order()) {
                 std::cerr << "Calculate IO-weights using topological order" << std::endl;
                 return io_weights_topological(ruleWeights);
             }
@@ -124,7 +129,6 @@ namespace Trainer {
         io_weights_topological(std::vector<Val> &ruleWeights) const {
 
             // calculate inside weigths
-            // TODO: implement for general case (== no topological order) approximation of inside weights
             MAPTYPE<Element<Node<Nonterminal>>, Val> inside{};
             for (const auto &node : get_topological_order()) {
                 inside[node] = Val::zero();
@@ -160,16 +164,31 @@ namespace Trainer {
             return std::make_pair(inside, outside);
         }
 
+
+
         inline void inside_weights_la(
                 const std::vector<Trainer::RuleTensor<double>> &rules
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
                 , bool scaling = false
         ) const {
-            // TODO implement for general case (== no topological order) approximation of inside weights
-            // computation of inside weights
+            if(has_topological_order()) {
+                std::cerr << "Calculate Inside-weights using topological order" << std::endl;
+                inside_weights_topological_la(rules, insideWeights, insideLogScales);
+            }
+            else {
+                std::cerr << "Calculate Inside-weights using fixpoint approximation" << std::endl;
+                inside_weights_fixpoint_la(rules, insideWeights, insideLogScales);
+            }
+        }
 
-            if (get_topological_order().size() != hypergraph->size()) {
+        inline void inside_weights_topological_la(
+                const std::vector<Trainer::RuleTensor<double>> &rules
+                , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
+                , MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
+                , bool scaling = false
+        ) const {
+            if (!has_topological_order()) {
                 std::cerr << "Hypergraph " << id << " cannot be ordered topologically." << std::endl;
                 abort();
             }
@@ -207,17 +226,43 @@ namespace Trainer {
             }
         }
 
+
+
         inline void inside_weights_la(
                 const std::vector<Trainer::RuleTensor<double>> &rules
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , bool scaling = false
         ) const {
-                MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
+            MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
+            if(has_topological_order())
                 inside_weights_la(rules, insideWeights, insideLogScales, scaling);
+            else {
+                for(auto n : *hypergraph)
+                    insideLogScales[n] = 0;
+                inside_weights_la(rules, insideWeights, insideLogScales, scaling);
+            }
         }
 
 
+
         inline void io_weights_la(
+                const std::vector<Trainer::RuleTensor<double>> &rules
+                , const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root
+                , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
+                , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
+                , bool scaling = false
+        ) const {
+            if(has_topological_order()) {
+                std::cerr << "Calculate IO-weights using topological order" << std::endl;
+                return io_weights_topological_la(rules, root, insideWeights, outsideWeights, scaling);
+            }
+            else {
+                std::cerr << "Calculate IO-weights using fixpoint approximation" << std::endl;
+                return io_weights_fixpoint_la(rules, root, insideWeights, outsideWeights, scaling);
+            }
+        }
+
+        inline void io_weights_topological_la(
                 const std::vector<Trainer::RuleTensor<double>> &rules
                 , const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
@@ -229,7 +274,6 @@ namespace Trainer {
 
             inside_weights_la(rules, insideWeights, insideLogScales, scaling);
 
-            // TODO implement for general case (== no topological order) solution by gauss jordan
             for (auto nodeIterator = get_topological_order().rbegin();
                  nodeIterator != get_topological_order().rend(); ++nodeIterator) {
                 const Element<Node<Nonterminal>> &node = *nodeIterator;
@@ -637,6 +681,192 @@ namespace Trainer {
             }
             return std::make_pair(inside, outside);
         };
+
+
+
+
+        inline void io_weights_fixpoint_la(
+                const std::vector<Trainer::RuleTensor<double>> &rules
+                , const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root
+                , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
+                , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
+                , bool scaling = false
+        ) const {
+            MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
+            MAPTYPE<Element<Node<Nonterminal>>, int> outsideLogScales;
+            for(auto n : *hypergraph){
+                insideLogScales[n] = 0;
+                outsideLogScales[n] = 0;
+            }
+
+
+            inside_weights_fixpoint_la(rules, insideWeights, insideLogScales, scaling);
+
+
+            while(true) {
+                double maxChange = 0.0;
+                for (const Element<Node<Nonterminal>> &node : *hypergraph){
+
+                    Trainer::WeightVector &outsideWeight = outsideWeights.at(node);
+                    Trainer::WeightVector oldWeight = outsideWeight;
+
+                    if (node == get_goal())
+                        outsideWeight = root;
+                    else
+                        outsideWeight.setZero();
+
+
+                    for (const auto &outgoing : get_hypergraph()->get_outgoing_edges(node)) {
+                        switch (outgoing.first->get_sources().size() + 1) {
+                            case 1:
+                                // Cannot happen, since there is at least one source (namely 'node')
+                                std::cerr << "The trace is inconsistent!";
+                                abort();
+                            case 2:
+                                outside_weight_step2(
+                                        rules
+                                        , outsideWeights
+                                        , outsideWeight
+                                        , outgoing
+                                        , outsideLogScales[node]
+                                        , outsideLogScales
+                                );
+                                break;
+                            case 3:
+                                outside_weight_step3(
+                                        rules
+                                        , insideWeights
+                                        , outsideWeights
+                                        , outsideWeight
+                                        , outgoing
+                                        , outsideLogScales[node]
+                                        , insideLogScales
+                                        , outsideLogScales
+                                );
+                                break;
+                            case 4:
+                                outside_weight_step<4>(
+                                        rules
+                                        , insideWeights
+                                        , outsideWeights
+                                        , outsideWeight
+                                        , outgoing
+                                        , outsideLogScales[node]
+                                        , insideLogScales
+                                        , outsideLogScales
+                                );
+                                break;
+                            default:
+                                std::cerr << "Rules with more than 3 RHS nonterminals are not implemented."
+                                          << std::endl;
+                                abort();
+                        }
+                    }
+
+                    // TODO: move scaling to outer loop!
+                    if (scaling)
+                        outsideLogScales[node] = scaleTensor(outsideWeight, outsideLogScales[node]);
+
+                    Trainer::WeightVector diffVector(outsideWeight.dimensions());
+                    diffVector = oldWeight - outsideWeight;
+                    diffVector = diffVector.abs();
+                    Eigen::Tensor<double, 0> diffP = diffVector.sum();
+                    double diff = diffP(0);
+                    maxChange = std::max(maxChange, diff);
+                }
+
+                // stop the iteration:
+                if(maxChange < 0.0001)
+                    break;
+
+            }
+        }
+
+
+
+
+        inline void inside_weights_fixpoint_la(
+                const std::vector<Trainer::RuleTensor<double>> &rules
+                , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
+                , MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
+                , bool scaling = false
+        ) const {
+            // computation of inside weights
+
+            while(true) {
+                double maxChange = 0;
+
+                for (const auto &node : *hypergraph) {
+                    Trainer::WeightVector &targetWeight = insideWeights.at(node);
+                    Trainer::WeightVector oldInside {targetWeight};
+
+                    targetWeight.setZero();
+
+                    for (const auto &edge : get_hypergraph()->get_incoming_edges(node)) {
+                        // the cases are not dependent on the topological order!
+                        switch (edge->get_sources().size() + 1) {
+                            case 1:
+                                inside_weight_step1(targetWeight, edge, rules, insideLogScales[node]);
+                                break;
+                            case 2:
+                                inside_weight_step2(
+                                        insideWeights
+                                        , targetWeight
+                                        , edge
+                                        , rules
+                                        , insideLogScales[node]
+                                        , insideLogScales
+                                );
+                                break;
+                            case 3:
+                                inside_weight_step3(
+                                        insideWeights
+                                        , targetWeight
+                                        , edge
+                                        , rules
+                                        , insideLogScales[node]
+                                        , insideLogScales
+                                );
+                                break;
+                            case 4:
+                                inside_weight_step<4>(
+                                        insideWeights
+                                        , targetWeight
+                                        , edge
+                                        , rules
+                                        , insideLogScales[node]
+                                        , insideLogScales
+                                );
+                                break;
+                            default:
+                                std::cerr << "Rules with more than 3 RHS nonterminals are not implemented."
+                                          << std::endl;
+                                abort();
+                        }
+                    }
+
+                    //TODO: move scaling to outer loop!
+                    if (scaling)
+                        insideLogScales[node] = scaleTensor(targetWeight, insideLogScales[node]);
+
+
+                    Trainer::WeightVector diffVector(targetWeight.dimensions());
+                    diffVector = oldInside - targetWeight;
+                    diffVector = diffVector.abs();
+                    Eigen::Tensor<double, 0> diffP = diffVector.sum();
+                    double diff = diffP(0);
+                    maxChange = std::max(maxChange, diff);
+                }
+
+                if(maxChange < 0.0001)
+                    break;
+            }
+        }
+
+
+
+
+
 
 
 

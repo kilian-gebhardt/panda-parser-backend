@@ -16,6 +16,11 @@ void test_main();
 void test_subgraph();
 void test_fp_io();
 
+
+template<typename T1, typename T2>
+using MAPTYPE = typename std::unordered_map<T1, T2>;
+
+
 int main() {
 
     test_main();
@@ -230,4 +235,56 @@ void test_fp_io() {
         std::cerr << i << " ";
     }
 
+
+    // Latent annotations
+    std::cerr << "IO with Latent Annotations\n";
+
+    std::vector<Trainer::RuleTensor<double>> ruleWs {};
+    ruleWs.emplace_back(Trainer::RuleTensorRaw<double, 3>{1,1,1});
+    boost::get<Trainer::RuleTensorRaw<double, 3>>(ruleWs[0]).setValues({{{0.8}}});
+    ruleWs.emplace_back(Trainer::RuleTensorRaw<double, 2>{1,1});
+    boost::get<Trainer::RuleTensorRaw<double, 2>>(ruleWs[1]).setValues({{1}});
+    ruleWs.emplace_back(Trainer::RuleTensorRaw<double, 2>{1,1});
+    boost::get<Trainer::RuleTensorRaw<double, 2>>(ruleWs[2]).setValues({{0.7}});
+    ruleWs.emplace_back(Trainer::RuleTensorRaw<double, 3>{1,1,1});
+    boost::get<Trainer::RuleTensorRaw<double, 3>>(ruleWs[3]).setValues({{{0.3}}});
+    ruleWs.emplace_back(Trainer::RuleTensorRaw<double, 1>{1});
+    boost::get<Trainer::RuleTensorRaw<double, 1>>(ruleWs[4]).setValues({1.0});
+    ruleWs.emplace_back(Trainer::RuleTensorRaw<double, 2>{1,1});
+    boost::get<Trainer::RuleTensorRaw<double, 2>>(ruleWs[5]).setValues({{0.2}});
+    ruleWs.emplace_back(Trainer::RuleTensorRaw<double, 1>{1});
+    boost::get<Trainer::RuleTensorRaw<double, 1>>(ruleWs[6]).setValues({1.0});
+
+    std::cerr << "RuleWs done \n";
+
+
+    Eigen::Tensor<double, 1> rootWs(1);
+    rootWs.setValues({1.0});
+
+    Eigen::TensorRef<Eigen::Tensor<double,1>> root;
+    root = rootWs;
+
+    MAPTYPE<Element<Node<int>>, Trainer::WeightVector> insideWeights;
+    MAPTYPE<Element<Node<int>>, Trainer::WeightVector> outsideWeights;
+    for(auto n : *graph){
+        insideWeights[n] = Trainer::WeightVector{1};
+        outsideWeights[n] = Trainer::WeightVector{1};
+    }
+
+    std::cerr << "Starting IO by fixpoint_la\n";
+
+    (*tMPtr)[0].io_weights_fixpoint_la(ruleWs, root, insideWeights, outsideWeights);
+
+    std::cerr << "Inside: ";
+    for(auto n : *graph){
+        std::cerr << insideWeights[n](0) << "  ";
+    }
+    std::cerr << std::endl;
+
+
+    std::cerr << "Outside: ";
+    for(auto n : *graph){
+        std::cerr << outsideWeights[n](0) << "  ";
+    }
+    std::cerr << std::endl;
 }
