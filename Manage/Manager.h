@@ -62,7 +62,7 @@ namespace Manage{
 
     template <typename InfoT>
     class Manager : public std::enable_shared_from_this<Manager<InfoT>> {
-    private:
+    protected:
         std::vector<InfoT> infos {};
 
     public:
