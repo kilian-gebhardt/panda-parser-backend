@@ -26,17 +26,18 @@ namespace Trainer {
     class Trace {
     private:
         Manage::ID id;
-        ManagerPtr<Trace<Nonterminal, oID>> manager;
+        TraceManagerPtr<Nonterminal, oID> manager;
         oID originalID;
         HypergraphPtr<Nonterminal> hypergraph;
         Element<Node<Nonterminal>> goal;
+
 
         mutable std::vector<Element<Node<Nonterminal>>> topologicalOrder;
 
     public:
         Trace(
                 const Manage::ID aId
-                , const ManagerPtr<Trace<Nonterminal, oID>> aManager
+                , const TraceManagerPtr<Nonterminal, oID> aManager
                 , const oID oid
                 , HypergraphPtr<Nonterminal> aHypergraph
                 , Element<Node<Nonterminal>> aGoal
@@ -617,7 +618,9 @@ namespace Trainer {
 
             // inside weights
             Val maxChange;
+            unsigned int cycleCount = 0;
             while(true) {
+                ++cycleCount;
                 maxChange = Val::zero();
                 for (const auto &node : *hypergraph) {
                     Val old = inside[node];
@@ -639,16 +642,18 @@ namespace Trainer {
                     maxChange = std::max(maxChange, delta);
                 }
 
-                if(maxChange < 0.001){
+                if(cycleCount > manager->get_io_cycle_limit() || maxChange < Val::to(manager->get_io_precision())){
                     break;
                 }
             }
 
             // compute outside values
 
+            cycleCount = 0;
             while(true) {
                 maxChange = Val::zero();
                 for (const auto &node : *hypergraph) {
+                    ++cycleCount;
                     Val old = outside[node];
                     if(node == goal)
                         outside[node] = Val::one();
@@ -674,7 +679,7 @@ namespace Trainer {
                     maxChange = std::max(maxChange, delta);
                 }
 
-                if(maxChange < 0.001){
+                if(cycleCount > manager->get_io_cycle_limit() || maxChange < Val::to(manager->get_io_precision())){
                     break;
                 }
 
@@ -703,8 +708,11 @@ namespace Trainer {
             inside_weights_fixpoint_la(rules, insideWeights, insideLogScales, scaling);
 
 
+            unsigned int cycle_count = 0;
             while(true) {
                 double maxChange = 0.0;
+                ++cycle_count;
+
                 for (const Element<Node<Nonterminal>> &node : *hypergraph){
 
                     Trainer::WeightVector &outsideWeight = outsideWeights.at(node);
@@ -776,7 +784,7 @@ namespace Trainer {
                 }
 
                 // stop the iteration:
-                if(maxChange < 0.0001)
+                if(cycle_count > manager->get_io_cycle_limit() || maxChange < manager->get_io_precision())
                     break;
 
             }
@@ -793,8 +801,10 @@ namespace Trainer {
         ) const {
             // computation of inside weights
 
+            unsigned int cycle_count;
             while(true) {
                 double maxChange = 0;
+                ++cycle_count;
 
                 for (const auto &node : *hypergraph) {
                     Trainer::WeightVector &targetWeight = insideWeights.at(node);
@@ -858,7 +868,7 @@ namespace Trainer {
                     maxChange = std::max(maxChange, diff);
                 }
 
-                if(maxChange < 0.0001)
+                if(cycle_count < manager->get_io_cycle_limit() || maxChange < manager->get_io_precision())
                     break;
             }
         }
@@ -923,8 +933,9 @@ namespace Trainer {
         std::shared_ptr<const std::vector<Nonterminal>> nodeLabels;
         std::shared_ptr<const std::vector<EdgeLabelT>> edgeLabels;
 
+        unsigned int io_cycle_limit = 20;
+        double io_precision = 0.0000001;
     public:
-
         TraceManager2(
                 std::shared_ptr<const std::vector<Nonterminal>> nodeLs
                 , std::shared_ptr<const std::vector<EdgeLabelT>> edgeLs
@@ -933,7 +944,19 @@ namespace Trainer {
                 nodeLabels(nodeLs), edgeLabels(edgeLs), debug(debug) {}
 
 
-        // todo: Hook on create?
+
+        std::shared_ptr<TraceManager2<Nonterminal, TraceID>> get_shared_ptr() {
+            return std::static_pointer_cast<TraceManager2<Nonterminal, TraceID>>(this->shared_from_this());
+        };
+
+        Element<Trace<Nonterminal, TraceID>>
+        create(TraceID oid, HypergraphPtr<Nonterminal> hg, Element<Node<Nonterminal>> goal){
+            const Manage::ID id = Manager<Trace<Nonterminal, TraceID>>::infos.size();
+            Manager<Trace<Nonterminal, TraceID>>::infos.emplace_back(id, this->get_shared_ptr(), oid, hg, goal);
+            return Manager<Trace<Nonterminal, TraceID>>::infos[id].get_element();
+        }
+
+
 
         const std::shared_ptr<const std::vector<Nonterminal>> &get_node_labels() const {
             return nodeLabels;
@@ -942,6 +965,25 @@ namespace Trainer {
         const std::shared_ptr<const std::vector<EdgeLabelT>> &get_edge_labels() const {
             return edgeLabels;
         }
+
+
+
+        void set_io_cycle_limit(unsigned int io_cycle_limit) {
+            TraceManager2::io_cycle_limit = io_cycle_limit;
+        }
+
+        void set_io_precision(double io_precision) {
+            TraceManager2::io_precision = io_precision;
+        }
+
+        unsigned int get_io_cycle_limit() const {
+            return io_cycle_limit;
+        }
+
+        double get_io_precision() const {
+            return io_precision;
+        }
+
 
         void serialize(std::ostream &o) {
             o << "TraceManager Version 1" << std::endl;
