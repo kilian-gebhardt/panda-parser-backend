@@ -868,7 +868,7 @@ namespace Trainer {
                     maxChange = std::max(maxChange, diff);
                 }
 
-                if(cycle_count < manager->get_io_cycle_limit() || maxChange < manager->get_io_precision())
+                if(cycle_count > manager->get_io_cycle_limit() || maxChange < manager->get_io_precision())
                     break;
             }
         }
