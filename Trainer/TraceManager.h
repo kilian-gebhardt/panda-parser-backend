@@ -624,15 +624,17 @@ namespace Trainer {
                 maxChange = Val::zero();
                 for (const auto &node : *hypergraph) {
                     Val old = inside[node];
-                    inside[node] = Val::zero();
+
+                    Val target = Val::zero();
                     for (const auto &incomingEdge : hypergraph->get_incoming_edges(node)) {
                         Val val(ruleWeights[incomingEdge->get_label_id()]);
                         for (const auto &sourceNode : incomingEdge->get_sources())
                             val *= inside.at(sourceNode);
 
-                        inside[node] += val;
+                        target += val;
                     }
 
+                    inside[node] = target;
 
                     // calculate change
                     Val delta = inside[node] - old;
@@ -807,10 +809,11 @@ namespace Trainer {
                 ++cycle_count;
 
                 for (const auto &node : *hypergraph) {
-                    Trainer::WeightVector &targetWeight = insideWeights.at(node);
+                    Trainer::WeightVector targetWeight = insideWeights.at(node);
                     Trainer::WeightVector oldInside {targetWeight};
 
                     targetWeight.setZero();
+
 
                     for (const auto &edge : get_hypergraph()->get_incoming_edges(node)) {
                         // the cases are not dependent on the topological order!
@@ -855,6 +858,8 @@ namespace Trainer {
                         }
                     }
 
+                    insideWeights.at(node) = targetWeight;
+
                     //TODO: move scaling to outer loop!
                     if (scaling)
                         insideLogScales[node] = scaleTensor(targetWeight, insideLogScales[node]);
@@ -867,6 +872,7 @@ namespace Trainer {
                     double diff = diffP(0);
                     maxChange = std::max(maxChange, diff);
                 }
+
 
                 if(cycle_count > manager->get_io_cycle_limit() || maxChange < manager->get_io_precision())
                     break;
