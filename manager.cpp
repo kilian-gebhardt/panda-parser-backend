@@ -10,6 +10,8 @@
 #include "Manage/Hypergraph.h"
 #include "Trainer/TraceManager.h"
 #include "util.h"
+#include "Trainer/LatentAnnotation.h"
+#include "Trainer/AnnotationProjection.h"
 
 
 void test_main();
@@ -287,4 +289,31 @@ void test_fp_io() {
         std::cerr << outsideWeights[n](0) << "  ";
     }
     std::cerr << std::endl;
+
+
+
+
+
+    std::cerr << "#### Testing Projection ####\n";
+
+    std::vector<std::vector<size_t>> rules_to_nont {{0,1,2}, {1,3},{2,3},{2,1,2},{3},{0,4},{4}};
+    const std::vector<size_t> splits{};
+
+
+    Trainer::LatentAnnotation lat(splits, std::move(rootWs), std::move(std::make_unique<std::vector<Trainer::RuleTensor<double>>>(ruleWs)));
+    Trainer::GrammarInfo2 gramInf(rules_to_nont, 0);
+
+    std::cerr << "before:\n";
+    for(const auto tensor : *lat.ruleWeights){
+        std::cerr << tensor << "\n";
+    }
+
+    Trainer::LatentAnnotation projection = Trainer::project_annotation<size_t>(std::move(lat), gramInf);
+
+    std::cerr << "after:\n";
+    for(const auto tensor : *projection.ruleWeights){
+        std::cerr << tensor << "\n";
+    }
+
+
 }
