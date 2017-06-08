@@ -60,12 +60,15 @@ namespace Trainer {
                             for (const auto &sourceNode : edge->get_sources()) {
                                 val = val * trIOweights.first.at(sourceNode);
                             }
-                            if (not val.isNaN())
+                            if (not val.isNaN() and val > Val::zero())
                                 ruleCounts[edge->get_label_id()] += val;
                         }
                     }
-                    if (not rootInsideWeight.isNaN())
-                        logLikelihood += log(rootInsideWeight.from());
+                    if (not rootInsideWeight.isNaN() and rootInsideWeight > Val::zero()) {
+                        auto rootProbability = log(rootInsideWeight.from());
+                        if (not isnan(rootProbability) and rootProbability < 0.0)
+                            logLikelihood += rootProbability;
+                    }
                 }
 
                 std::cerr << " log-likelihood " << logLikelihood << std::endl;
@@ -76,7 +79,7 @@ namespace Trainer {
                     for (auto member : group) {
                         groupCount = groupCount + ruleCounts[member];
                     }
-                    if (not (groupCount == Val::zero() or groupCount.isNaN())) {
+                    if (not groupCount.isNaN() and groupCount > Val::zero()) {
                         for (auto member : group) {
                             ruleWeights[member] = ruleCounts[member] / groupCount;
                         }
