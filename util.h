@@ -117,7 +117,10 @@ public:
     }
 
     double from() const {
-        return exp(x);
+        if (x == minus_infinity)
+            return 0.0;
+        else
+            return exp(x);
     }
 
     static const LogDouble add_subtract2_divide(const LogDouble base, const LogDouble add, const LogDouble sub1, const LogDouble sub2, const LogDouble div) {
@@ -126,6 +129,13 @@ public:
                              - exp(sub1.get_Value())
                              - exp(sub2.get_Value()))
                          - div.get_Value());
+    }
+
+    bool isNaN() const {
+        if (std::isnan(x))
+            return true;
+        else
+            return false;
     }
 
 };
@@ -199,6 +209,12 @@ public:
         return Double(((base + add - sub1) - sub2) / div);
     }
 
+    bool isNaN() const {
+        if (std::isnan(x))
+            return true;
+        else
+            return false;
+    }
 };
 
 

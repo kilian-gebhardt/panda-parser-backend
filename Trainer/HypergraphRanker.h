@@ -22,10 +22,10 @@ namespace Trainer {
         const TraceManagerPtr <Nonterminal, TraceID> traceManager;
         std::shared_ptr<const GrammarInfo2> grammarInfo;
         std::shared_ptr<StorageManager> storageManager;
-        const bool debug;
     private:
         const unsigned threads;
     protected:
+        const bool debug;
         MAPTYPE<Element<Node<Nonterminal>>, WeightVector> traceInsideWeights;
     public:
 

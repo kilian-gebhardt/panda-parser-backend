@@ -59,7 +59,8 @@ namespace Trainer {
                             for (const auto &sourceNode : edge->get_sources()) {
                                 val = val * trIOweights.first.at(sourceNode);
                             }
-                            ruleCounts[edge->get_label_id()] += val;
+                            if (not val.isNaN())
+                                ruleCounts[edge->get_label_id()] += val;
                         }
                     }
                 }
@@ -70,7 +71,7 @@ namespace Trainer {
                     for (auto member : group) {
                         groupCount = groupCount + ruleCounts[member];
                     }
-                    if (groupCount != Val::zero()) {
+                    if (not (groupCount == Val::zero() or groupCount.isNaN())) {
                         for (auto member : group) {
                             ruleWeights[member] = ruleCounts[member] / groupCount;
                         }
