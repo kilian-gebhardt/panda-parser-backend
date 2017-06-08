@@ -8,6 +8,7 @@
 #include <iostream>
 #include "../Names.h"
 #include "TraceManager.h"
+#include <cmath>
 
 namespace Trainer {
 
@@ -66,7 +67,7 @@ namespace Trainer {
                     }
                     if (not rootInsideWeight.isNaN() and rootInsideWeight > Val::zero()) {
                         auto rootProbability = log(rootInsideWeight.from());
-                        if (not isnan(rootProbability) and rootProbability < 0.0)
+                        if (not std::isnan(rootProbability) and rootProbability <= 0.0)
                             logLikelihood += rootProbability;
                     }
                 }
