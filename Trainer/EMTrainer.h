@@ -34,9 +34,10 @@ namespace Trainer {
             for (auto i : initialWeights) {
                 ruleWeights.push_back(Val::to(i));
             }
-            std::cerr << std::endl;
+//            std::cerr << std::endl;
 
             while (epoch < noEpochs) {
+                auto likelihood = Val::one();
                 // expectation
                 ruleCounts = std::vector<Val>(ruleWeights.size(), Val::zero());
                 for (const auto trace : *traceManager) {
@@ -63,7 +64,11 @@ namespace Trainer {
                                 ruleCounts[edge->get_label_id()] += val;
                         }
                     }
+                    if (not rootInsideWeight.isNaN())
+                        likelihood *= rootInsideWeight;
                 }
+
+                std::cerr << " likelihood " << likelihood << std::endl;
 
                 // maximization
                 for (auto group : normalizationGroups) {
