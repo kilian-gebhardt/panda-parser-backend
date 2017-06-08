@@ -113,11 +113,11 @@ namespace Trainer {
         io_weights(std::vector<Val> &ruleWeights) const {
 
             if(has_topological_order()) {
-                std::cerr << "Calculate IO-weights using topological order" << std::endl;
+//                std::cerr << "Calculate IO-weights using topological order" << std::endl;
                 return io_weights_topological(ruleWeights);
             }
             else {
-                std::cerr << "Calculate IO-weights using fixpoint approximation" << std::endl;
+//                std::cerr << "Calculate IO-weights using fixpoint approximation" << std::endl;
                 return io_weights_fixpoint(ruleWeights);
             }
 
@@ -174,11 +174,11 @@ namespace Trainer {
                 , bool scaling = false
         ) const {
             if(has_topological_order()) {
-                std::cerr << "Calculate Inside-weights using topological order" << std::endl;
+//                std::cerr << "Calculate Inside-weights using topological order" << std::endl;
                 inside_weights_topological_la(rules, insideWeights, insideLogScales);
             }
             else {
-                std::cerr << "Calculate Inside-weights using fixpoint approximation" << std::endl;
+//                std::cerr << "Calculate Inside-weights using fixpoint approximation" << std::endl;
                 inside_weights_fixpoint_la(rules, insideWeights, insideLogScales);
             }
         }
@@ -254,11 +254,11 @@ namespace Trainer {
                 , bool scaling = false
         ) const {
             if(has_topological_order()) {
-                std::cerr << "Calculate IO-weights using topological order" << std::endl;
+//                std::cerr << "Calculate IO-weights using topological order" << std::endl;
                 return io_weights_topological_la(rules, root, insideWeights, outsideWeights, scaling);
             }
             else {
-                std::cerr << "Calculate IO-weights using fixpoint approximation" << std::endl;
+//                std::cerr << "Calculate IO-weights using fixpoint approximation" << std::endl;
                 return io_weights_fixpoint_la(rules, root, insideWeights, outsideWeights, scaling);
             }
         }
