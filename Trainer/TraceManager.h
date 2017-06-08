@@ -710,9 +710,9 @@ namespace Trainer {
             inside_weights_fixpoint_la(rules, insideWeights, insideLogScales, scaling);
 
 
-            unsigned int cycle_count = 0;
+            unsigned int cycle_count {0};
             while(true) {
-                double maxChange = 0.0;
+                double maxChange {0.0};
                 ++cycle_count;
 
                 for (const Element<Node<Nonterminal>> &node : *hypergraph){
@@ -803,9 +803,9 @@ namespace Trainer {
         ) const {
             // computation of inside weights
 
-            unsigned int cycle_count;
+            unsigned int cycle_count {0};
             while(true) {
-                double maxChange = 0;
+                double maxChange {0.0};
                 ++cycle_count;
 
                 for (const auto &node : *hypergraph) {
