@@ -11,7 +11,7 @@
 namespace Trainer {
 
     template <typename Nonterminal>
-    LatentAnnotation project_annotation(LatentAnnotation annotation, GrammarInfo2 grammarInfo) {
+    LatentAnnotation project_annotation(const LatentAnnotation & annotation, const GrammarInfo2 & grammarInfo) {
         // build HG
         MAPTYPE<size_t, bool> nodes;
         std::vector<size_t> nLabels {};
