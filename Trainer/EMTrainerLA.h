@@ -20,6 +20,21 @@
 #endif
 
 namespace Trainer {
+    struct ruleSanityVisitor : boost::static_visitor<bool>
+    {
+        template<class T>
+        bool operator()(const T& ruleCountRaw)const
+        {
+            RuleTensorRaw<bool, 0> insane = ruleCountRaw.isnan().any() || ruleCountRaw.isinf().any();
+            if (insane(0)) {
+                std::cerr << " rule count " << std::endl << ruleCountRaw << std::endl << " is numerically problematic " << std::endl;
+                return false;
+            }
+            return true;
+        }
+    };
+
+
     class Counts : boost::addable<Counts> {
     public:
         std::shared_ptr<StorageManager> storageManager;
@@ -88,6 +103,26 @@ namespace Trainer {
             rootCounts += other.rootCounts;
             return *this;
         }
+
+        bool is_numerically_sane() {
+            if (std::isnan(logLikelihood)) {
+                std::cerr << " log likelihood is " << logLikelihood << std::endl;
+                return false;
+            }
+            RuleTensorRaw<bool, 0> insane = rootCounts.isnan().any() || rootCounts.isinf().any();
+            if (insane(0)) {
+                std::cerr << " root counts " << std::endl << rootCounts << std::endl << " are numerically problematic " << std::endl;
+                return false;
+            }
+            auto visitor = ruleSanityVisitor();
+            for (auto ruleCount : *ruleCounts) {
+                if (not ruleCount.apply_visitor(visitor));
+                    return false;
+            }
+
+            return true;
+        }
+
     };
 
     class Expector {
@@ -138,6 +173,7 @@ namespace Trainer {
         virtual void train(LatentAnnotation &latentAnnotation) {
             for (unsigned epoch = 0; epoch < epochs; ++epoch) {
                 Counts counts {expector->expect(latentAnnotation)};
+                counts.is_numerically_sane();
 
                 std::cerr << "Epoch " << epoch << "/" << epochs << ": ";
 
@@ -693,6 +729,8 @@ namespace Trainer {
                             return x / corpusProbSum(0);
                         }
                 );
+
+            latentAnnotation.is_proper(grammarInfo);
         }
 
     private:
