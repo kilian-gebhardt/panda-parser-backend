@@ -238,6 +238,11 @@ namespace Trainer {
                 , smoother(smoother)
                 , debug(debug) {}
 
+        void em_train(LatentAnnotation & la) {
+            emTrainer->setTrainingMode(Default);
+            emTrainer->train(la);
+        }
+
         LatentAnnotation split_merge_cycle(const LatentAnnotation &la) {
             if (not la.is_proper(splitter->grammarInfo))
                 if (debug)
