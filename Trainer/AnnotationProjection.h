@@ -151,9 +151,10 @@ namespace Trainer {
 
 
 
-        return LatentAnnotation(annotation.nonterminalSplits, std::move(root), std::make_unique<std::vector <RuleTensor<double>>>(projRuleWeights));
-
-
+        return LatentAnnotation(
+                std::vector<size_t>(annotation.nonterminalSplits.size(), 1)
+                , std::move(root)
+                , std::make_unique<std::vector <RuleTensor<double>>>(projRuleWeights));
     }
 
 }

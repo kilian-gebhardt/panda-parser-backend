@@ -932,12 +932,12 @@ namespace Trainer {
         using TraceIterator = ConstManagerIterator<Trace<Nonterminal, TraceID>>;
 
     private:
-        const bool debug;
-
         MAPTYPE<Nonterminal, unsigned int> noOfItemsPerNonterminal;
 
         std::shared_ptr<const std::vector<Nonterminal>> nodeLabels;
         std::shared_ptr<const std::vector<EdgeLabelT>> edgeLabels;
+
+        const bool debug;
 
         unsigned int io_cycle_limit = 20;
         double io_precision = 0.0000001;
