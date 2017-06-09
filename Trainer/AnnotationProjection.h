@@ -65,8 +65,8 @@ namespace Trainer {
         }
 
         // TODO: precision needs to be set from the outside. Change interface?
-        tMPtr->set_io_precision(0.0);
-        tMPtr->set_io_cycle_limit(20);
+        tMPtr->set_io_precision(0.0001);
+        tMPtr->set_io_cycle_limit(200);
         (*tMPtr)[0].io_weights_fixpoint_la(*(annotation.ruleWeights), annotation.rootWeights, insideWeights, outsideWeights);
 
         // do projection
