@@ -76,8 +76,44 @@ namespace Trainer {
             const std::vector<size_t>& rule = grammarInfo.rule_to_nonterminals[ruleId];
             const auto& ruleVariant = (*(annotation.ruleWeights))[ruleId];
 
-            const auto normalisationCalc = insideWeights[nodeElements.at(rule[0])].contract(outsideWeights[nodeElements.at(rule[0])], Eigen::array<Eigen::IndexPair<long>,1>{Eigen::IndexPair<long>(0, 0)});
+            const auto normalisationCalc = insideWeights[nodeElements.at(rule.at(0))].contract(outsideWeights[nodeElements.at(rule.at(0))], Eigen::array<Eigen::IndexPair<long>,1>{Eigen::IndexPair<long>(0, 0)});
             Eigen::Tensor<double, 0> normalisationVector = normalisationCalc;
+
+            if(normalisationVector(0) == 0) { // either in(A)=0 or out(A)=0
+                // weight of rule is defined to be equally distributed
+                size_t norm = grammarInfo.normalizationGroups[rule[0]].size();
+                switch(rule.size()){
+                    case 1: {
+                        RuleTensorRaw<double, 1> res(1);
+                        res.setValues({1.0/(double)norm});
+                        projRuleWeights.push_back(res);
+                        continue;
+                    }
+                    case 2: {
+                        RuleTensorRaw<double, 2> res(1, 1);
+                        res.setValues({{1.0/(double)norm}});
+                        projRuleWeights.push_back(res);
+                        continue;
+                    }
+                    case 3: {
+                        RuleTensorRaw<double, 3> res(1,1,1);
+                        res.setValues({{{1.0/(double)norm}}});
+                        projRuleWeights.push_back(res);
+                        continue;
+                    }
+                    case 4: {
+                        RuleTensorRaw<double, 4> res(1,1,1,1);
+                        res.setValues({{{{1.0/(double)norm}}}});
+                        projRuleWeights.push_back(res);
+                        continue;
+                    }
+                    default: {
+                        std::cerr << "Rules with " << rule.size()-1 << " RHS nonterminals are not supported.";
+                        abort();
+                    }
+                }
+
+            }
 
             switch(rule.size()){
                 case 1: {
