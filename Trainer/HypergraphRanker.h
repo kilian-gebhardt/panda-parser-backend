@@ -45,7 +45,7 @@ namespace Trainer {
                 , debug(debug) {};
 
         std::vector<std::pair<size_t, double>> rank(const LatentAnnotation &latentAnnotation) {
-            if (traceManager->cend() - traceManager->cbegin() != traceManager->size()) {
+            if (traceManager->cend() != traceManager->cbegin() + traceManager->size()) {
                 std::cerr << "end - begin " << traceManager->cend() - traceManager->cbegin() << std::endl;
                 std::cerr << "size: " << traceManager->size();
                 std::abort();

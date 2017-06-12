@@ -175,11 +175,11 @@ namespace Trainer {
         ) const {
             if(has_topological_order()) {
 //                std::cerr << "Calculate Inside-weights using topological order" << std::endl;
-                inside_weights_topological_la(rules, insideWeights, insideLogScales);
+                inside_weights_topological_la(rules, insideWeights, insideLogScales, scaling);
             }
             else {
 //                std::cerr << "Calculate Inside-weights using fixpoint approximation" << std::endl;
-                inside_weights_fixpoint_la(rules, insideWeights, insideLogScales);
+                inside_weights_fixpoint_la(rules, insideWeights, insideLogScales, scaling);
             }
         }
 

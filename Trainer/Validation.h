@@ -69,7 +69,7 @@ namespace Trainer {
                   threads(threads), debug(debug) {};
 
         virtual double log_likelihood(const LatentAnnotation &latentAnnotation) {
-            if (traceManager->cend() - traceManager->cbegin() != traceManager->size()) {
+            if (traceManager->cend() != traceManager->cbegin() + traceManager->size()) {
                 std::cerr << "end - begin " << traceManager->cend() - traceManager->cbegin() << std::endl;
                 std::cerr << "size: " << traceManager->size();
                 std::abort();
@@ -100,7 +100,7 @@ namespace Trainer {
                 if (trace->get_hypergraph()->size() == 0)
                     continue;
 
-                if (tracesInsideWeights.size() <= traceIterator - traceManager->cbegin()) {
+                if (traceManager->cbegin() + tracesInsideWeights.size() <= traceIterator) {
                     std::cerr << "tried to access non-existent inside or outside weight map" << std::endl;
                     std::cerr << "it - begin " << traceIterator - traceManager->cbegin() << std::endl;
                     std::cerr << "in size: " << tracesInsideWeights.size() << std::endl;

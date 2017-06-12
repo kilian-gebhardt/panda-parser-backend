@@ -283,7 +283,7 @@ namespace Trainer {
             std::vector<std::vector<double>> p;
             for (auto las_weights : nontFreqLA) {
                 p.emplace_back(std::vector<double>(las_weights.dimension(0)));
-                const size_t half_splits{las_weights.dimension(0) / 2};
+                const long int half_splits{las_weights.dimension(0) / 2};
                 for (unsigned i = 0; i < half_splits; ++i) {
                     double combined_weight = las_weights(i) + las_weights(i + half_splits);
                     if ((not std::isnan(combined_weight)) and combined_weight > 0) {

@@ -196,7 +196,7 @@ namespace DCP {
                     if (obj.type() == typeid(Variable)) {
                         const Variable &var = boost::get<Variable>(obj);
 
-                        assert (0 < var.member && var.member <= items.size());
+                        assert (0 < var.member and var.member <= items.size());
                         assert (var.argument <= items[var.member - 1]->spans_lcfrs.size());
 
                         const std::pair<int, int> &var_pos = items[var.member - 1]->spans_lcfrs[var.argument - 1];
