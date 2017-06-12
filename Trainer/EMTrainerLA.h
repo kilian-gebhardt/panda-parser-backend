@@ -259,6 +259,18 @@ namespace Trainer {
 
     };
 
+    inline double safe_division(double numerator, double denominator) {
+        double quotient = numerator / denominator;
+        if (not std::isnan(quotient) or std::isinf(quotient))
+            return quotient;
+        else {
+            if (numerator >= denominator)
+                return 1;
+            else
+                return 0;
+        }
+    };
+
     template<typename Nonterminal, typename TraceID>
     class SimpleExpector : public Expector {
     protected:
@@ -363,11 +375,15 @@ namespace Trainer {
 
                 Eigen::Tensor<double, 1> traceRootProbabilities {compute_trace_root_probabilities(traceIterator, latentAnnotation)};
                 Eigen::Tensor<double, 0> traceRootProbability = traceRootProbabilities.sum();
+                Eigen::Tensor<bool, 0> traceRootProbabilitiesImplausible
+                        = (traceRootProbabilities.isinf().any() || traceRootProbabilities.isnan().any());
                 const double scale = compute_counting_scalar(traceRootProbabilities, traceIterator, latentAnnotation);
 
-                if (not std::isnan(traceRootProbability(0))
-                    and not std::isinf(traceRootProbability(0))
-                    and traceRootProbability(0) > 0) {
+                if ( not traceRootProbabilitiesImplausible(0)
+                     and not std::isnan(traceRootProbability(0))
+                     and not std::isinf(traceRootProbability(0))
+                     and traceRootProbability(0) > 0
+                    ) {
                     counts.rootCounts += traceRootProbabilities;
                     counts.logLikelihood += log(traceRootProbability(0));
 
@@ -494,7 +510,7 @@ namespace Trainer {
             if (traceRootProbability > 0) {
                 ruleCountRaw += ruleValue.unaryExpr(
                         [traceRootProbability](double x) {
-                            return x / traceRootProbability;
+                            return safe_division(x, traceRootProbability);
                         }
                 );
             }
@@ -527,7 +543,7 @@ namespace Trainer {
             if (traceRootProbability > 0) {
                 ruleCountRaw += ruleValue.unaryExpr(
                         [traceRootProbability](double x) {
-                            return x / traceRootProbability;
+                            return safe_division(x, traceRootProbability);
                         }
                 );
             }
@@ -572,7 +588,7 @@ namespace Trainer {
             if (traceRootProbability > 0) {
                 ruleCountRaw += ruleValue.unaryExpr(
                         [traceRootProbability](double x) {
-                            return x / traceRootProbability;
+                            return safe_division(x, traceRootProbability);
                         }
                 );
             }
@@ -616,12 +632,13 @@ namespace Trainer {
             if (traceRootProbability > 0) {
                 ruleCountRaw += rule_val.unaryExpr(
                         [traceRootProbability](double x) {
-                            return x / traceRootProbability;
+                            return safe_division(x, traceRootProbability);
                         }
                 );
             }
         }
     };
+
 
     template <typename Nonterminal, typename TraceID>
     class DiscriminativeExpector : public SimpleExpector<Nonterminal, TraceID> {
@@ -733,7 +750,7 @@ namespace Trainer {
 
             // maximize root weights:
             Eigen::Tensor<double, 0> corpusProbSum = counts.rootCounts.sum();
-            if (corpusProbSum(0) > 0)
+            if (corpusProbSum(0) > 0 and not std::isnan(corpusProbSum(0)) and not std::isinf(corpusProbSum(0)))
                 latentAnnotation.rootWeights = counts.rootCounts.unaryExpr(
                         [corpusProbSum](double x) {
                             return x / corpusProbSum(0);
