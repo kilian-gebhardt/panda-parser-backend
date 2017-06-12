@@ -116,7 +116,7 @@ namespace Trainer {
             }
             auto visitor = ruleSanityVisitor();
             for (auto ruleCount : *ruleCounts) {
-                if (not ruleCount.apply_visitor(visitor));
+                if (not ruleCount.apply_visitor(visitor))
                     return false;
             }
 
@@ -370,8 +370,16 @@ namespace Trainer {
                     and traceRootProbability(0) > 0) {
                     counts.rootCounts += traceRootProbabilities;
                     counts.logLikelihood += log(traceRootProbability(0));
+
+                    Eigen::Tensor<bool, 0> badCounts = counts.rootCounts.isinf().any() || counts.rootCounts.isnan().any();
+                    if (badCounts(0)) {
+                        std::cerr << "bad root counts " << std::endl << counts.rootCounts << std::endl
+                                  << " after adding counts " << std::endl << traceRootProbabilities << std::endl
+                                  << " for trace position " << traceIterator - traceManager->cbegin() << std::endl;
+                        abort();
+                    }
                 } else {
-                    //std::cerr << "trace Root Probability " << traceRootProbability(0) << std::endl;
+                    std::cerr << "trace Root Probability " << traceRootProbability(0) << std::endl;
                     counts.logLikelihood += minus_infinity;
                     continue;
                 }
