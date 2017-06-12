@@ -375,6 +375,7 @@ namespace Trainer {
                     if (badCounts(0)) {
                         std::cerr << "bad root counts " << std::endl << counts.rootCounts << std::endl
                                   << " after adding counts " << std::endl << traceRootProbabilities << std::endl
+                                  << " the sume of the root counts is " << std::endl << traceRootProbability << std::endl
                                   << " for trace position " << traceIterator - traceManager->cbegin() << std::endl;
                         abort();
                     }
