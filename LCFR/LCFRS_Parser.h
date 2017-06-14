@@ -74,6 +74,10 @@ namespace LCFR {
                 return ranges;
         }
 
+        bool operator ==(const PassiveItem<Nonterminal>& item) const {
+            return nont == item.nont
+                   && ranges == item.ranges;
+        }
 
         friend bool operator<(const PassiveItem<Nonterminal>& l
                 , const PassiveItem<Nonterminal>& r) {
@@ -298,12 +302,16 @@ namespace LCFR {
 
         bool operator ==(const ActiveItem<Nonterminal, Terminal>& item) const {
             return
-                rule == item.rule
+                *rule == *(item.rule)
                 && pre_ranges == item.pre_ranges
                 && k == item.k
                 && posInK == item.posInK
                 && currentRange == item.currentRange
-                && records == item.records;
+                && std::equal(records.cbegin(), records.cend(), item.records.cbegin(), item.records.cend()
+                              ,[](const std::shared_ptr<PassiveItem<Nonterminal>>& p1
+                                , const std::shared_ptr<PassiveItem<Nonterminal>>& p2)
+                                {return p1 != nullptr && p2 != nullptr && *p1 == *p2;})
+                ;
         }
 
 
@@ -360,6 +368,7 @@ namespace LCFR {
         std::map<ItemIndex<Nonterminal>, std::vector<std::shared_ptr<PassiveItem<Nonterminal>>>> passiveItems;
         std::deque<std::shared_ptr<ActiveItem<Nonterminal, Terminal>>> queue;
         std::map<ItemIndex<Nonterminal>, std::vector<std::shared_ptr<ActiveItem<Nonterminal, Terminal>>>> waiting;
+        std::vector<std::shared_ptr<ActiveItem<Nonterminal, Terminal>>> visitedItems{};
 
         std::map<PassiveItem<Nonterminal>
                 , TraceItem<Nonterminal,Terminal>
@@ -392,13 +401,26 @@ namespace LCFR {
 
     private:
         void work_queue(){
-            while( ! queue.empty()) {
 
+            while( ! queue.empty()) {
                 std::shared_ptr<ActiveItem<Nonterminal, Terminal>> currentItem = queue.front();
                 queue.pop_front();
 
 //std::clog << "    Item: " << *currentItem << std::endl;
 
+
+                // check if item was already handled!
+                if(std::find_if(visitedItems.cbegin()
+                                , visitedItems.cend()
+                                , [&currentItem](const std::shared_ptr<ActiveItem<Nonterminal, Terminal>>& p)
+                        {return *currentItem == *p;})
+                   != visitedItems.cend())
+                {
+//                    std::clog << "found duplicate item: " << *currentItem << std::endl;
+                    continue;
+                }
+
+                visitedItems.push_back(std::make_shared<ActiveItem<Nonterminal,Terminal>>(*currentItem));
 
 
                 // Handle ε-arguments
@@ -425,12 +447,23 @@ namespace LCFR {
                     continue;
 
 
+
                 // Try to find the needed record
                 assert(currentItem->after_dot().which() == 1); // The next thing is a variable
 
                 const Variable var = boost::get<Variable>(currentItem->after_dot());
                 const Nonterminal nont = currentItem->get_rule()->get_rhs().at(var.get_index());
                 const ItemIndex<Nonterminal> ind(nont, var.get_arg() , currentItem->get_current_position().second);
+
+                // check whether a twin of this item is already waiting TODO: this does not work!
+                if(waiting.count(ind) > 0
+                    && std::find_if(waiting[ind].cbegin()
+                                    , waiting[ind].cend()
+                                    , [&currentItem](const std::shared_ptr<ActiveItem<Nonterminal, Terminal>>& p){return *currentItem == *p;})
+                       != waiting[ind].cend()) {
+                    std::cerr << "Cycle detected for item " << *currentItem;
+                    continue; // this item was already processed, cylce detected! TODO: handle cycle in result!
+                }
 
 
                 ItemIndex<Nonterminal> representative(nont, 0, ind.startingPos);
@@ -542,6 +575,7 @@ namespace LCFR {
                 const std::shared_ptr<ActiveItem<Nonterminal, Terminal>>&& currentItem
         ){
             const std::shared_ptr<PassiveItem<Nonterminal>>& pItem = currentItem->convert();
+//std::clog << "            pItem: " << *pItem << " (" << &(*pItem) << ")" << std::endl;
 
 
             // prepare the parse
@@ -642,7 +676,7 @@ namespace LCFR {
                     for (auto const &newItem : outgoingList.second)
                         itemQueue.push(*newItem);
                 }
-
+                done.insert(item);
             }
 
             trace = result;

@@ -98,6 +98,10 @@ namespace LCFR {
             return ruleId;
         }
 
+        bool operator ==(const Rule<Nonterminal, Terminal>& item) const {
+            return ruleId == item.ruleId;
+        }
+
         friend std::ostream& operator <<(std::ostream& o, const Rule<Nonterminal, Terminal>& r) {
             LHS<Nonterminal, Terminal> lhs{r.get_lhs()};
             o << r.get_rule_id() << ": ";
