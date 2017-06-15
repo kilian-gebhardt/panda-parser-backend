@@ -10,6 +10,54 @@
 
 namespace Trainer {
 
+
+    void check_rule_weight_for_consistency(const RuleTensor<double>& res, Trainer::WeightVector inside, Trainer::WeightVector outside, Eigen::Tensor<double, 0> normalization){
+        double sum = 0;
+        switch (res.which()+1){
+            case 1: {
+                const unsigned int ruleRank = 1;
+                const RuleTensorRaw<double, ruleRank> ruleTensor = boost::get<Trainer::RuleTensorRaw<double
+                                                                                                     , ruleRank>>(
+                        res
+                );
+                RuleTensorRaw<double, 0> sumvec = ruleTensor.sum();
+                sum = sumvec(0);
+                break;
+            }
+            case 2: {
+                const unsigned int ruleRank = 2;
+                const RuleTensorRaw<double, ruleRank> ruleTensor = boost::get<Trainer::RuleTensorRaw<double
+                                                                                                     , ruleRank>>(
+                        res
+                );
+                RuleTensorRaw<double, 0> sumvec = ruleTensor.sum();
+                sum = sumvec(0);
+                break;
+            }
+            case 3: {
+                const unsigned int ruleRank = 3;
+                const RuleTensorRaw<double, ruleRank> ruleTensor = boost::get<Trainer::RuleTensorRaw<double
+                                                                                                     , ruleRank>>(
+                        res
+                );
+                RuleTensorRaw<double, 0> sumvec = ruleTensor.sum();
+                sum = sumvec(0);
+                break;
+            }
+            default:{
+                std::cerr << "Rules with such a fanout are not supported to be checked!";
+            }
+        }
+        if(sum > 1) {
+            std::cerr << "The sum of a rule was larger than 1: " << sum
+                      << "  inside weights: " << inside
+                      << "  outside weights: " << outside
+                      << "  normalization: " << normalization << std::endl;
+        }
+    }
+
+
+
     template <typename Nonterminal>
     LatentAnnotation project_annotation(const LatentAnnotation & annotation, const GrammarInfo2 & grammarInfo) {
         // build HG
@@ -86,24 +134,28 @@ namespace Trainer {
                     case 1: {
                         RuleTensorRaw<double, 1> res(1);
                         res.setValues({1.0/(double)norm});
+                        check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
                         projRuleWeights.push_back(res);
                         continue;
                     }
                     case 2: {
                         RuleTensorRaw<double, 2> res(1, 1);
                         res.setValues({{1.0/(double)norm}});
+                        check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
                         projRuleWeights.push_back(res);
                         continue;
                     }
                     case 3: {
                         RuleTensorRaw<double, 3> res(1,1,1);
                         res.setValues({{{1.0/(double)norm}}});
+                        check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
                         projRuleWeights.push_back(res);
                         continue;
                     }
                     case 4: {
                         RuleTensorRaw<double, 4> res(1,1,1,1);
                         res.setValues({{{{1.0/(double)norm}}}});
+                        check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
                         projRuleWeights.push_back(res);
                         continue;
                     }
@@ -126,6 +178,7 @@ namespace Trainer {
                     RuleTensorRaw<double, 0> calc = sumWeight;
                     RuleTensorRaw<double, 1> res(1);
                     res.setValues({calc(0)/normalisationVector(0)});
+                    check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
                     projRuleWeights.push_back(res);
                     break;
                 }
@@ -140,6 +193,7 @@ namespace Trainer {
                     RuleTensorRaw<double, 0> calc = sumWeight;
                     RuleTensorRaw<double, 2> res(1,1);
                     res.setValues({{calc(0)/normalisationVector(0)}});
+                    check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
                     projRuleWeights.push_back(res);
                     break;
                 }
@@ -155,6 +209,7 @@ namespace Trainer {
                     RuleTensorRaw<double, 0> calc = sumWeight;
                     RuleTensorRaw<double, 3> res(1,1,1);
                     res.setValues({{{calc(0)/normalisationVector(0)}}});
+                    check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
                     projRuleWeights.push_back(res);
                     break;
                 }
@@ -171,6 +226,7 @@ namespace Trainer {
                     RuleTensorRaw<double, 0> calc = sumWeight;
                     RuleTensorRaw<double, 4> res(1,1,1,1);
                     res.setValues({{{{calc(0)/normalisationVector(0)}}}});
+                    check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
                     projRuleWeights.push_back(res);
                     break;
                 }
