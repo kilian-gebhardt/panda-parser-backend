@@ -11,7 +11,15 @@
 namespace Trainer {
 
 
-    void check_rule_weight_for_consistency(const RuleTensor<double>& res, Trainer::WeightVector inside, Trainer::WeightVector outside, Eigen::Tensor<double, 0> normalization){
+    void check_rule_weight_for_consistency(
+            const RuleTensor<double>& res
+            , const std::vector<Trainer::WeightVector>& insides
+            , const Trainer::WeightVector& outside
+            , const Eigen::Tensor<double, 0>& normalization
+            , std::ostringstream& rTstr
+            , std::vector<double> dimens
+            , double calc
+    ){
         double sum = 0;
         switch (res.which()+1){
             case 1: {
@@ -50,9 +58,18 @@ namespace Trainer {
         }
         if(sum > 1) {
             std::cerr << "The sum of a rule was larger than 1: " << sum
-                      << "  inside weights: " << inside
-                      << "  outside weights: " << outside
-                      << "  normalization: " << normalization << std::endl;
+                      << "  inside weights: \n";
+            for(auto& inside : insides)
+                std::cerr << " / " << inside << "(dim: " << inside.dimension(0) << ")";
+            std::cerr << "\n  outside weights: " << outside
+                      << "  rule tensor:\n" << rTstr.str() << "\n"
+                      << "  normalization: " << normalization
+                      << "  calc: " << calc
+                      << "  dimensions: ";
+
+            for(const auto d : dimens)
+                std::cerr << " "<< d;
+            std::cerr << std::endl;
         }
     }
 
@@ -108,8 +125,8 @@ namespace Trainer {
         MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> insideWeights;
         MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> outsideWeights;
         for(const auto n : *hg){
-            insideWeights[n] = Trainer::WeightVector{1};
-            outsideWeights[n] = Trainer::WeightVector{1};
+            insideWeights[n] = Trainer::WeightVector{annotation.nonterminalSplits.at(n->get_label_id())};
+            outsideWeights[n] = Trainer::WeightVector{annotation.nonterminalSplits.at(n->get_label_id())};
         }
 
         // TODO: precision needs to be set from the outside. Change interface?
@@ -134,28 +151,48 @@ namespace Trainer {
                     case 1: {
                         RuleTensorRaw<double, 1> res(1);
                         res.setValues({1.0/(double)norm});
-                        check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
+
+//                        std::ostringstream rTstr;
+//                        std::vector<double> dimens{res.dimension(0)};
+//                        std::vector<Trainer::WeightVector> insides{};
+//                        check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, 1);
+
                         projRuleWeights.push_back(res);
                         continue;
                     }
                     case 2: {
                         RuleTensorRaw<double, 2> res(1, 1);
                         res.setValues({{1.0/(double)norm}});
-                        check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
+
+//                        std::ostringstream rTstr;
+//                        std::vector<double> dimens{res.dimension(0), res.dimension(1)};
+//                        std::vector<Trainer::WeightVector> insides{};
+//                        check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, 1);
+
                         projRuleWeights.push_back(res);
                         continue;
                     }
                     case 3: {
                         RuleTensorRaw<double, 3> res(1,1,1);
                         res.setValues({{{1.0/(double)norm}}});
-                        check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
+
+//                        std::ostringstream rTstr;
+//                        std::vector<double> dimens{res.dimension(0), res.dimension(1), res.dimension(2)};
+//                        std::vector<Trainer::WeightVector> insides{};
+//                        check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, 1);
+
                         projRuleWeights.push_back(res);
                         continue;
                     }
                     case 4: {
                         RuleTensorRaw<double, 4> res(1,1,1,1);
                         res.setValues({{{{1.0/(double)norm}}}});
-                        check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
+
+//                        std::ostringstream rTstr;
+//                        std::vector<double> dimens{res.dimension(0), res.dimension(1), res.dimension(2), res.dimension(3)};
+//                        std::vector<Trainer::WeightVector> insides{};
+//                        check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, 1);
+
                         projRuleWeights.push_back(res);
                         continue;
                     }
@@ -178,7 +215,13 @@ namespace Trainer {
                     RuleTensorRaw<double, 0> calc = sumWeight;
                     RuleTensorRaw<double, 1> res(1);
                     res.setValues({calc(0)/normalisationVector(0)});
-                    check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
+
+//                    std::ostringstream rTstr;
+//                    rTstr << ruleTensor;
+//                    std::vector<double> dimens{ruleTensor.dimension(0)};
+//                    std::vector<Trainer::WeightVector> insides{};
+//                    check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, calc(0));
+
                     projRuleWeights.push_back(res);
                     break;
                 }
@@ -193,7 +236,13 @@ namespace Trainer {
                     RuleTensorRaw<double, 0> calc = sumWeight;
                     RuleTensorRaw<double, 2> res(1,1);
                     res.setValues({{calc(0)/normalisationVector(0)}});
-                    check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
+
+//                    std::ostringstream rTstr;
+//                    rTstr << ruleTensor;
+//                    std::vector<double> dimens{ruleTensor.dimension(0), ruleTensor.dimension(1)};
+//                    std::vector<Trainer::WeightVector> insides{insideWeights[nodeElements.at(rule.at(1))]};
+//                    check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, calc(0));
+
                     projRuleWeights.push_back(res);
                     break;
                 }
@@ -209,7 +258,13 @@ namespace Trainer {
                     RuleTensorRaw<double, 0> calc = sumWeight;
                     RuleTensorRaw<double, 3> res(1,1,1);
                     res.setValues({{{calc(0)/normalisationVector(0)}}});
-                    check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
+
+//                    std::ostringstream rTstr;
+//                    rTstr << ruleTensor;
+//                    std::vector<double> dimens{ruleTensor.dimension(0), ruleTensor.dimension(1), ruleTensor.dimension(2)};
+//                    std::vector<Trainer::WeightVector> insides{insideWeights[nodeElements.at(rule.at(1))], insideWeights[nodeElements.at(rule.at(2))]};
+//                    check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, calc(0));
+
                     projRuleWeights.push_back(res);
                     break;
                 }
@@ -226,7 +281,13 @@ namespace Trainer {
                     RuleTensorRaw<double, 0> calc = sumWeight;
                     RuleTensorRaw<double, 4> res(1,1,1,1);
                     res.setValues({{{{calc(0)/normalisationVector(0)}}}});
-                    check_rule_weight_for_consistency(res, insideWeights[nodeElements.at(rule.at(0))], outsideWeights[nodeElements.at(rule.at(0))], normalisationVector);
+
+//                    std::ostringstream rTstr;
+//                    rTstr << ruleTensor;
+//                    std::vector<double> dimens{ruleTensor.dimension(0), ruleTensor.dimension(1), ruleTensor.dimension(2), ruleTensor.dimension(3)};
+//                    std::vector<Trainer::WeightVector> insides{insideWeights[nodeElements.at(rule.at(1))], insideWeights[nodeElements.at(rule.at(2))], insideWeights[nodeElements.at(rule.at(3))]};
+//                    check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, calc(0));
+
                     projRuleWeights.push_back(res);
                     break;
                 }

@@ -297,7 +297,7 @@ void test_fp_io() {
     std::cerr << "#### Testing Projection ####\n";
 
     std::vector<std::vector<size_t>> rules_to_nont {{0,1,2}, {1,3},{2,3},{2,1,2},{3},{0,4},{4}};
-    const std::vector<size_t> splits{};
+    const std::vector<size_t> splits{1,1,1,1,1};
 
 
     Trainer::LatentAnnotation lat(splits, std::move(rootWs), std::move(std::make_unique<std::vector<Trainer::RuleTensor<double>>>(ruleWs)));
