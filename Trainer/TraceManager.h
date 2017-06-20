@@ -63,7 +63,7 @@ namespace Trainer {
         }
 
 
-        const bool has_topological_order() const {
+        bool has_topological_order() const {
             return get_topological_order().size() == hypergraph->size();
         }
 
