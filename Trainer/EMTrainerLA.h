@@ -219,19 +219,32 @@ namespace Trainer {
         }
 
         virtual void train(LatentAnnotation &latentAnnotation) {
-            double previousValidationLikelihood = validator->minimum_score();
+            double previousValidationScore = validator->minimum_score();
+            double bestValidationScore = previousValidationScore;
+            double validationScore = previousValidationScore;
+            LatentAnnotation bestAnnotation {latentAnnotation};
             unsigned drops = 0;
             unsigned epoch = 0;
+            unsigned bestEpoch = epoch;
             for (; epoch < epochs; ++epoch) {
                 std::cerr << "Epoch " << epoch << "/" << epochs << ": ";
 
-                double validationLikelihood = validator->validation_score(latentAnnotation);
-                if (validationLikelihood < previousValidationLikelihood)
+                validationScore = validator->validation_score(latentAnnotation);
+                if (validationScore < previousValidationScore)
                     ++drops;
-                else
+                else {
                     drops = 0;
-                previousValidationLikelihood = validationLikelihood;
-                std::cerr << " validation corpus " << validator->quantity() << " " << validationLikelihood;
+                }
+                previousValidationScore = validationScore;
+
+                if (validationScore >= bestValidationScore) {
+                    bestValidationScore = validationScore;
+                    bestAnnotation = latentAnnotation;
+                    bestEpoch = epoch;
+                }
+
+
+                std::cerr << " validation corpus " << validator->quantity() << " " << validationScore;
 
                 if (drops >= maxDrops) {
                     std::cerr << std::endl;
@@ -250,11 +263,23 @@ namespace Trainer {
                 std::cerr << " root weights: " << latentAnnotation.rootWeights << std::endl;
             }
             if (epoch == epochs) {
-                double validationLikelihood = validator->validation_score(latentAnnotation);
-                std::cerr << " validation corpus " << validator->quantity() << " " << validationLikelihood << std::endl;
+                validationScore = validator->validation_score(latentAnnotation);
+                std::cerr << " validation corpus " << validator->quantity() << " " << validationScore << std::endl;
+
+                if (validationScore >= bestValidationScore) {
+                    bestValidationScore = validationScore;
+                    bestAnnotation = latentAnnotation;
+                    bestEpoch = epoch;
+                }
             }
             expector->clean_up();
             validator->clean_up();
+
+            if (bestEpoch != epoch) {
+                std::cerr << " resetting to annotation from epoch " << bestEpoch
+                          << " with validation score " << bestValidationScore << std::endl;
+                latentAnnotation = bestAnnotation;
+            }
         }
 
     };

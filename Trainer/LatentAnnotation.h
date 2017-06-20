@@ -23,6 +23,16 @@ namespace Trainer {
 //            ,   ruleWeights(std::move(other.ruleWeights))
 //        {}
 
+        LatentAnnotation(const LatentAnnotation & latentAnnotation) :
+                nonterminalSplits(latentAnnotation.nonterminalSplits)
+        , rootWeights(latentAnnotation.rootWeights.size())
+        , ruleWeights(std::make_unique<std::vector<RuleTensor <double>>>()) {
+            rootWeights = latentAnnotation.rootWeights;
+            StorageManager sm;
+            for (auto tensor : *latentAnnotation.ruleWeights)
+                (*ruleWeights).push_back(sm.copy_tensor(tensor));
+        }
+
         LatentAnnotation(
                 const std::vector <size_t> nonterminalSplits
                 , const WeightVector && rootWeights
@@ -147,6 +157,19 @@ namespace Trainer {
                     normalize((*ruleWeights)[ruleId], (*ruleWeights)[ruleId], normalizationDivisor);
                 }
             }
+        }
+
+        LatentAnnotation& operator= (const LatentAnnotation& other) {
+            if (this->nonterminalSplits == other.nonterminalSplits) {
+                this->rootWeights = other.rootWeights;
+                for (size_t rule = 0; rule < (*ruleWeights).size(); ++rule){
+                    (*ruleWeights)[rule] = (*other.ruleWeights)[rule];
+                }
+            } else {
+                std::cerr << "Latent annotation assignment is only support, if the nonterminal splits match.";
+                abort();
+            }
+            return *this;
         }
 
     private:
