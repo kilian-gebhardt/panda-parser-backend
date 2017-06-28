@@ -31,7 +31,7 @@ namespace Trainer {
         std::shared_ptr<Merger> merger;
         std::shared_ptr<Smoother> smoother;
         std::shared_ptr<ValidationLA> validator;
-        unsigned maxDrops {6};
+        unsigned maxDrops{6};
         unsigned em_epochs{20};
         unsigned THREADS{1};
 
@@ -104,35 +104,37 @@ namespace Trainer {
             return *this;
         }
 
-        SplitMergeTrainerBuilder& set_simple_validator(
+        SplitMergeTrainerBuilder &set_simple_validator(
                 TraceManagerPtr<Nonterminal, TraceID> validationTraceManager
                 , unsigned maxDrops = 6
         ) {
             return set_simple_validator(validationTraceManager, maxDrops, THREADS);
         }
 
-        SplitMergeTrainerBuilder& set_simple_validator(
+        SplitMergeTrainerBuilder &set_simple_validator(
                 TraceManagerPtr<Nonterminal, TraceID> validationTraceManager
                 , unsigned maxDrops
                 , unsigned threads
         ) {
-            validator = std::make_shared<SimpleLikelihoodLA<Nonterminal, TraceID>>(validationTraceManager
-                                                                                   , grammarInfo
-                                                                                   , storageManager
-                                                                                   , threads);
+            validator = std::make_shared<SimpleLikelihoodLA<Nonterminal, TraceID>>(
+                    validationTraceManager
+                    , grammarInfo
+                    , storageManager
+                    , threads
+            );
             this->maxDrops = maxDrops;
             return *this;
         }
 
-        SplitMergeTrainerBuilder& set_score_validator(
-                  std::shared_ptr<CandidateScoreValidator<Nonterminal, TraceID>> validator
+        SplitMergeTrainerBuilder &set_score_validator(
+                std::shared_ptr<CandidateScoreValidator<Nonterminal, TraceID>> validator
                 , unsigned maxDrops = 6
         ) {
             return set_score_validator(validator, maxDrops, THREADS);
         }
 
-        SplitMergeTrainerBuilder& set_score_validator(
-                  std::shared_ptr<CandidateScoreValidator<Nonterminal, TraceID>> validator
+        SplitMergeTrainerBuilder &set_score_validator(
+                std::shared_ptr<CandidateScoreValidator<Nonterminal, TraceID>> validator
                 , unsigned maxDrops
                 , unsigned threads
         ) {
@@ -165,11 +167,35 @@ namespace Trainer {
         SplitMergeTrainerBuilder &set_threshold_merger(double threshold = std::log(0.5)) {
             return set_threshold_merger(threshold, THREADS);
         }
+
         SplitMergeTrainerBuilder &set_threshold_merger(double threshold, unsigned threads) {
             mergePreparator = std::make_shared<ThresholdMergePreparator<Nonterminal, TraceID>>(
                     traceManager
                     , storageManager
                     , grammarInfo
+                    , threshold
+                    , threads
+            );
+            return *this;
+        }
+
+        SplitMergeTrainerBuilder &set_scc_merger(double threshold) {
+            return set_scc_merger(threshold, THREADS);
+        }
+
+        SplitMergeTrainerBuilder &set_scc_merger(double threshold, unsigned threads) {
+            std::vector<size_t> relevantNonterminals(grammarInfo->normalizationGroups.size());
+            std::iota(std::begin(relevantNonterminals), std::end(relevantNonterminals), 0);
+            return set_scc_merger(threshold, relevantNonterminals, threads);
+        }
+
+        SplitMergeTrainerBuilder &
+        set_scc_merger(double threshold, const std::vector<size_t> &relevantNonterminals, const unsigned threads) {
+            mergePreparator = std::make_shared<SCCMerger<Nonterminal, TraceID>>(
+                    traceManager
+                    , storageManager
+                    , grammarInfo
+                    , relevantNonterminals
                     , threshold
                     , threads
             );
@@ -196,7 +222,13 @@ namespace Trainer {
             if (validator == nullptr)
                 emTrainer = std::make_shared<EMTrainerLA>(em_epochs, expector, maximizer);
             else
-                emTrainer = std::make_shared<EMTrainerLAValidation>(em_epochs, expector, maximizer, validator, maxDrops);
+                emTrainer = std::make_shared<EMTrainerLAValidation>(
+                        em_epochs
+                        , expector
+                        , maximizer
+                        , validator
+                        , maxDrops
+                );
 
             if (splitter == nullptr)
                 set_split_randomization();

@@ -458,7 +458,8 @@ int main() {
     auto splitMergeTrainerBuilder = Trainer::SplitMergeTrainerBuilder<std::string, unsigned long>(traceManager, grammarInfo);
     auto splitMergeTrainer = splitMergeTrainerBuilder
             .set_discriminative_expector(traceManager)
-            .set_percent_merger()
+//            .set_percent_merger()
+            .set_scc_merger(0.0)
             .set_simple_validator(traceManager).build();
     auto emTrainerLA = (const std::shared_ptr<EMTrainerLAValidation> &) splitMergeTrainerBuilder.getEmTrainer();
     emTrainerLA->setEMepochs(20, Splitting);

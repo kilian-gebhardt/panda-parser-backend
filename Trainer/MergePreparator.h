@@ -13,10 +13,11 @@
 
 namespace Trainer {
     class MergePreparator {
+    protected:
+
         std::shared_ptr<const GrammarInfo2> grammarInfo;
         const bool debug;
 
-    protected:
         /**
          * Builds MergeInfo according to merge-Δs and threshold.
          * If (merge-Δ > 1 or the split of a start symbol is concerned)
@@ -107,6 +108,7 @@ namespace Trainer {
 
     template<typename Nonterminal, typename TraceID>
     class DefaultMergePreparator : public MergePreparator {
+    protected:
         using TraceIterator = ConstManagerIterator<Trace < Nonterminal, TraceID>>;
 
         const TraceManagerPtr <Nonterminal, EdgeLabelT> traceManager;
@@ -127,7 +129,7 @@ namespace Trainer {
                 : MergePreparator(grammarInfo, debug), traceManager(traceManager), storageManager(storageManager),
                   threads(threads) {}
 
-        MergeInfo merge_prepare(const LatentAnnotation &latentAnnotation) {
+        virtual MergeInfo merge_prepare(const LatentAnnotation &latentAnnotation) {
 
             // setup temporary data structures
             if (tracesInsideWeights.size() < traceManager->size())
@@ -167,7 +169,7 @@ namespace Trainer {
             );
         }
 
-    private:
+    protected:
         /**
          * What this function computes corresponds to the mergeWeights of the Berkeley parser.
          * @param latentAnnotation
@@ -485,6 +487,292 @@ namespace Trainer {
             return orderedMergeDeltas[index];
         }
     };
+
+    /**
+     * Merges nonterminals according to the principle stated in www.aclweb.org/anthology/E14-1015
+     *
+     * Merge-Δs are computed for each pair {i,j} of latent annotations of some nonterminal.
+     * Then a fully connected, undirected graph G with latent annotations as nodes is constructed.
+     * Each edge {i,j} is weighted by w=Δ({i,j}) and edges with w <= threshold are removed.
+     * The (strongly) connected components of G are the new latent annotations.
+     * Merge weights are chosen proportional to the expected frequency of the annotations.
+     *
+     * @tparam Nonterminal
+     * @tparam TraceID
+     */
+    template <typename Nonterminal, typename TraceID>
+    class SCCMerger : public DefaultMergePreparator<Nonterminal, TraceID> {
+        std::vector<size_t> relevantNonterminals;
+        double merge_threshold;
+
+    public:
+        SCCMerger(
+                TraceManagerPtr <Nonterminal, TraceID> traceManager
+                , std::shared_ptr<StorageManager> storageManager
+                , std::shared_ptr<const GrammarInfo2> grammarInfo
+                , std::vector<size_t> relevantNonterminals
+                , double merge_threshold
+                , unsigned threads = 1
+                , bool debug = false
+        )
+                : DefaultMergePreparator<Nonterminal, TraceID> (
+                traceManager
+                , storageManager
+                , grammarInfo
+                , threads
+                , debug
+        ), relevantNonterminals(relevantNonterminals), merge_threshold(merge_threshold) {};
+
+        MergeInfo merge_prepare(const LatentAnnotation &latentAnnotation) {
+            // setup temporary data structures
+            if (this->tracesInsideWeights.size() < this->traceManager->size())
+                this->tracesInsideWeights.resize(this->traceManager->size());
+            if (this->tracesOutsideWeights.size() < this->traceManager->size())
+                this->tracesOutsideWeights.resize(this->traceManager->size());
+
+            std::vector<WeightVector> nonterminalFrequencies{this->estimateNontFreqLA(latentAnnotation)};
+
+            // computing Δ per nont and pair of LAs j and i (where j > i)
+            std::vector<std::vector<std::vector<double>>> merge_delta;
+            computePairwiseMergeDeltas(nonterminalFrequencies, latentAnnotation.nonterminalSplits, merge_delta);
+
+            // ingredients for the MergeInfo
+            std::vector<std::vector<std::vector<size_t>>> mergeSources;
+            std::vector<size_t> nontSplitsAfterMerge;
+            std::vector<std::vector<double>> mergeFactors;
+
+            for (size_t nont = 0; nont < latentAnnotation.nonterminalSplits.size(); ++nont) {
+                // check if nont ∈ relevantNonterminals
+                bool relevant = false;
+                for (size_t nont2 : relevantNonterminals) {
+                    if (nont2 == nont) relevant = true;
+                    if (nont2 >= nont) break;
+                }
+                if (relevant) {
+                    // lazily build graph by pairwise connecting all LAs of nont (implicit)
+                    // we only add an edge to the representation, if it is not removed in the next step
+                    // the graph is represented by two maps encoding maximal SCCs,
+                    // satisfying
+                    // 1. j ∈ edges[i] if i < j and (i,j) are connected in graph
+                    // 2. inSCC[i] = i or i ∈ edges[inSCC[i]]
+                    MAPTYPE<size_t, std::vector<size_t >> edges;
+                    MAPTYPE<size_t, size_t> inSCC;
+
+                    // determine weight Δ for each edge (i,j) in graph and remove edge if Δ <= threshold
+                    // i.e., we add i and j to the same SCC if Δ > threshold
+                    for (size_t i = 0; i < latentAnnotation.nonterminalSplits[nont]; ++i) {
+                        for (size_t j = i + 1; j < latentAnnotation.nonterminalSplits[nont]; ++j) {
+                            if (merge_delta[nont][j][i] > merge_threshold) {
+                                if (not(inSCC.count(i) or inSCC.count(j))
+                                    or (not inSCC.count(j) and inSCC.at(i) == i)) {
+                                    edges[i].push_back(j);
+                                    inSCC[i] = inSCC[j] = i;
+                                } else if (not inSCC.count(i)) {
+                                    inSCC[i] = inSCC[j];
+                                    edges[inSCC[j]].push_back(i);
+                                } else {
+                                    if (inSCC[i] == inSCC[j]) {
+                                        // nothing needs to be done!
+                                    } else if (inSCC[i] < inSCC[j]) {
+                                        size_t old_scc_j = inSCC[j];
+
+                                        for (size_t k : edges[old_scc_j]) {
+                                            edges[inSCC[i]].push_back(k);
+                                            inSCC[k] = inSCC[i];
+                                        }
+                                        edges[inSCC[i]].push_back(old_scc_j);
+                                        inSCC[old_scc_j] = inSCC[i];
+                                        edges.erase(old_scc_j);
+                                    } else {
+                                        size_t old_scc_i = inSCC[i];
+                                        for (size_t k : edges[old_scc_i]) {
+                                            edges[inSCC[j]].push_back(k);
+                                            inSCC[k] = inSCC[j];
+                                        }
+                                        edges[inSCC[j]].push_back(old_scc_i);
+                                        inSCC[old_scc_i] = inSCC[j];
+                                        edges.erase(old_scc_i);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // new LAs = maximal SCCs and
+                    // set mergeFactor proportional to nontFreq
+                    std::vector<std::vector<size_t>> mergeLists;
+                    std::vector<double> laMergeFactors(latentAnnotation.nonterminalSplits[nont]);
+                    for (auto key_value_pair : edges) {
+                        mergeLists.push_back(key_value_pair.second);
+                        mergeLists.back().push_back(key_value_pair.first);
+                        double normalizer = 0.0;
+                        for (auto la : mergeLists.back())
+                            normalizer += nonterminalFrequencies[nont](la);
+
+                        if (normalizer > 0 and not std::isnan(normalizer) and not std::isnan(normalizer))
+                            for (auto la : mergeLists.back())
+                                laMergeFactors[la] = nonterminalFrequencies[nont](la) / normalizer;
+                        else
+                            for (auto la : mergeLists.back()) {
+                                laMergeFactors[la] = 1 / mergeLists.back().size();
+                            }
+                    }
+                    // add all singletons
+                    for (size_t la = 0; la < latentAnnotation.nonterminalSplits[nont]; ++la) {
+                        if (not inSCC.count(la)) {
+                            mergeLists.emplace_back(1, la);
+                            laMergeFactors[la] = 1.0;
+                        }
+
+                    }
+
+                    for (size_t i = 0; i < mergeLists.size(); ++i) {
+                        std::cerr << nont << ": " << i << " [ ";
+                        for (auto elem : mergeLists[i])
+                            std::cerr << elem << ", ";
+                        std::cerr << "]" << std::endl;
+                    }
+
+                    nontSplitsAfterMerge.push_back(mergeLists.size());
+                    mergeSources.push_back(mergeLists);
+                    mergeFactors.push_back(laMergeFactors);
+
+
+                    // if nont not in relevant items
+                } else {
+                    size_t n = latentAnnotation.nonterminalSplits.at(nont);
+                    nontSplitsAfterMerge.push_back(n);
+                    mergeFactors.emplace_back(n, 1.0);
+                    std::vector<std::vector<size_t>> mergeLists;
+                    for (size_t la = 0; la < n; ++la) {
+                        mergeLists.emplace_back(1, la);
+                    }
+                    mergeSources.push_back(mergeLists);
+
+                    for (size_t i = 0; i < mergeLists.size(); ++i) {
+                        std::cerr << nont << ": " << i << " [ ";
+                        for (auto elem : mergeLists[i])
+                            std::cerr << elem << ", ";
+                        std::cerr << "]" << std::endl;
+                    }
+
+                }
+            }
+
+            // clean up
+            this->storageManager->free_weight_maps(this->tracesInsideWeights);
+            this->storageManager->free_weight_maps(this->tracesOutsideWeights);
+            for (WeightVector &weightVector : nonterminalFrequencies) {
+                this->storageManager->free_weight_vector(weightVector);
+            }
+            nonterminalFrequencies.clear();
+
+            return MergeInfo(mergeSources, nontSplitsAfterMerge, mergeFactors);
+        }
+
+    private:
+        /**
+             * Compute merge-Δ for each pair of latent annotation. This is an approximation of likelihood after merge
+             * divided by likelihood before merge.
+             * Splits with high merge-Δ should be merged, splits with low merge-Δ should be kept.
+             */
+        inline void computePairwiseMergeDeltas(
+                const std::vector<WeightVector> & expectedFrequencies
+                , const std::vector<size_t> &nontDimensions
+                , std::vector<std::vector<std::vector<double>>> &mergeDelta
+        ) const {
+            mergeDelta.clear();
+            for (size_t nont = 0; nont < nontDimensions.size(); ++nont){
+                mergeDelta.emplace_back(0);
+                for (size_t j = 0; j < nontDimensions[nont]; ++ j) {
+                    mergeDelta.back().emplace_back(j, 0.0);
+                }
+            }
+
+            for (typename DefaultMergePreparator<Nonterminal, TraceID>::TraceIterator trace_id = this->traceManager->cbegin()
+                    ; trace_id < this->traceManager->cend()
+                    ; ++trace_id) {
+                const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &insideWeights
+                        = this->tracesInsideWeights[trace_id - this->traceManager->cbegin()];
+                const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &outsideWeights
+                        = this->tracesOutsideWeights[trace_id - this->traceManager->cbegin()];
+
+                for (const Element<Node<Nonterminal>> &node : *(trace_id->get_hypergraph())) {
+                    const size_t nont = node->get_label_id();
+                    const size_t nontDim = nontDimensions[nont];
+
+
+                    const auto &insideWeight = insideWeights.at(node);
+                    const auto &outsideWeight = outsideWeights.at(node);
+
+                    double denominator = 0.0;
+                    for (size_t i = 0; i < nontDim; ++i) {
+                        const double in = insideWeight(i);
+                        const double out = outsideWeight(i);
+                        denominator += in * out;
+                    }
+
+                    if ( denominator < 0 or std::isinf(denominator) or std::isnan(denominator))
+                        continue;
+
+                    double prefix_sum = 0;
+
+                    for (size_t i = 0; i < nontDim; ++i) {
+                        const double in1 = insideWeight(i);
+                        const double out1 = outsideWeight(i);
+                        double infix_sum = 0;
+
+                        for (size_t j = i + 1; j < nontDim; ++j) {
+                            const double in2 = insideWeight(j);
+                            const double out2 = outsideWeight(j);
+                            const double f_norm = expectedFrequencies[nont](i) + expectedFrequencies[nont](j);
+                            const double p1 = expectedFrequencies[nont](i) / f_norm;
+                            const double p2 = expectedFrequencies[nont](j) / f_norm;
+
+                            const double inMerged = (p1 * in1) + (p2 * in2);
+                            const double outMerged = out1 + out2;
+
+                            double postfix_sum = 0;
+                            for (size_t k = j + 1; k < nontDim; ++k) {
+                                postfix_sum += insideWeight(k) * outsideWeight(k);
+                            }
+                            const double others = prefix_sum + infix_sum + postfix_sum;
+
+                            const double Q = (others + inMerged * outMerged) / denominator;
+
+                            if (std::isnan(Q)) {
+                                std::cerr << "bad fraction " << Q << " where" << std::endl;
+                                std::cerr << "merged  " << inMerged * outMerged << std::endl;
+                                std::cerr << "denom   " << denominator << std::endl;
+
+                                assert(!std::isnan(Q));
+                            }
+
+                            double &delta = mergeDelta[nont][j][i];
+                            delta += std::log(Q);
+
+                            infix_sum += in2 * out2;
+                        }
+
+                        prefix_sum += in1 * out1;
+                    }
+                }
+            }
+
+
+            for (auto nont = 0; nont < nontDimensions.size(); ++nont) {
+                for (size_t j = 0; j < nontDimensions[nont]; ++j)
+                    for (size_t i = 0; i < j; ++i)
+                        std::cerr << "(" << nont << ": " << j << " vs. " << i << ": " << mergeDelta[nont][j][i] << ") ";
+            }
+            std::cerr << std::endl;
+        }
+
+        // not used in this class
+        double computeMergeThreshold(const std::vector<std::vector<double>> &) { return 0.0; };
+    };
+
+
 }
 
 #endif //STERMPARSER_MERGEPREPARATOR_H

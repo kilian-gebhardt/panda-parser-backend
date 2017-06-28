@@ -139,7 +139,7 @@ namespace Trainer {
             // root weights
             Eigen::Tensor<double, 1> rootWeights(mergeInfo.nontSplitsAfterMerge[grammarInfo->start]);
             for (Eigen::DenseIndex idx = 0; idx < rootWeights.dimension(0); ++idx) {
-                rootWeights(idx) = 0;
+                rootWeights(idx) = 0.0;
                 for (size_t idx_origin : mergeInfo.mergeSources[grammarInfo->start][idx])
                     rootWeights(idx) += la.rootWeights(idx_origin);
             }
