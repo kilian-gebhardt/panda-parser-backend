@@ -478,6 +478,9 @@ namespace Trainer {
                 return mergeInfo->mergeFactors[(*rule_to_nonterminals)[ruleId][0]][sourceIndex[0]];
         }
 
+        const Eigen::array<Eigen::DenseIndex, rank> & get_source_index() {
+            return sourceIndex;
+        }
     };
 
 
