@@ -12,16 +12,16 @@ namespace Trainer {
 
 
     void check_rule_weight_for_consistency(
-            const RuleTensor<double>& res
-            , const std::vector<Trainer::WeightVector>& insides
-            , const Trainer::WeightVector& outside
-            , const Eigen::Tensor<double, 0>& normalization
-            , std::ostringstream& rTstr
+            const RuleTensor<double> &res
+            , const std::vector<Trainer::WeightVector> &insides
+            , const Trainer::WeightVector &outside
+            , const Eigen::Tensor<double, 0> &normalization
+            , std::ostringstream &rTstr
             , std::vector<double> dimens
             , double calc
-    ){
+    ) {
         double sum = 0;
-        switch (res.which()+1){
+        switch (res.which() + 1) {
             case 1: {
                 const unsigned int ruleRank = 1;
                 const RuleTensorRaw<double, ruleRank> ruleTensor = boost::get<Trainer::RuleTensorRaw<double
@@ -52,14 +52,14 @@ namespace Trainer {
                 sum = sumvec(0);
                 break;
             }
-            default:{
+            default: {
                 std::cerr << "Rules with such a fanout are not supported to be checked!";
             }
         }
-        if(sum > 1) {
+        if (sum > 1) {
             std::cerr << "The sum of a rule was larger than 1: " << sum
                       << "  inside weights: \n";
-            for(auto& inside : insides)
+            for (auto &inside : insides)
                 std::cerr << " / " << inside << "(dim: " << inside.dimension(0) << ")";
             std::cerr << "\n  outside weights: " << outside
                       << "  rule tensor:\n" << rTstr.str() << "\n"
@@ -67,27 +67,26 @@ namespace Trainer {
                       << "  calc: " << calc
                       << "  dimensions: ";
 
-            for(const auto d : dimens)
-                std::cerr << " "<< d;
+            for (const auto d : dimens)
+                std::cerr << " " << d;
             std::cerr << std::endl;
         }
     }
 
 
-
-    template <typename Nonterminal>
-    LatentAnnotation project_annotation(const LatentAnnotation & annotation, const GrammarInfo2 & grammarInfo) {
+    template<typename Nonterminal>
+    HypergraphPtr<Nonterminal> hypergraph_from_grammar(GrammarInfo2 grammarInfo) {
         // build HG
         MAPTYPE<size_t, bool> nodes;
-        std::vector<size_t> nLabels {};
+        std::vector<size_t> nLabels{};
 
         size_t labelCounter = 0;
-        std::vector<size_t> eLabels {};
+        std::vector<size_t> eLabels{};
 
 
-        for(const auto rule : grammarInfo.rule_to_nonterminals){
+        for (const auto rule : grammarInfo.rule_to_nonterminals) {
             eLabels.push_back(labelCounter++);
-            for(size_t nont : rule) {
+            for (size_t nont : rule) {
                 if (nodes.count(nont) == 0) {
                     nodes[nont] = true;
                     nLabels.push_back(nont);
@@ -101,56 +100,101 @@ namespace Trainer {
         HypergraphPtr<Nonterminal> hg = std::make_shared<Hypergraph<Nonterminal>>(nLabelsPtr, eLabelsPtr);
 
         MAPTYPE<size_t, Element<Node<size_t>>> nodeElements;
-        for(size_t ruleNr = 0; ruleNr < grammarInfo.rule_to_nonterminals.size(); ++ruleNr){
+        for (size_t ruleNr = 0; ruleNr < grammarInfo.rule_to_nonterminals.size(); ++ruleNr) {
             std::vector<size_t> rule = grammarInfo.rule_to_nonterminals[ruleNr];
             std::vector<Element<Node<Nonterminal>>> rhs{};
-            for(size_t i = 0; i < rule.size(); ++i) {
+            for (size_t i = 0; i < rule.size(); ++i) {
                 size_t nont = rule[i];
                 if (nodeElements.count(nont) == 0) {
-                    nodeElements.insert(MAPTYPE<size_t, Element<Node<size_t>>>::value_type (nont, hg->create(nont)));
+                    nodeElements.insert(MAPTYPE<size_t, Element<Node<size_t>>>::value_type(nont, hg->create(nont)));
                 }
-                if(i != 0)
+                if (i != 0)
                     rhs.push_back(nodeElements.at(nont));
             }
             hg->add_hyperedge(ruleNr, nodeElements.at(rule[0]), rhs);
         }
 
+        return hg;
+    }
 
 
-        std::shared_ptr<Trainer::TraceManager2<Nonterminal, size_t>> tMPtr = std::make_shared<Trainer::TraceManager2<Nonterminal, size_t>>(nLabelsPtr, eLabelsPtr);
-        tMPtr->create(1, hg, nodeElements.at(grammarInfo.start));
+    template<typename Nonterminal>
+    void io_weights_for_grammar(
+            const HypergraphPtr<Nonterminal> hg
+            , const LatentAnnotation &annotation
+            , const Element<Node<Nonterminal>> initialNode
+            , MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
+            , MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
+            , const double ioPrecision = 0.000001
+            , const size_t ioCycleLimit = 200
+    ) {
 
+        std::shared_ptr<Trainer::TraceManager2<Nonterminal, size_t>> tMPtr = std::make_shared<Trainer::TraceManager2<
+                Nonterminal
+                , size_t>>(hg->get_node_labels(), hg->get_edge_labels());
+        tMPtr->create(1, hg, initialNode);
 
-
-        MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> insideWeights;
-        MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> outsideWeights;
-        for(const auto n : *hg){
+        for (const auto n : *hg) {
             insideWeights[n] = Trainer::WeightVector{annotation.nonterminalSplits.at(n->get_label_id())};
             outsideWeights[n] = Trainer::WeightVector{annotation.nonterminalSplits.at(n->get_label_id())};
         }
 
-        // TODO: precision needs to be set from the outside. Change interface?
-        tMPtr->set_io_precision(0.0001);
-        tMPtr->set_io_cycle_limit(200);
-        (*tMPtr)[0].io_weights_fixpoint_la(*(annotation.ruleWeights), annotation.rootWeights, insideWeights, outsideWeights);
+        tMPtr->set_io_precision(ioPrecision);
+        tMPtr->set_io_cycle_limit(ioCycleLimit);
+        (*tMPtr)[0].io_weights_fixpoint_la(
+                *(annotation.ruleWeights)
+                , annotation.rootWeights
+                , insideWeights
+                , outsideWeights
+        );
+
+    }
+
+
+    template<typename Nonterminal>
+    LatentAnnotation project_annotation(
+            const LatentAnnotation &annotation
+            , const GrammarInfo2 &grammarInfo
+            , const double ioPrecision = 0.000001
+            , const size_t ioCycleLimit = 200
+    ) {
+
+        HypergraphPtr<Nonterminal> hg = hypergraph_from_grammar<Nonterminal>(grammarInfo);
+
+        MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> insideWeights;
+        MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> outsideWeights;
+        io_weights_for_grammar<Nonterminal>(
+                hg
+                , annotation
+                , hg->get_node_by_label(grammarInfo.start)
+                , insideWeights
+                , outsideWeights
+                , ioPrecision
+                , ioCycleLimit
+        );
+
 
         // do projection
         auto projRuleWeights = std::vector<RuleTensor<double>>();
 
-        for(size_t ruleId = 0; ruleId < grammarInfo.rule_to_nonterminals.size(); ++ruleId){
-            const std::vector<size_t>& rule = grammarInfo.rule_to_nonterminals[ruleId];
-            const auto& ruleVariant = (*(annotation.ruleWeights))[ruleId];
+        for (const auto &edge : *hg->get_edges()) {
+            size_t ruleId = edge->get_label();
+            const std::vector<size_t> &rule = grammarInfo.rule_to_nonterminals[ruleId];
+            const auto &ruleVariant = (*(annotation.ruleWeights))[ruleId];
 
-            const auto normalisationCalc = insideWeights[nodeElements.at(rule.at(0))].contract(outsideWeights[nodeElements.at(rule.at(0))], Eigen::array<Eigen::IndexPair<long>,1>{Eigen::IndexPair<long>(0, 0)});
+            const auto normalisationCalc = insideWeights[edge->get_target()].contract(
+                    outsideWeights[edge->get_target()]
+                    , Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
+            );
             Eigen::Tensor<double, 0> normalisationVector = normalisationCalc;
 
-            if(normalisationVector(0) == 0) { // either in(A)=0 or out(A)=0
+            if (normalisationVector(0) == 0) { // either in(A)=0 or out(A)=0
                 // weight of rule is defined to be equally distributed
                 size_t norm = grammarInfo.normalizationGroups[rule[0]].size();
-                switch(rule.size()){
+                switch (rule.size()) {
                     case 1: {
                         RuleTensorRaw<double, 1> res(1);
-                        res.setValues({1.0/(double)norm});
+                        res.setValues({1.0 / (double) norm});
 
 //                        std::ostringstream rTstr;
 //                        std::vector<double> dimens{res.dimension(0)};
@@ -162,7 +206,7 @@ namespace Trainer {
                     }
                     case 2: {
                         RuleTensorRaw<double, 2> res(1, 1);
-                        res.setValues({{1.0/(double)norm}});
+                        res.setValues({{1.0 / (double) norm}});
 
 //                        std::ostringstream rTstr;
 //                        std::vector<double> dimens{res.dimension(0), res.dimension(1)};
@@ -173,8 +217,8 @@ namespace Trainer {
                         continue;
                     }
                     case 3: {
-                        RuleTensorRaw<double, 3> res(1,1,1);
-                        res.setValues({{{1.0/(double)norm}}});
+                        RuleTensorRaw<double, 3> res(1, 1, 1);
+                        res.setValues({{{1.0 / (double) norm}}});
 
 //                        std::ostringstream rTstr;
 //                        std::vector<double> dimens{res.dimension(0), res.dimension(1), res.dimension(2)};
@@ -185,8 +229,8 @@ namespace Trainer {
                         continue;
                     }
                     case 4: {
-                        RuleTensorRaw<double, 4> res(1,1,1,1);
-                        res.setValues({{{{1.0/(double)norm}}}});
+                        RuleTensorRaw<double, 4> res(1, 1, 1, 1);
+                        res.setValues({{{{1.0 / (double) norm}}}});
 
 //                        std::ostringstream rTstr;
 //                        std::vector<double> dimens{res.dimension(0), res.dimension(1), res.dimension(2), res.dimension(3)};
@@ -197,24 +241,27 @@ namespace Trainer {
                         continue;
                     }
                     default: {
-                        std::cerr << "Rules with " << rule.size()-1 << " RHS nonterminals are not supported.";
+                        std::cerr << "Rules with " << rule.size() - 1 << " RHS nonterminals are not supported.";
                         abort();
                     }
                 }
 
             }
 
-            switch(rule.size()){
+            switch (rule.size()) {
                 case 1: {
                     constexpr unsigned ruleRank{1};
                     const RuleTensorRaw<double, ruleRank> ruleTensor = boost::get<Trainer::RuleTensorRaw<double
                                                                                                          , ruleRank>>(
                             ruleVariant
                     );
-                    auto sumWeight = ruleTensor.contract(outsideWeights[nodeElements.at(rule[0])], Eigen::array<Eigen::IndexPair<long>,1>{Eigen::IndexPair<long>(0, 0)});
+                    auto sumWeight = ruleTensor.contract(
+                            outsideWeights.at(edge->get_target())
+                            , Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
+                    );
                     RuleTensorRaw<double, 0> calc = sumWeight;
                     RuleTensorRaw<double, 1> res(1);
-                    res.setValues({calc(0)/normalisationVector(0)});
+                    res.setValues({calc(0) / normalisationVector(0)});
 
 //                    std::ostringstream rTstr;
 //                    rTstr << ruleTensor;
@@ -231,11 +278,17 @@ namespace Trainer {
                                                                                                          , ruleRank>>(
                             ruleVariant
                     );
-                    auto sumWeight = ruleTensor.contract(insideWeights[nodeElements.at(rule[1])], Eigen::array<Eigen::IndexPair<long>,1>{Eigen::IndexPair<long>(1, 0)})
-                                                .contract(outsideWeights[nodeElements.at(rule[0])], Eigen::array<Eigen::IndexPair<long>,1>{Eigen::IndexPair<long>(0, 0)});
+                    auto sumWeight = ruleTensor.contract(
+                                    insideWeights.at(edge->get_sources()[0])
+                                    , Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(1, 0)}
+                            )
+                            .contract(
+                                    outsideWeights.at(edge->get_target()), Eigen::array<Eigen::IndexPair<long>, 1>{
+                                            Eigen::IndexPair<long>(0, 0)}
+                            );
                     RuleTensorRaw<double, 0> calc = sumWeight;
-                    RuleTensorRaw<double, 2> res(1,1);
-                    res.setValues({{calc(0)/normalisationVector(0)}});
+                    RuleTensorRaw<double, 2> res(1, 1);
+                    res.setValues({{calc(0) / normalisationVector(0)}});
 
 //                    std::ostringstream rTstr;
 //                    rTstr << ruleTensor;
@@ -252,12 +305,21 @@ namespace Trainer {
                                                                                                          , ruleRank>>(
                             ruleVariant
                     );
-                    auto sumWeight = ruleTensor.contract(insideWeights[nodeElements.at(rule[2])], Eigen::array<Eigen::IndexPair<long>,1>{Eigen::IndexPair<long>(2, 0)})
-                            .contract(insideWeights[nodeElements.at(rule[1])], Eigen::array<Eigen::IndexPair<long>,1>{Eigen::IndexPair<long>(1, 0)})
-                            .contract(outsideWeights[nodeElements.at(rule[0])], Eigen::array<Eigen::IndexPair<long>,1>{Eigen::IndexPair<long>(0, 0)});
+                    auto sumWeight = ruleTensor.contract(
+                                    insideWeights.at(edge->get_sources()[1])
+                                    , Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(2, 0)}
+                            )
+                            .contract(
+                                    insideWeights.at(edge->get_sources()[0]), Eigen::array<Eigen::IndexPair<long>, 1>{
+                                            Eigen::IndexPair<long>(1, 0)}
+                            )
+                            .contract(
+                                    outsideWeights.at(edge->get_target()), Eigen::array<Eigen::IndexPair<long>, 1>{
+                                            Eigen::IndexPair<long>(0, 0)}
+                            );
                     RuleTensorRaw<double, 0> calc = sumWeight;
-                    RuleTensorRaw<double, 3> res(1,1,1);
-                    res.setValues({{{calc(0)/normalisationVector(0)}}});
+                    RuleTensorRaw<double, 3> res(1, 1, 1);
+                    res.setValues({{{calc(0) / normalisationVector(0)}}});
 
 //                    std::ostringstream rTstr;
 //                    rTstr << ruleTensor;
@@ -274,13 +336,25 @@ namespace Trainer {
                                                                                                          , ruleRank>>(
                             ruleVariant
                     );
-                    auto sumWeight = ruleTensor.contract(insideWeights[nodeElements.at(rule[3])], Eigen::array<Eigen::IndexPair<long>,1>{Eigen::IndexPair<long>(3, 0)})
-                            .contract(insideWeights[nodeElements.at(rule[2])], Eigen::array<Eigen::IndexPair<long>,1>{Eigen::IndexPair<long>(2, 0)})
-                            .contract(insideWeights[nodeElements.at(rule[1])], Eigen::array<Eigen::IndexPair<long>,1>{Eigen::IndexPair<long>(1, 0)})
-                            .contract(outsideWeights[nodeElements.at(rule[0])], Eigen::array<Eigen::IndexPair<long>,1>{Eigen::IndexPair<long>(0, 0)});
+                    auto sumWeight = ruleTensor.contract(
+                                    insideWeights.at(edge->get_sources()[2])
+                                    , Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(3, 0)}
+                            )
+                            .contract(
+                                    insideWeights.at(edge->get_sources()[1]), Eigen::array<Eigen::IndexPair<long>, 1>{
+                                            Eigen::IndexPair<long>(2, 0)}
+                            )
+                            .contract(
+                                    insideWeights.at(edge->get_sources()[0]), Eigen::array<Eigen::IndexPair<long>, 1>{
+                                            Eigen::IndexPair<long>(1, 0)}
+                            )
+                            .contract(
+                                    outsideWeights.at(edge->get_target()), Eigen::array<Eigen::IndexPair<long>, 1>{
+                                            Eigen::IndexPair<long>(0, 0)}
+                            );
                     RuleTensorRaw<double, 0> calc = sumWeight;
-                    RuleTensorRaw<double, 4> res(1,1,1,1);
-                    res.setValues({{{{calc(0)/normalisationVector(0)}}}});
+                    RuleTensorRaw<double, 4> res(1, 1, 1, 1);
+                    res.setValues({{{{calc(0) / normalisationVector(0)}}}});
 
 //                    std::ostringstream rTstr;
 //                    rTstr << ruleTensor;
@@ -292,7 +366,7 @@ namespace Trainer {
                     break;
                 }
                 default:
-                    std::cerr << "Rules with " << rule.size()-1 << " RHS nonterminals are not supported";
+                    std::cerr << "Rules with " << rule.size() - 1 << " RHS nonterminals are not supported";
                     abort();
             }
         }
@@ -303,16 +377,16 @@ namespace Trainer {
         root.setValues({rootval(0)});
 
 
-
         return LatentAnnotation(
                 std::vector<size_t>(annotation.nonterminalSplits.size(), 1)
                 , std::move(root)
-                , std::make_unique<std::vector <RuleTensor<double>>>(projRuleWeights));
+                , std::make_unique<std::vector<RuleTensor<double>>>(projRuleWeights));
     }
 
+
+
+
 }
-
-
 
 
 #endif //STERMPARSER_ANNOTATIONPROJECTION_H

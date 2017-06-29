@@ -182,6 +182,7 @@ namespace Manage {
 
         ManagerPtr<HyperEdge<Node<NodeLabelT>, EdgeLabelT>> edges{
                 std::make_shared<Manager<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>>()};
+
         std::map<Element<Node<NodeLabelT>>, std::vector<Element<HyperEdge<Node<NodeLabelT>
                                                                           , EdgeLabelT>>>> incoming_edges;
         std::map<Element<Node<NodeLabelT>>, std::vector<std::pair<Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>
@@ -253,6 +254,19 @@ namespace Manage {
         }
 
 
+        const ManagerPtr<Manage::HyperEdge<Manage::Node<NodeLabelT>, EdgeLabelT>>& get_edges() const {
+            return edges;
+        }
+
+        const std::shared_ptr<const std::vector<NodeLabelT>> get_node_labels(){
+            return nodeLabels;
+        }
+
+        const std::shared_ptr<const std::vector<EdgeLabelT>> get_edge_labels(){
+            return edgeLabels;
+        }
+
+
         const std::vector<Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>>&
         get_incoming_edges(Element<Node<NodeLabelT>> e)
         {
@@ -266,6 +280,11 @@ namespace Manage {
             return outgoing_edges[e];
         }
 
+        const Element<Node<NodeLabelT>> get_node_by_label(NodeLabelT label){
+            size_t id = std::distance(nodeLabels->cbegin(), std::find(nodeLabels->cbegin(),nodeLabels->cend(), label));
+            assert(id < nodeLabels->size());
+            return Manager<Node<NodeLabelT>>::infos[id].get_element();
+        }
 
         // Serialization only possible for NodeLabelT/EdgeLabelT as std::string or size_t
 
