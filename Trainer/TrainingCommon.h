@@ -20,7 +20,7 @@ namespace Trainer {
 //    using WeightVector = Eigen::TensorMap<Eigen::Tensor<double, 1>>;
     using WeightVector = Eigen::Tensor<double, 1>;
 
-    template<typename Scalar, long rank>
+    template<typename Scalar, int rank>
     //using RuleTensorRaw = Eigen::TensorMap<Eigen::Tensor<Scalar, rank>>;
     using RuleTensorRaw = Eigen::Tensor<Scalar, rank>;
 
