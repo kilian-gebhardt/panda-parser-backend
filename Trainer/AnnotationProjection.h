@@ -568,13 +568,13 @@ namespace Trainer {
 
         std::vector <RuleTensor<double>> ruleWeights(la1.ruleWeights->size());
         // calculate new weight for each rule
-        for (auto edge : hg->get_edges() ){
+        for (auto edge : *hg->get_edges() ){
 
             // calculate the sum of the whole rule: TODO!
             double ruleSum = 0;
 
             // io values are only needed for the NTs _not_ from the same side as the LHS-nont
-            bool lhsIsFirst{keepFromOne[edge->get_target()->get_label]};
+            bool lhsIsFirst{keepFromOne[edge->get_target()->get_label()]};
 
             MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& inside{lhsIsFirst?inside2:inside1};
             MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& outside{lhsIsFirst?inside1:inside2};
@@ -658,6 +658,18 @@ namespace Trainer {
             }
 
         }
+
+        WeightVector rootWeights;
+        if(keepFromOne[info.start])
+            rootWeights = la1.rootWeights;
+        else
+            rootWeights = la2.rootWeights;
+
+
+        return LatentAnnotation(nonterminalSplits
+                                , std::move(rootWeights)
+                                , std::make_unique<std::vector <RuleTensor<double>>>(ruleWeights)
+        );
 
     }
 
