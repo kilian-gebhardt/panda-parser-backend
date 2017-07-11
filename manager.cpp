@@ -308,12 +308,20 @@ void test_fp_io() {
         std::cerr << tensor << "\n";
     }
 
-    Trainer::LatentAnnotation projection = Trainer::project_annotation<size_t>(std::move(lat), gramInf);
+    Trainer::LatentAnnotation projection = Trainer::project_annotation<size_t>(lat, gramInf);
 
     std::cerr << "after:\n";
     for(const auto tensor : *projection.ruleWeights){
         std::cerr << tensor << "\n";
     }
+
+
+    // Genetic crossing of LAs
+    std::vector<bool> keepFromOne(lat.nonterminalSplits.size());
+    for(size_t i = 0; i < keepFromOne.size(); ++i)
+        keepFromOne[i] = i%2?true:false;
+
+    Trainer::mix_annotations<size_t>(lat, projection, gramInf, keepFromOne);
 
 
 }
