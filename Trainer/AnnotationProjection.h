@@ -688,7 +688,6 @@ namespace Trainer {
             for (Element<Node<Nonterminal>> choice : edge->get_sources())
                 if (keepFromOne[choice->get_label()] ^ (!lhsIsFirst)) // XOR ensures first being the one with LHS
                     ++countFirsts;
-            std::cerr << std::endl;
 
             switch (countFirsts){
                 case 0:
