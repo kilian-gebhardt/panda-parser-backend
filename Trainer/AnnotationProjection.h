@@ -27,7 +27,7 @@ namespace Trainer {
         switch (res.which() + 1) {
             case 1: {
                 const unsigned int ruleRank = 1;
-                const RuleTensorRaw<double, ruleRank> ruleTensor = boost::get<Trainer::RuleTensorRaw<double
+                const RuleTensorRaw<double, ruleRank>& ruleTensor = boost::get<Trainer::RuleTensorRaw<double
                                                                                                      , ruleRank>>(
                         res
                 );
@@ -37,7 +37,7 @@ namespace Trainer {
             }
             case 2: {
                 const unsigned int ruleRank = 2;
-                const RuleTensorRaw<double, ruleRank> ruleTensor = boost::get<Trainer::RuleTensorRaw<double
+                const RuleTensorRaw<double, ruleRank>& ruleTensor = boost::get<Trainer::RuleTensorRaw<double
                                                                                                      , ruleRank>>(
                         res
                 );
@@ -47,7 +47,7 @@ namespace Trainer {
             }
             case 3: {
                 const unsigned int ruleRank = 3;
-                const RuleTensorRaw<double, ruleRank> ruleTensor = boost::get<Trainer::RuleTensorRaw<double
+                const RuleTensorRaw<double, ruleRank>& ruleTensor = boost::get<Trainer::RuleTensorRaw<double
                                                                                                      , ruleRank>>(
                         res
                 );
@@ -254,7 +254,7 @@ namespace Trainer {
             switch (rule.size()) {
                 case 1: {
                     constexpr unsigned ruleRank{1};
-                    const RuleTensorRaw<double, ruleRank> ruleTensor = boost::get<Trainer::RuleTensorRaw<double
+                    const RuleTensorRaw<double, ruleRank>& ruleTensor = boost::get<Trainer::RuleTensorRaw<double
                                                                                                          , ruleRank>>(
                             ruleVariant
                     );
@@ -277,7 +277,7 @@ namespace Trainer {
                 }
                 case 2: {
                     constexpr unsigned ruleRank{2};
-                    const RuleTensorRaw<double, ruleRank> ruleTensor = boost::get<Trainer::RuleTensorRaw<double
+                    const RuleTensorRaw<double, ruleRank>& ruleTensor = boost::get<Trainer::RuleTensorRaw<double
                                                                                                          , ruleRank>>(
                             ruleVariant
                     );
@@ -304,7 +304,7 @@ namespace Trainer {
                 }
                 case 3: {
                     constexpr unsigned ruleRank{3};
-                    const RuleTensorRaw<double, ruleRank> ruleTensor = boost::get<Trainer::RuleTensorRaw<double
+                    const RuleTensorRaw<double, ruleRank>& ruleTensor = boost::get<Trainer::RuleTensorRaw<double
                                                                                                          , ruleRank>>(
                             ruleVariant
                     );
@@ -335,7 +335,7 @@ namespace Trainer {
                 }
                 case 4: {
                     constexpr unsigned ruleRank{4};
-                    const RuleTensorRaw<double, ruleRank> ruleTensor = boost::get<Trainer::RuleTensorRaw<double
+                    const RuleTensorRaw<double, ruleRank>& ruleTensor = boost::get<Trainer::RuleTensorRaw<double
                                                                                                          , ruleRank>>(
                             ruleVariant
                     );
@@ -403,7 +403,7 @@ namespace Trainer {
         template<int rank>
         typename std::enable_if<rank != 1, RuleTensorRaw<double, rank-1>>::type
         operator()(const RuleTensorRaw<double, rank>& tensor) const {
-            Eigen::Tensor<double, 1> fac = boost::get<Eigen::Tensor<double, 1>>(factor);
+            const Eigen::Tensor<double, 1>& fac = boost::get<Eigen::Tensor<double, 1>>(factor);
             RuleTensorRaw<double, rank-1> result = tensor.contract(
                     fac, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(rank - 1, 0)});
             return result;
@@ -444,7 +444,7 @@ namespace Trainer {
                 intermediate = boost::apply_visitor(tmult, intermediate);
             }
 
-            RuleTensorRaw<double, 1> withoutInside = boost::get<RuleTensorRaw<double, 1>>(intermediate);
+            const RuleTensorRaw<double, 1>& withoutInside = boost::get<RuleTensorRaw<double, 1>>(intermediate);
             RuleTensorRaw<double, 0> sum = withoutInside
                         .contract(outside.at(edge->get_target())
                                 , Eigen::array<Eigen::IndexPair<long>, 1>{
@@ -494,7 +494,7 @@ namespace Trainer {
         typename std::enable_if<rank >= numberInOne, Eigen::Tensor<double, rank>>::type
         operator()(const Eigen::Tensor<double, rank> &weight1) const {
 
-            const Eigen::Tensor<double, rank> weight2 = boost::get<Eigen::Tensor<double, rank>>(ruleWeight2);
+            const Eigen::Tensor<double, rank>& weight2 {boost::get<Eigen::Tensor<double, rank>>(ruleWeight2)};
 
             if (numberInOne == 0){
                 RuleTensorRaw<double, rank> result;
@@ -516,11 +516,17 @@ namespace Trainer {
             // GeneticCrosser requires LHS to belong to LA1.
             sumDimensions1[dimIndex1++] = 0;
 
+            bool lhsIsFirst{keepFromOne[edge->get_target()->get_label()]};
+            if(rank != edge->get_sources().size() + 1) {
+                std::cerr << "Rank does not correspond to edge! " << rank << " vs. " << edge->get_sources().size();
+                abort();
+            }
             for (int dim = 0; dim < edge->get_sources().size(); ++dim) {
-                if (keepFromOne[edge->get_sources()[dim]->get_label()])
-                    sumDimensions2[dimIndex2++] = dim + 1;
-                else
+                if (keepFromOne[edge->get_sources()[dim]->get_label()] ^ (!lhsIsFirst))
                     sumDimensions1[dimIndex1++] = dim + 1;
+                else
+                    sumDimensions2[dimIndex2++] = dim + 1;
+
 
             }
 
@@ -543,7 +549,8 @@ namespace Trainer {
             weightDistribution
                     = outside2.at(edge->get_target()).reshape(reshapeDimensions)
                               .broadcast(broadcastDimensions);
-            weightDistribution = weightDistribution *weight2;
+
+            weightDistribution = weightDistribution * weight2;
 
             for (unsigned int lhsNumber = 1; lhsNumber < rank; ++lhsNumber) {
                 reshapeDimensions[0] = 1;
