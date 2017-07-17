@@ -78,7 +78,7 @@ namespace Trainer {
 
 
     template<typename Nonterminal>
-    HypergraphPtr<Nonterminal> hypergraph_from_grammar(GrammarInfo2 grammarInfo) {
+    HypergraphPtr<Nonterminal> hypergraph_from_grammar(const GrammarInfo2& grammarInfo) {
         // build HG
         MAPTYPE<size_t, bool> nodes;
         std::vector<size_t> nLabels{};
@@ -123,9 +123,9 @@ namespace Trainer {
 
     template<typename Nonterminal>
     void io_weights_for_grammar(
-            const HypergraphPtr<Nonterminal> hg
+            const HypergraphPtr<Nonterminal>& hg
             , const LatentAnnotation &annotation
-            , const Element<Node<Nonterminal>> initialNode
+            , const Element<Node<Nonterminal>>& initialNode
             , MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
             , MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
             , const double ioPrecision = IO_PRECISION_DEFAULT
@@ -138,8 +138,8 @@ namespace Trainer {
         tMPtr->create(1, hg, initialNode);
 
         for (const auto n : *hg) {
-            insideWeights[n] = Trainer::WeightVector{annotation.nonterminalSplits.at(n->get_label_id())};
-            outsideWeights[n] = Trainer::WeightVector{annotation.nonterminalSplits.at(n->get_label_id())};
+            insideWeights[n] = Trainer::WeightVector(annotation.nonterminalSplits.at(n->get_label_id()));
+            outsideWeights[n] = Trainer::WeightVector(annotation.nonterminalSplits.at(n->get_label_id()));
         }
 
         tMPtr->set_io_precision(ioPrecision);
@@ -179,6 +179,7 @@ namespace Trainer {
 
         // do projection
         auto projRuleWeights = std::vector<RuleTensor<double>>();
+        projRuleWeights.reserve(hg->get_edges()->size());
 
         for (const auto &edge : *hg->get_edges()) {
             size_t ruleId = edge->get_label();
@@ -389,28 +390,31 @@ namespace Trainer {
 
 
 
-    template <typename Nonterminal>
     struct TensorMultiplyer : boost::static_visitor<RuleTensor<double>> {
-        const RuleTensor<double>& factor;
+        const WeightVector& factor;
+        int multiplyDimension;
 
         TensorMultiplyer(
-            const RuleTensor<double>& factor
+            const WeightVector& f
+            , int multiplyDimension = -1
         )
         :
-            factor(factor)
+            factor(f)
+            , multiplyDimension(multiplyDimension)
         {};
 
         template<int rank>
         typename std::enable_if<rank != 1, RuleTensorRaw<double, rank-1>>::type
-        operator()(const RuleTensorRaw<double, rank>& tensor) const {
-            const Eigen::Tensor<double, 1>& fac = boost::get<Eigen::Tensor<double, 1>>(factor);
+        operator()(const RuleTensorRaw<double, rank>& tensor) {
+            if (multiplyDimension < 0 || multiplyDimension > rank-1)
+                multiplyDimension = rank -1;
             RuleTensorRaw<double, rank-1> result = tensor.contract(
-                    fac, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(rank - 1, 0)});
+                    factor, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(multiplyDimension, 0)});
             return result;
         }
 
         RuleTensorRaw<double, 1>
-        operator()(const RuleTensorRaw<double, 1>& tensor) const {
+        operator()(const RuleTensorRaw<double, 1>& /*tensor*/) const {
             std::cerr << "TensorMultiplyer can only handle Tensors of at least dimension 2!";
             abort();
         }
@@ -421,13 +425,13 @@ namespace Trainer {
     struct RuleSummer : boost::static_visitor<double> {
 
         const Element<HyperEdge<Nonterminal>> edge;
-        const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector> inside;
-        const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector> outside;
+        const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector>& inside;
+        const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector>& outside;
 
         RuleSummer(
             const Element<HyperEdge<Nonterminal>> edge
-            , const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector> &inside
-            , const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector> &outside
+            , const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector>& inside
+            , const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector>& outside
         )
         :
             edge(edge)
@@ -436,11 +440,12 @@ namespace Trainer {
         {};
 
         template<int rank>
-        double operator()(const RuleTensorRaw<double, rank> &weight) const {
+        double operator()(const RuleTensorRaw<double, rank>& weight) const {
 
-            RuleTensor<double> intermediate = weight;
+            RuleTensor<double> intermediate{RuleTensorRaw<double, rank>(weight.dimensions())};
+            intermediate = weight;
             for(int dim = rank - 1; dim > 0 ; --dim) {
-                TensorMultiplyer<Nonterminal> tmult(inside.at(edge->get_sources()[dim - 1]));
+                TensorMultiplyer tmult(inside.at(edge->get_sources()[dim - 1]));
                 intermediate = boost::apply_visitor(tmult, intermediate);
             }
 
@@ -462,22 +467,22 @@ namespace Trainer {
     template <typename Nonterminal, int numberInOne>
     struct GeneticCrosser : boost::static_visitor<RuleTensor<double>> {
 
-        const Element<HyperEdge<Nonterminal>> edge;
-        const std::vector<bool>& keepFromOne;
-        const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> inside2;
-        const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> outside2;
+        const Element<HyperEdge<Nonterminal>> &edge;
+        const std::vector<bool> &keepFromOne;
+        const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &inside2;
+        const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outside2;
         double ruleSum;
-        const RuleTensor<double> ruleWeight2;
+        const RuleTensor<double> &ruleWeight2;
 
         /*
          * Assumes that left-hand side of rule belongs to weight1!
          */
-        GeneticCrosser(const Element<HyperEdge<Nonterminal>> edge
-            , const std::vector<bool>& keepFromOne
+        GeneticCrosser(const Element<HyperEdge<Nonterminal>> &edge
+            , const std::vector<bool> &keepFromOne
             , const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &inside2
             , const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector> &outside2
-            , double rS
-            , RuleTensor<double> ruleWeight2
+            , const double rS
+            , const RuleTensor<double> &ruleWeight2
         )
         : edge(edge)
         , keepFromOne(keepFromOne)
@@ -491,22 +496,16 @@ namespace Trainer {
          * Assumes that left-hand side of rule belongs to weight1!
          */
         template<int rank>
-        typename std::enable_if<rank >= numberInOne, Eigen::Tensor<double, rank>>::type
+        typename std::enable_if<(rank > numberInOne), RuleTensorRaw<double, rank>>::type
         operator()(const Eigen::Tensor<double, rank> &weight1) const {
 
             const Eigen::Tensor<double, rank>& weight2 {boost::get<Eigen::Tensor<double, rank>>(ruleWeight2)};
 
             if (numberInOne == 0){
-                RuleTensorRaw<double, rank> result;
+                RuleTensorRaw<double, rank> result(weight2.dimensions());
                 result = weight2;
                 return result;
             }
-            if (rank - numberInOne == 0){
-                RuleTensorRaw<double, rank> result;
-                result = weight1;
-                return result;
-            }
-
             
             Eigen::array<int, numberInOne> sumDimensions1;
             Eigen::array<int, rank - numberInOne> sumDimensions2;
@@ -521,6 +520,7 @@ namespace Trainer {
                 std::cerr << "Rank does not correspond to edge! " << rank << " vs. " << edge->get_sources().size();
                 abort();
             }
+
             for (int dim = 0; dim < edge->get_sources().size(); ++dim) {
                 if (keepFromOne[edge->get_sources()[dim]->get_label()] ^ (!lhsIsFirst))
                     sumDimensions1[dimIndex1++] = dim + 1;
@@ -531,10 +531,10 @@ namespace Trainer {
             }
 
             // calculate the probability to be distributed
-            RuleTensorRaw<double, numberInOne> probabilityMass = weight1.sum(sumDimensions2);
+            Eigen::Tensor<double, numberInOne> probabilityMass = weight1.sum(sumDimensions2);
+
 
             // calculate the factor
-
             Eigen::array<int, rank> reshapeDimensions;
             Eigen::array<int, rank> broadcastDimensions;
             reshapeDimensions[0] = weight2.dimension(0);
@@ -544,36 +544,72 @@ namespace Trainer {
                 broadcastDimensions[i] = weight2.dimension(i);
             }
 
-            RuleTensorRaw<double, rank> weightDistribution(weight2.dimensions());
+//            Eigen::Tensor<double, rank> weightDistribution(weight2.dimensions());
+//
+//            weightDistribution
+//                    = outside2.at(edge->get_target()).reshape(reshapeDimensions)
+//                              .broadcast(broadcastDimensions);
+//
+//            weightDistribution *= weight2;
+//
+//            for (unsigned int lhsNumber : sumDimensions1) {
+//                if(lhsNumber == 0)
+//                    continue; // outside-values have already been multiplied
+////                // The same reshape-Dimensions as for outside can be used
+////                reshapeDimensions[0] = 1;
+////                broadcastDimensions[0] = weight2.dimension(0);
+////                for (unsigned int i = 1; i < rank; ++i) {
+////                    if (i == lhsNumber) {
+////                        reshapeDimensions[i] = weight2.dimension(i);
+////                        broadcastDimensions[i] = 1;
+////                    } else {
+////                        reshapeDimensions[i] = 1;
+////                        broadcastDimensions[i] = weight2.dimension(i);
+////                    }
+////                }
+//
+//                weightDistribution
+//                        *= inside2.at(edge->get_sources()[lhsNumber-1]).reshape(reshapeDimensions)
+//                                  .broadcast(broadcastDimensions);
+//            }
 
-            weightDistribution
-                    = outside2.at(edge->get_target()).reshape(reshapeDimensions)
-                              .broadcast(broadcastDimensions);
 
-            weightDistribution = weightDistribution * weight2;
-
-            for (unsigned int lhsNumber = 1; lhsNumber < rank; ++lhsNumber) {
-                reshapeDimensions[0] = 1;
-                broadcastDimensions[0] = weight2.dimension(0);
-                for (unsigned int i = 1; i < rank; ++i) {
-                    if (i == lhsNumber) {
-                        reshapeDimensions[i] = weight2.dimension(i);
-                        broadcastDimensions[i] = 1;
-                    } else {
-                        reshapeDimensions[i] = 1;
-                        broadcastDimensions[i] = weight2.dimension(i);
-                    }
-                }
-
-                weightDistribution
-                        = weightDistribution
-                          * inside2.at(edge->get_sources()[lhsNumber-1]).reshape(reshapeDimensions)
-                                  .broadcast(broadcastDimensions);
+            RuleTensor<double> intermediate{RuleTensorRaw<double, rank>(weight2.dimensions())};
+            intermediate = weight2;
+            int sumDimCount = 0;
+            for(int dim : sumDimensions1) {
+                const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& inout {dim == 0 ? outside2 : inside2};
+                const Element<Node<Nonterminal>> nt {dim == 0 ? edge->get_target() : edge->get_sources()[dim - 1]};
+                TensorMultiplyer tmult(inout.at(nt), dim - sumDimCount);
+                intermediate = boost::apply_visitor(tmult, intermediate);
+                ++sumDimCount;
             }
 
-            RuleTensorRaw<double, rank - numberInOne> weightSum
-                    = weightDistribution.sum(sumDimensions1) / ruleSum;
+            Eigen::Tensor<double, rank - numberInOne> &weightDistribution
+                    = boost::get<RuleTensorRaw<double, rank - numberInOne>>(intermediate);
 
+//            // Debug-Check:
+//            Eigen::Tensor<double, 0> wdsum = weightDistribution.sum();
+//            if (std::abs(wdsum(0) - ruleSum) > std::exp(-10))
+//                std::cerr << "Bad: Normalization vector does not sum to ruleSum: " << wdsum(0) << " / " << ruleSum << "\n";
+//            else
+//                std::cerr << "OK: Normalization vector.sum() == ruleSum: " << wdsum(0) << " / " << ruleSum << "\n";
+
+
+//            Eigen::Tensor<double, rank - numberInOne> weightSum
+//                    = weightDistribution.sum(sumDimensions1) / ruleSum;
+
+
+            Eigen::Tensor<double, rank - numberInOne> weightSum
+                    = weightDistribution / ruleSum;
+
+//            // Debug-Checks:
+//            weightSum = weightSum.unaryExpr([&](double x){if (x > 1 + std::exp(-5)) {std::cerr << "Bad x: " << x << "\n"; }; return x;});
+//            Eigen::Tensor<double, 0> wsumsum = weightSum.sum();
+//            if (std::abs(wsumsum(0) - 1.0) > std::exp(-10))
+//                std::cerr << "Bad: The normalization count does not sum to 1, but " << wsumsum(0) << "\n";
+//            else
+//                std::cerr << "OK: normalization.sum = " << wsumsum(0) << "\n";
 
 
             // extend the tensors and multiply pointwise
@@ -582,8 +618,8 @@ namespace Trainer {
             Eigen::array<int, rank> broadcast1;
             Eigen::array<int, rank> broadcast2;
             for (unsigned int i = 0; i < rank; ++i) {
-                reshape1[i] = weight2.dimension(i);
-                reshape2[i] = weight1.dimension(i);
+                reshape1[i] = weight1.dimension(i);
+                reshape2[i] = weight2.dimension(i);
                 broadcast1[i] = 1;
                 broadcast2[i] = 1;
             }
@@ -603,13 +639,25 @@ namespace Trainer {
 
         }
 
+        /*
+         * Handling of the special case where all LAs from 1 are chosen. Just returns weight1.
+         */
+        template<int rank>
+        typename std::enable_if<rank == numberInOne, RuleTensorRaw<double, rank>>::type
+        operator()(const Eigen::Tensor<double, rank> &weight1) const {
+
+            RuleTensorRaw<double, rank> result(weight1.dimensions());
+            result = weight1;
+            return result;
+        }
+
 
         /*
          * This function is here to suit the implementation, but is never called.
          */
         template<int rank>
-        typename std::enable_if<rank < numberInOne, Eigen::Tensor<double, rank>>::type
-        operator()(const Eigen::Tensor<double, rank> &weight1) const {
+        typename std::enable_if<(rank < numberInOne), RuleTensorRaw<double, rank>>::type
+        operator()(const Eigen::Tensor<double, rank>) const {
             std::cerr << "Tried to genetically cross a tensor of rank " << rank << " with " << numberInOne << " entries! Aborting!";
             abort();
         };
@@ -671,9 +719,36 @@ namespace Trainer {
             nonterminalSplits[i] = keepFromOne[i]? la1.nonterminalSplits[i] : la2.nonterminalSplits[i];
         }
 
-        std::vector <RuleTensor<double>> ruleWeights(la1.ruleWeights->size());
+
+        // prepare the new ruleWeight vector by initializing with the correct ranks
+        std::vector<RuleTensor<double>> ruleWeights;
+        ruleWeights.reserve(la1.ruleWeights->size());
+        for(size_t ruleId = 0; ruleId < la1.ruleWeights->size(); ++ ruleId){
+            switch (info.rule_to_nonterminals[ruleId].size()) {
+                case 1:
+                    ruleWeights.push_back(RuleTensorRaw<double, 1>(1));
+                    break;
+                case 2:
+                    ruleWeights.push_back(RuleTensorRaw<double, 2>(1,1));
+                    break;
+                case 3:
+                    ruleWeights.push_back(RuleTensorRaw<double, 3>(1,1,1));
+                    break;
+                case 4:
+                    ruleWeights.push_back(RuleTensorRaw<double, 4>(1,1,1,1));
+                    break;
+                case 5:
+                    ruleWeights.push_back(RuleTensorRaw<double, 5>(1,1,1,1,1));
+                    break;
+                default:
+                    std::cerr << "Cannot create empty rule tensor for rules with LHS > 4! (Requested: " << info.rule_to_nonterminals[ruleId].size() << ")\n";
+                    abort();
+            }
+        }
+
+
         // calculate new weight for each rule
-        for (auto edge : *hg->get_edges() ){
+        for (auto edge : *hg->get_edges()){
 
             // ensure assumption: weight1 is the weight of the LHS
             bool lhsIsFirst{keepFromOne[edge->get_target()->get_label()]};
@@ -684,7 +759,7 @@ namespace Trainer {
             const RuleTensor<double>& weight2 {lhsIsFirst ? (*la2.ruleWeights)[edge->get_label()] : (*la1.ruleWeights)[edge->get_label()]};
 
 
-            // TODO! calculate the sum of the whole rule:
+            // calculate the sum of the whole rule:
             RuleSummer<Nonterminal> ruleSummer(edge, inside, outside);
             double ruleSum = boost::apply_visitor(ruleSummer, weight2);
 
@@ -698,11 +773,7 @@ namespace Trainer {
 
             switch (countFirsts){
                 case 0:
-                    if (lhsIsFirst) {
-                        ruleWeights[edge->get_label()] = (*la2.ruleWeights)[edge->get_label()];
-                    } else {
-                        ruleWeights[edge->get_label()] = (*la1.ruleWeights)[edge->get_label()];
-                    }
+                    ruleWeights[edge->get_label()] = weight2;
                     break;
                 case 1: {
                     GeneticCrosser<Nonterminal, 1> crosser(
@@ -775,11 +846,19 @@ namespace Trainer {
 
         }
 
-        WeightVector rootWeights;
+
+        long noRootWeights = 0;
         if(keepFromOne[info.start])
-            rootWeights = la1.rootWeights;
+            noRootWeights = la1.rootWeights.dimension(0);
         else
-            rootWeights = la2.rootWeights;
+            noRootWeights = la2.rootWeights.dimension(0);
+        WeightVector rootWeights(noRootWeights);
+        if(keepFromOne[info.start])
+            for(int i = 0; i < noRootWeights; ++i)
+                rootWeights[i] = la1.rootWeights[i];
+        else
+            for(int i = 0; i < noRootWeights; ++i)
+                rootWeights[i] = la2.rootWeights[i];
 
 
         return LatentAnnotation(nonterminalSplits

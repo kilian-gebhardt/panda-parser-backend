@@ -120,8 +120,8 @@ namespace Trainer {
                     compute_normalization_divisor(normalizationDivisor, (*ruleWeights)[ruleId]);
                 }
                 for (auto idx = 0; idx < normalizationDivisor.dimension(0); ++idx) {
-                    if (std::abs(normalizationDivisor(idx) - 1) > std::exp(-5)) {
-                        std::cerr << "non proper LA at idx " << idx << ": " << normalizationDivisor << std::endl;
+                    if (std::abs(normalizationDivisor(idx) - 1.0) > std::exp(-5)) {
+                        std::cerr << "non proper LA at idx " << idx << ": " << normalizationDivisor(idx) << std::endl;
                         proper = false;
                     }
                 }
