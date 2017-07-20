@@ -389,6 +389,18 @@ namespace Trainer {
 
 
 
+    struct SizeVisitor : boost::static_visitor<unsigned long> {
+
+        SizeVisitor(){};
+
+        template<int rank>
+        double operator()(const RuleTensorRaw<double, rank>& weight) const {
+            return weight.size();
+        }
+    };
+
+
+
 
     struct TensorMultiplyer : boost::static_visitor<RuleTensor<double>> {
         const WeightVector& factor;
@@ -860,6 +872,14 @@ namespace Trainer {
             for(int i = 0; i < noRootWeights; ++i)
                 rootWeights[i] = la2.rootWeights[i];
 
+
+        // Debug: compute the size of the LA in doubles:
+        unsigned long laSize {0};
+        for (const RuleTensor<double>& rw : ruleWeights) {
+            SizeVisitor sizeVisitor;
+            laSize += boost::apply_visitor(sizeVisitor, rw);
+        }
+        std::cerr << "Genetic[debug]: Size of crossed LA: " << laSize << std::endl;
 
         return LatentAnnotation(nonterminalSplits
                                 , std::move(rootWeights)

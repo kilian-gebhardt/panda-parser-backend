@@ -279,14 +279,14 @@ void test_fp_io() {
 
     std::cerr << "Inside: ";
     for(auto n : *graph){
-        std::cerr << insideWeights[n](0) << "  ";
+        std::cerr << insideWeights.at(n)(0) << "  ";
     }
     std::cerr << std::endl;
 
 
     std::cerr << "Outside: ";
     for(auto n : *graph){
-        std::cerr << outsideWeights[n](0) << "  ";
+        std::cerr << outsideWeights.at(n)(0) << "  ";
     }
     std::cerr << std::endl;
 
@@ -322,6 +322,8 @@ void test_fp_io() {
         keepFromOne[i] = i%2?true:false;
 
     Trainer::mix_annotations<size_t>(lat, projection, gramInf, keepFromOne);
+
+    std::cerr << "end\n";
 
 
 }
