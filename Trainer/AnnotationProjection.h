@@ -179,9 +179,9 @@ namespace Trainer {
 
         // do projection
         auto projRuleWeights = std::vector<RuleTensor<double>>();
-        projRuleWeights.reserve(hg->get_edges()->size());
+        projRuleWeights.reserve(hg->get_edges().lock()->size());
 
-        for (const auto &edge : *hg->get_edges()) {
+        for (const auto &edge : *hg->get_edges().lock()) {
             size_t ruleId = edge->get_label();
             const std::vector<size_t> &rule = grammarInfo.rule_to_nonterminals[ruleId];
             const auto &ruleVariant = (*(annotation.ruleWeights))[ruleId];
@@ -760,7 +760,7 @@ namespace Trainer {
 
 
         // calculate new weight for each rule
-        for (auto edge : *hg->get_edges()){
+        for (auto edge : *hg->get_edges().lock()){
 
             // ensure assumption: weight1 is the weight of the LHS
             bool lhsIsFirst{keepFromOne[edge->get_target()->get_label()]};

@@ -19,12 +19,15 @@ namespace Manage {
     template<typename NodeLabelT, typename EdgeLabelT>
     using HypergraphPtr = std::shared_ptr<Hypergraph<NodeLabelT, EdgeLabelT>>;
 
+    template<typename NodeLabelT, typename EdgeLabelT>
+    using HypergraphWeakPtr = std::weak_ptr<Hypergraph<NodeLabelT, EdgeLabelT>>;
+
 
     template<typename NodeT, typename LabelT>
     class HyperEdge {
     private:
         const ID id;
-        const ManagerPtr<HyperEdge<NodeT, LabelT>> manager;
+        const ManagerWeakPtr<HyperEdge<NodeT, LabelT>> manager;
         const LabelT label;
         const size_t labelID;
         const Element<NodeT> target;
@@ -34,7 +37,7 @@ namespace Manage {
         ID get_id() const noexcept { return id; }
 
     public:
-        HyperEdge(ID aId, ManagerPtr<HyperEdge<NodeT, LabelT>> aManager, LabelT aLabel, size_t aLabelId,
+        HyperEdge(ID aId, ManagerWeakPtr<HyperEdge<NodeT, LabelT>> aManager, LabelT aLabel, size_t aLabelId,
                   Element<NodeT> aTarget, std::vector<Element<NodeT>> someSources
         )
                 : id(aId), manager(std::move(aManager)), label(std::move(aLabel)), labelID(aLabelId),
@@ -121,7 +124,7 @@ namespace Manage {
     class Node {
     private:
         ID id;
-        ManagerPtr<Node<LabelT>> manager;
+        ManagerWeakPtr<Node<LabelT>> manager;
         LabelT label;
         size_t labelID;
 
@@ -129,7 +132,7 @@ namespace Manage {
         ID get_id() const noexcept { return id; }
 
     public:
-        Node(const ID aId, const ManagerPtr<Node<LabelT>> aManager, const LabelT &aLabel, size_t aLabelId
+        Node(const ID aId, const ManagerWeakPtr<Node<LabelT>> aManager, const LabelT &aLabel, size_t aLabelId
         )
                 : id(aId), manager(std::move(aManager)), label(aLabel), labelID(aLabelId) {}
 
@@ -161,7 +164,7 @@ namespace Manage {
                 std::is_same<T, std::string>::value || std::is_same<T, size_t>::value
                 , Node<LabelT>
         >
-        deserialize(std::istream &in, ID id, ManagerPtr<Node<LabelT>> man) {
+        deserialize(std::istream &in, ID id, ManagerWeakPtr<Node<LabelT>> man) {
             LabelT l;
             size_t lID;
             char sep;
@@ -191,10 +194,10 @@ namespace Manage {
 
     public:
         Hypergraph(
-                const std::shared_ptr<const std::vector<NodeLabelT>>& nlabels
-                , const std::shared_ptr<const std::vector<EdgeLabelT>>& elabels
+                const std::shared_ptr<const std::vector<NodeLabelT>> nlabels
+                , const std::shared_ptr<const std::vector<EdgeLabelT>> elabels
         )
-                : nodeLabels(nlabels), edgeLabels(elabels) {}
+                : nodeLabels(std::move(nlabels)), edgeLabels(std::move(elabels)) {}
 
 
         Element<Node<NodeLabelT>> create(
@@ -212,8 +215,8 @@ namespace Manage {
             }
 
 
-            size_t nLabelId = std::distance(
-                    nodeLabels->cbegin(), pos);
+            size_t nLabelId = size_t(std::distance(
+                    nodeLabels->cbegin(), pos));
             return Manager<Node<NodeLabelT>>::create(nLabel, nLabelId);
         }
 
@@ -235,9 +238,8 @@ namespace Manage {
                 exit(-1);
             }
 
-            size_t edgeLabelId = std::distance(
-                    edgeLabels->cbegin(), pos);
-            // todo: abort if label not valid
+            size_t edgeLabelId = size_t(std::distance(
+                    edgeLabels->cbegin(), pos));
             Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>> edge = edges->create(
                     edgeLabel
                     , edgeLabelId
@@ -254,7 +256,7 @@ namespace Manage {
         }
 
 
-        const ManagerPtr<Manage::HyperEdge<Manage::Node<NodeLabelT>, EdgeLabelT>>& get_edges() const {
+        const ManagerWeakPtr<Manage::HyperEdge<Manage::Node<NodeLabelT>, EdgeLabelT>> get_edges() const {
             return edges;
         }
 
@@ -281,7 +283,7 @@ namespace Manage {
         }
 
         const Element<Node<NodeLabelT>> get_node_by_label(NodeLabelT label){
-            size_t id = std::distance(nodeLabels->cbegin(), std::find(nodeLabels->cbegin(),nodeLabels->cend(), label));
+            size_t id = size_t(std::distance(nodeLabels->cbegin(), std::find(nodeLabels->cbegin(),nodeLabels->cend(), label)));
             assert(id < nodeLabels->size());
             return Manager<Node<NodeLabelT>>::infos[id].get_element();
         }

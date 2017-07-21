@@ -25,11 +25,15 @@ namespace Manage{
     using ManagerPtr = std::shared_ptr<Manager<InfoT>>; // forward reference
     template <typename InfoT>
     using ConstManagerPtr = std::shared_ptr<const Manager<InfoT>>; // forward reference
+    template <typename InfoT>
+    using ManagerWeakPtr = std::weak_ptr<Manager<InfoT>>; // forward reference
+    template <typename InfoT>
+    using ConstManagerWeakPtr = std::weak_ptr<const Manager<InfoT>>; // forward reference
 
 
     template <typename InfoT, bool isConst = false>
     class Element {
-        using ManagerType = typename std::conditional<isConst, ConstManagerPtr<InfoT>, ManagerPtr<InfoT>>::type;
+        using ManagerType = typename std::conditional<isConst, ConstManagerWeakPtr<InfoT>, ManagerWeakPtr<InfoT>>::type;
         using PointerType = typename std::conditional<isConst, const InfoT*, InfoT*>::type;
 
     private:
@@ -38,7 +42,7 @@ namespace Manage{
     public:
         Element(ID aId, ManagerType aManager): id(aId), manager(aManager) {};
 
-        PointerType operator->() const {return &((*manager)[id]); }
+        PointerType operator->() const {return &((*manager.lock())[id]); }
         inline bool operator==(const Element<InfoT, isConst>& r) const noexcept {return id == r.id; }
         inline bool operator!=(const Element<InfoT, isConst>& r) const noexcept {return id != r.id; }
         inline bool operator< (const Element<InfoT, isConst>& r) const noexcept {return id < r.id; }
@@ -140,7 +144,6 @@ namespace Manage{
     class ManagerIterator {
     private:
         unsigned long index;
-//        ManagerPtr<InfoT> manager;
         using ManagerType = typename std::conditional<isConst, ConstManagerPtr<InfoT>, ManagerPtr<InfoT>>::type;
          ManagerType manager;
     public:
