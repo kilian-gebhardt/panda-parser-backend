@@ -21,12 +21,14 @@ namespace Trainer {
 
     template<typename Nonterminal, typename TraceID>
     using TraceManagerPtr = std::shared_ptr<TraceManager2<Nonterminal, TraceID>>;
+    template<typename Nonterminal, typename TraceID>
+    using TraceManagerWeakPtr = std::weak_ptr<TraceManager2<Nonterminal, TraceID>>;
 
     template<typename Nonterminal, typename oID>
     class Trace {
     private:
         Manage::ID id;
-        TraceManagerPtr<Nonterminal, oID> manager;
+        TraceManagerWeakPtr<Nonterminal, oID> manager;
         oID originalID;
         HypergraphPtr<Nonterminal> hypergraph;
         Element<Node<Nonterminal>> goal;
@@ -37,7 +39,7 @@ namespace Trainer {
     public:
         Trace(
                 const Manage::ID aId
-                , const TraceManagerPtr<Nonterminal, oID> aManager
+                , const TraceManagerWeakPtr<Nonterminal, oID> aManager
                 , const oID oid
                 , HypergraphPtr<Nonterminal> aHypergraph
                 , Element<Node<Nonterminal>> aGoal
@@ -67,7 +69,7 @@ namespace Trainer {
             return get_topological_order().size() == hypergraph->size();
         }
 
-        // TODO: This is not a const function, is it?
+        // TODO: this is not a const function, but there is some hassle if it is not declared as such
         const std::vector<Element<Node<Nonterminal>>> &get_topological_order() const {
             if (topologicalOrder.size() == hypergraph->size())
                 return topologicalOrder;
@@ -644,7 +646,7 @@ namespace Trainer {
                     maxChange = std::max(maxChange, delta);
                 }
 
-                if(cycleCount > manager->get_io_cycle_limit() || maxChange < Val::to(manager->get_io_precision())){
+                if(cycleCount > manager.lock()->get_io_cycle_limit() || maxChange < Val::to(manager.lock()->get_io_precision())){
                     break;
                 }
             }
@@ -681,7 +683,7 @@ namespace Trainer {
                     maxChange = std::max(maxChange, delta);
                 }
 
-                if(cycleCount > manager->get_io_cycle_limit() || maxChange < Val::to(manager->get_io_precision())){
+                if(cycleCount > manager.lock()->get_io_cycle_limit() || maxChange < Val::to(manager.lock()->get_io_precision())){
                     break;
                 }
 
@@ -786,7 +788,7 @@ namespace Trainer {
                 }
 
                 // stop the iteration:
-                if(cycle_count > manager->get_io_cycle_limit() || maxChange < manager->get_io_precision())
+                if(cycle_count > manager.lock()->get_io_cycle_limit() || maxChange < manager.lock()->get_io_precision())
                     break;
 
             }
@@ -874,7 +876,7 @@ namespace Trainer {
                 }
 
 
-                if(cycle_count > manager->get_io_cycle_limit() || maxChange < manager->get_io_precision())
+                if(cycle_count > manager.lock()->get_io_cycle_limit() || maxChange < manager.lock()->get_io_precision())
                     break;
             }
         }
