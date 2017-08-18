@@ -612,8 +612,6 @@ namespace Trainer {
 //                    = weightDistribution.sum(sumDimensions1) / ruleSum;
 
 
-            Eigen::Tensor<double, rank - numberInOne> weightSum
-                    = weightDistribution / ruleSum;
 
 //            // Debug-Checks:
 //            weightSum = weightSum.unaryExpr([&](double x){if (x > 1 + std::exp(-5)) {std::cerr << "Bad x: " << x << "\n"; }; return x;});
@@ -645,9 +643,17 @@ namespace Trainer {
                 broadcast2[i] = weight1.dimension(i);
             }
 
+
+            // The following line can be directly encoded in the return statement
+//            Eigen::Tensor<double, rank - numberInOne> weightSum
+//                    = weightDistribution / ruleSum;
+//            return probabilityMass.reshape(reshape1).broadcast(broadcast1)
+//                    *
+//                    weightSum.reshape(reshape2).broadcast(broadcast2);
+
             return probabilityMass.reshape(reshape1).broadcast(broadcast1)
-                    *
-                    weightSum.reshape(reshape2).broadcast(broadcast2);
+                   *
+                   (weightDistribution / ruleSum).reshape(reshape2).broadcast(broadcast2);
 
         }
 
