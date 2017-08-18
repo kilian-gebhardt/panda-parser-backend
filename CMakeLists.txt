@@ -9,6 +9,8 @@ set(SOURCE_FILES Legacy/main.cpp DCP/HybridTree.h DCP/SDCP.h DCP/SDCP_Parser.h u
 
 set(EIGEN_SOURCES DCP/HybridTree.h DCP/SDCP.h DCP/SDCP_Parser.h util.h Legacy/Trace.h Legacy/SplitMergeUtil.h Legacy/eigen_test.cpp Legacy/EigenUtil.h)
 
+set(EIGEN_FUNCTIONS util.h Legacy/eigen_functions.cpp)
+
 set(TRACEMANAGER_SOURCES main_tracemanager.cpp DCP/HybridTree.h DCP/SDCP.h DCP/SDCP_Parser.h util.h Legacy/Trace.h Legacy/SplitMergeUtil.h Legacy/EigenUtil.h Trainer/TraceManager.h Trainer/StorageManager.h Trainer/SplitMergeTrainer.h Trainer/EMTrainerLA.h Trainer/TrainingCommon.h Names.h Trainer/EMTrainer.h Trainer/TrainerBuilder.h DCP/util.h Trainer/MergePreparator.h Trainer/Smoother.h Trainer/HypergraphRanker.h Trainer/Validation.h)
 
 set(MANAGER_SOURCES
@@ -23,6 +25,7 @@ set(LCFRS_SOURCES
 
 add_executable(STermParser ${SOURCE_FILES})
 add_executable(EigenTest ${EIGEN_SOURCES})
+add_executable(EigenFunctions ${EIGEN_FUNCTIONS})
 add_executable(TraceManager ${TRACEMANAGER_SOURCES})
 add_executable(lcfrs_parser ${LCFRS_SOURCES})
 add_executable(manager ${MANAGER_SOURCES})
