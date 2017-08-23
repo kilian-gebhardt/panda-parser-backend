@@ -9,6 +9,7 @@
 #include <vector>
 #include <memory>
 #include <cassert>
+#include <iostream>
 
 template <typename T1, typename T2>
 using MAP = typename std::map<T1, T2>;
@@ -53,6 +54,10 @@ namespace Manage{
 
         friend std::hash<Element<InfoT>>;
         friend std::hash<Element<InfoT, true>>;
+
+        size_t hash() const {
+            return std::hash<Element<InfoT, isConst>>()(*this);
+        }
     };
 
 

@@ -1143,6 +1143,11 @@ namespace Trainer {
                                  , Element<Node<Nonterminal>> root) {
         traceManager->create(0L, hypergraph, root);
     };
+
+    template<typename Nonterminal, typename TraceID>
+    std::shared_ptr<TraceManager2<Nonterminal, TraceID>> fool_cython_unwrap(TraceManagerPtr<Nonterminal, TraceID> tmp) {
+        return tmp;
+    };
 }
 
 
