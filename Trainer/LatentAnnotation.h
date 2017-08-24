@@ -11,6 +11,34 @@
 
 
 namespace Trainer {
+
+
+    struct ValidityChecker : boost::static_visitor<bool> {
+
+        template<int rank>
+        bool operator()(const RuleTensorRaw<double, rank> &tensor) {
+            bool validity = true;
+
+            auto isnan = tensor.isnan().any();
+            Eigen::Tensor<bool,0> evalIsNan = isnan;
+            if(evalIsNan(0)){
+                std::clog << "[LA] A rule contains a NaN-value!";
+                validity = false;
+            }
+
+            auto isinf = tensor.isinf().any();
+            Eigen::Tensor<bool,0> evalIsInf = isinf;
+            if(evalIsInf(0)){
+                std::clog << "[LA] A rule contains an inf-value!";
+                validity = false;
+            }
+
+            return validity;
+        }
+    };
+
+
+
     class LatentAnnotation {
     public:
         const std::vector <std::size_t> nonterminalSplits;
@@ -275,6 +303,36 @@ namespace Trainer {
                               , std::uniform_real_distribution<double> & distribution) {
             auto &tensorRaw = boost::get<RuleTensorRaw<double, rule_rank>>(tensorWrapped);
             tensorRaw = tensorRaw.unaryExpr([&] (double x) -> double {return x * distribution(generator);});
+        }
+
+
+    public:
+        bool check_for_validity(double delta = 0.0005){
+            bool valid = true;
+
+            // check for root weights:
+            Eigen::Tensor<double, 0> rootSum = rootWeights.sum();
+            if(std::abs(rootSum(0)-1) > delta){
+                std::clog << "[LA] invalid root sum: " << rootSum(0) << std::endl;
+                valid = false;
+            }
+
+            // check that there is at least one annotation for each nonterminal
+            if(! std::all_of(nonterminalSplits.cbegin(), nonterminalSplits.cend(), [](size_t i){return i > 0;})){
+                std::clog << "[LA] invalid nonterminal splits (zero-split found)\n";
+                valid = false;
+            }
+
+            // check the weights for nan and inf
+            for(RuleTensor<double> rule : *ruleWeights){
+                ValidityChecker validityChecker;
+                bool check = boost::apply_visitor(validityChecker, rule);
+                if(!check)
+                    valid = false;
+
+            }
+
+            return valid;
         }
 
     };
