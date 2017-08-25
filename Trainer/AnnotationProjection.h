@@ -644,6 +644,22 @@ namespace Trainer {
             }
 
 
+            // in case inside- or outside-values are 0, the ruleSum is equally distributed to weightdistribution
+            Eigen::Tensor<double, rank - numberInOne> equalDistribution(weightDistribution.dimensions());
+            equalDistribution.setConstant(ruleSum);
+            // determine how many entries there are
+            size_t weightCount = 1;
+            for(int i : sumDimensions1)
+                weightCount *= weight2.dimension(i);
+
+            equalDistribution = equalDistribution / ((double)weightCount);
+
+            Eigen::Tensor<bool, rank - numberInOne> isWeightNonZero = weightDistribution.unaryExpr([](double x){return x > std::exp(-50);});
+
+            weightDistribution = isWeightNonZero.select(weightDistribution, equalDistribution);
+
+
+
             // The following line can be directly encoded in the return statement
 //            Eigen::Tensor<double, rank - numberInOne> weightSum
 //                    = weightDistribution / ruleSum;
