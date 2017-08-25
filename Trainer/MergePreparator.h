@@ -563,10 +563,13 @@ namespace Trainer {
                     for (size_t i = 0; i < latentAnnotation.nonterminalSplits[nont]; ++i) {
                         for (size_t j = i + 1; j < latentAnnotation.nonterminalSplits[nont]; ++j) {
                             if (merge_delta[nont][j][i] > merge_threshold) {
-                                if (not(inSCC.count(i) or inSCC.count(j))
-                                    or (not inSCC.count(j) and inSCC.at(i) == i)) {
+                                if (not(inSCC.count(i) or inSCC.count(j))) {
                                     edges[i].push_back(j);
-                                    inSCC[i] = inSCC[j] = i;
+                                    inSCC[i] = i;
+                                    inSCC[j] = i;
+                                } else if (not inSCC.count(j)) {
+                                    inSCC[j] = inSCC[i];
+                                    edges[inSCC[i]].push_back(j);
                                 } else if (not inSCC.count(i)) {
                                     inSCC[i] = inSCC[j];
                                     edges[inSCC[j]].push_back(i);
@@ -574,7 +577,7 @@ namespace Trainer {
                                     if (inSCC[i] == inSCC[j]) {
                                         // nothing needs to be done!
                                     } else if (inSCC[i] < inSCC[j]) {
-                                        size_t old_scc_j = inSCC[j];
+                                        const size_t old_scc_j = inSCC[j];
 
                                         for (size_t k : edges[old_scc_j]) {
                                             edges[inSCC[i]].push_back(k);
@@ -584,7 +587,8 @@ namespace Trainer {
                                         inSCC[old_scc_j] = inSCC[i];
                                         edges.erase(old_scc_j);
                                     } else {
-                                        size_t old_scc_i = inSCC[i];
+                                        const size_t old_scc_i = inSCC[i];
+
                                         for (size_t k : edges[old_scc_i]) {
                                             edges[inSCC[j]].push_back(k);
                                             inSCC[k] = inSCC[j];
@@ -602,16 +606,27 @@ namespace Trainer {
                     // set mergeFactor proportional to nontFreq
                     std::vector<std::vector<size_t>> mergeLists;
                     std::vector<double> laMergeFactors(latentAnnotation.nonterminalSplits[nont]);
+                    size_t merged_splits = 0;
                     for (auto key_value_pair : edges) {
+                        if (inSCC[key_value_pair.first] != key_value_pair.first)
+                            continue;
                         mergeLists.push_back(key_value_pair.second);
                         mergeLists.back().push_back(key_value_pair.first);
+                        std::sort(mergeLists.back().begin(), mergeLists.back().end());
+                        merged_splits += mergeLists.back().size();
                         double normalizer = 0.0;
                         for (auto la : mergeLists.back())
                             normalizer += nonterminalFrequencies[nont](la);
 
                         if (normalizer > 0 and not std::isnan(normalizer) and not std::isnan(normalizer))
-                            for (auto la : mergeLists.back())
+                            for (auto la : mergeLists.back()) {
+                                /* for debugging
+                                if (nont == 179)
+                                    std::cerr << nont << " la: " << la << " freq: "
+                                              << nonterminalFrequencies[nont](la) << " n: " << normalizer << std::endl;
+                                */
                                 laMergeFactors[la] = nonterminalFrequencies[nont](la) / normalizer;
+                            }
                         else
                             for (auto la : mergeLists.back()) {
                                 laMergeFactors[la] = 1 / mergeLists.back().size();
@@ -622,6 +637,7 @@ namespace Trainer {
                         if (not inSCC.count(la)) {
                             mergeLists.emplace_back(1, la);
                             laMergeFactors[la] = 1.0;
+                            ++merged_splits;
                         }
 
                     }
@@ -631,6 +647,22 @@ namespace Trainer {
                         for (auto elem : mergeLists[i])
                             std::cerr << elem << ", ";
                         std::cerr << "]" << std::endl;
+                    }
+
+                    if (merged_splits != latentAnnotation.nonterminalSplits[nont]) {
+                        for (size_t la = 0; la < latentAnnotation.nonterminalSplits[nont]; ++la) {
+                            if (inSCC.count(la))
+                                std::cerr << nont << "-" << la << " is in SCC " << inSCC[la] << std::endl;
+                            else
+                                std::cerr << nont << "-" << la << " is not in any SCC" << std::endl;
+                            if (edges.count(la)) {
+                                std::cerr << nont << "-" << la << " has edges to ";
+                                for (auto e : edges[la])
+                                    std::cerr << e << " ";
+                                std::cerr << std::endl;
+                            } else std::cerr << nont << "-" << la << " has no edges" << std::endl;
+                        }
+                        abort();
                     }
 
                     nontSplitsAfterMerge.push_back(mergeLists.size());
@@ -712,7 +744,7 @@ namespace Trainer {
                         denominator += in * out;
                     }
 
-                    if ( denominator < 0 or std::isinf(denominator) or std::isnan(denominator))
+                    if ( denominator <= 0 or std::isinf(denominator) or std::isnan(denominator))
                         continue;
 
                     double prefix_sum = 0;

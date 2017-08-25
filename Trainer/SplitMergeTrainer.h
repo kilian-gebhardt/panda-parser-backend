@@ -197,17 +197,28 @@ namespace Trainer {
             auto &mergedTensorRaw = boost::get<RuleTensorRaw<double, rank>>(mergedTensor);
             const auto &sourceTensorRaw = boost::get<RuleTensorRaw<double, rank>>(sourceTensor);
 
-            for (TensorIteratorLowToHigh<rank> tensorIteraror{&mergedTensorRaw};
-                 tensorIteraror != tensorIteraror.end(); ++tensorIteraror) {
-                *tensorIteraror = 0;
+            for (TensorIteratorLowToHigh<rank> tensorIterator{&mergedTensorRaw};
+                 tensorIterator != tensorIterator.end(); ++tensorIterator) {
+                *tensorIterator = 0.0;
                 for (MergeIterator<rank, true> mergeIterator(
                         &sourceTensorRaw
                         , ruleId
-                        , &(tensorIteraror.get_index())
+                        , &(tensorIterator.get_index())
                         , &mergeInfo
                         , &(grammarInfo->rule_to_nonterminals)
                 ); mergeIterator != mergeIterator.end(); ++mergeIterator) {
-                    *tensorIteraror += *mergeIterator * mergeIterator.mergeFactor();
+                    /* (for debugging)
+                    if (ruleId == 1417) {
+                        std::cerr << ruleId << "goal [";
+                        for (auto idx : tensorIterator.get_index())
+                            std::cerr << idx << " ";
+                        std::cerr << "] src: [";
+                        for (auto idx : mergeIterator.get_source_index())
+                            std::cerr << idx << " ";
+                        std::cerr << "] value: " << *mergeIterator << "factor: " << mergeIterator.mergeFactor()
+                                  << std::endl;
+                    } */
+                    *tensorIterator += *mergeIterator * mergeIterator.mergeFactor();
                 }
             }
         }
@@ -262,6 +273,7 @@ namespace Trainer {
                     for (auto nont : splitter->grammarInfo->rule_to_nonterminals[rule_id])
                         std::cerr << nont << " ";
                     std::cerr << std::endl << ruleTensor << std::endl;
+
                     ++rule_id;
                 }
                 std::cerr << std::endl;
