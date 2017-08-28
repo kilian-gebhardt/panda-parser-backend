@@ -192,7 +192,7 @@ namespace Trainer {
             );
             Eigen::Tensor<double, 0> normalisationVector = normalisationCalc;
 
-            if (normalisationVector(0) == 0) { // either in(A)=0 or out(A)=0
+            if (std::abs(normalisationVector(0)) < std::exp(-50)) { // either in(A)=0 or out(A)=0
                 // weight of rule is defined to be equally distributed
                 size_t norm = grammarInfo.normalizationGroups[rule[0]].size();
                 switch (rule.size()) {
