@@ -154,6 +154,112 @@ namespace Trainer {
     }
 
 
+    struct NormalisationVectorCreator : boost::static_visitor<RuleTensor<double>> {
+    double norm;
+
+        NormalisationVectorCreator(
+            double norm
+        )
+        :
+            norm(norm)
+        {};
+
+
+        template<int rank>
+        RuleTensorRaw<double, rank>
+        operator()(const RuleTensorRaw<double, rank>& tensor) {
+            Eigen::array<Eigen::Index, rank> dim;
+            for(Eigen::Index i = 0; i < rank; ++i)
+                dim[i] = 1;
+            RuleTensorRaw<double, rank> result(dim);
+            result.setConstant(1.0/norm);
+            return result;
+        }
+    };
+
+
+
+    struct TensorMultiplyer : boost::static_visitor<RuleTensor<double>> {
+    const WeightVector& factor;
+    int multiplyDimension;
+
+        TensorMultiplyer(
+                const WeightVector& f
+                , int multiplyDimension = -1
+        )
+                :
+                factor(f)
+                , multiplyDimension(multiplyDimension)
+        {};
+
+        template<int rank>
+        typename std::enable_if<rank != 1, RuleTensorRaw<double, rank-1>>::type
+        operator()(const RuleTensorRaw<double, rank>& tensor) {
+            if (multiplyDimension < 0 || multiplyDimension > rank-1)
+                multiplyDimension = rank -1;
+            RuleTensorRaw<double, rank-1> result = tensor.contract(
+                    factor, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(multiplyDimension, 0)});
+            return result;
+        }
+
+        RuleTensorRaw<double, 1>
+        operator()(const RuleTensorRaw<double, 1>& /*tensor*/) const {
+            std::cerr << "TensorMultiplyer can only handle Tensors of at least dimension 2!";
+            abort();
+        }
+    };
+
+
+
+
+
+
+    template <typename Nonterminal>
+    struct InsideOutsideMultiplierAndNormalizer : boost::static_visitor<RuleTensor<double>> {
+        const Element<HyperEdge<Nonterminal>> edge;
+        const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& insideWeights;
+        const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& outsideWeights;
+        const double normalize;
+
+        InsideOutsideMultiplierAndNormalizer(
+            const Element<HyperEdge<Nonterminal>> e,
+            const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& inside,
+            const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& outside,
+            const double norm
+        )
+        :
+        edge(e), insideWeights(inside), outsideWeights(outside), normalize(norm)
+        {}
+
+        template<int rank>
+        RuleTensor<double>
+        operator()(const RuleTensorRaw<double, rank> &tensor){
+            RuleTensor<double> intermediate {tensor};
+            // Multiply all inside weights
+            for(int dim = 0; dim < rank - 1 ; ++dim) {
+                TensorMultiplyer tmult(insideWeights.at(edge->get_sources()[dim]), 1);
+                intermediate = boost::apply_visitor(tmult, intermediate);
+            }
+
+            // multiply outside weight
+            Eigen::Tensor<double, 0> ioSum = boost::get<RuleTensorRaw<double, 1>>(intermediate).contract(
+                outsideWeights.at(edge->get_target()), Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
+            );
+
+
+            Eigen::array<Eigen::Index, rank> dim;
+            for(Eigen::Index i = 0; i < rank; ++i)
+                dim[i] = 1;
+
+            RuleTensorRaw<double, rank> res(dim);
+            res.setConstant(ioSum(0) / normalize);
+
+            return res;
+        }
+    };
+
+
+
     template<typename Nonterminal>
     LatentAnnotation project_annotation(
             const LatentAnnotation &annotation
@@ -195,184 +301,15 @@ namespace Trainer {
             if (std::abs(normalisationVector(0)) < std::exp(-50)) { // either in(A)=0 or out(A)=0
                 // weight of rule is defined to be equally distributed
                 size_t norm = grammarInfo.normalizationGroups[rule[0]].size();
-                switch (rule.size()) {
-                    case 1: {
-                        RuleTensorRaw<double, 1> res(1);
-                        res.setValues({1.0 / (double) norm});
+                NormalisationVectorCreator nvc(norm);
 
-//                        std::ostringstream rTstr;
-//                        std::vector<double> dimens{res.dimension(0)};
-//                        std::vector<Trainer::WeightVector> insides{};
-//                        check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, 1);
-
-                        projRuleWeights.push_back(res);
-                        continue;
-                    }
-                    case 2: {
-                        RuleTensorRaw<double, 2> res(1, 1);
-                        res.setValues({{1.0 / (double) norm}});
-
-//                        std::ostringstream rTstr;
-//                        std::vector<double> dimens{res.dimension(0), res.dimension(1)};
-//                        std::vector<Trainer::WeightVector> insides{};
-//                        check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, 1);
-
-                        projRuleWeights.push_back(res);
-                        continue;
-                    }
-                    case 3: {
-                        RuleTensorRaw<double, 3> res(1, 1, 1);
-                        res.setValues({{{1.0 / (double) norm}}});
-
-//                        std::ostringstream rTstr;
-//                        std::vector<double> dimens{res.dimension(0), res.dimension(1), res.dimension(2)};
-//                        std::vector<Trainer::WeightVector> insides{};
-//                        check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, 1);
-
-                        projRuleWeights.push_back(res);
-                        continue;
-                    }
-                    case 4: {
-                        RuleTensorRaw<double, 4> res(1, 1, 1, 1);
-                        res.setValues({{{{1.0 / (double) norm}}}});
-
-//                        std::ostringstream rTstr;
-//                        std::vector<double> dimens{res.dimension(0), res.dimension(1), res.dimension(2), res.dimension(3)};
-//                        std::vector<Trainer::WeightVector> insides{};
-//                        check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, 1);
-
-                        projRuleWeights.push_back(res);
-                        continue;
-                    }
-                    default: {
-                        std::cerr << "Rules with " << rule.size() - 1 << " RHS nonterminals are not supported.";
-                        abort();
-                    }
-                }
+                projRuleWeights.push_back(boost::apply_visitor(nvc, ruleVariant));
+                continue;
 
             }
 
-            switch (rule.size()) {
-                case 1: {
-                    constexpr unsigned ruleRank{1};
-                    const RuleTensorRaw<double, ruleRank>& ruleTensor = boost::get<Trainer::RuleTensorRaw<double
-                                                                                                         , ruleRank>>(
-                            ruleVariant
-                    );
-                    auto sumWeight = ruleTensor.contract(
-                            outsideWeights.at(edge->get_target())
-                            , Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
-                    );
-                    RuleTensorRaw<double, 0> calc = sumWeight;
-                    RuleTensorRaw<double, 1> res(1);
-                    res.setValues({calc(0) / normalisationVector(0)});
-
-//                    std::ostringstream rTstr;
-//                    rTstr << ruleTensor;
-//                    std::vector<double> dimens{ruleTensor.dimension(0)};
-//                    std::vector<Trainer::WeightVector> insides{};
-//                    check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, calc(0));
-
-                    projRuleWeights.push_back(res);
-                    break;
-                }
-                case 2: {
-                    constexpr unsigned ruleRank{2};
-                    const RuleTensorRaw<double, ruleRank>& ruleTensor = boost::get<Trainer::RuleTensorRaw<double
-                                                                                                         , ruleRank>>(
-                            ruleVariant
-                    );
-                    auto sumWeight = ruleTensor.contract(
-                                    insideWeights.at(edge->get_sources()[0])
-                                    , Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(1, 0)}
-                            )
-                            .contract(
-                                    outsideWeights.at(edge->get_target()), Eigen::array<Eigen::IndexPair<long>, 1>{
-                                            Eigen::IndexPair<long>(0, 0)}
-                            );
-                    RuleTensorRaw<double, 0> calc = sumWeight;
-                    RuleTensorRaw<double, 2> res(1, 1);
-                    res.setValues({{calc(0) / normalisationVector(0)}});
-
-//                    std::ostringstream rTstr;
-//                    rTstr << ruleTensor;
-//                    std::vector<double> dimens{ruleTensor.dimension(0), ruleTensor.dimension(1)};
-//                    std::vector<Trainer::WeightVector> insides{insideWeights[nodeElements.at(rule.at(1))]};
-//                    check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, calc(0));
-
-                    projRuleWeights.push_back(res);
-                    break;
-                }
-                case 3: {
-                    constexpr unsigned ruleRank{3};
-                    const RuleTensorRaw<double, ruleRank>& ruleTensor = boost::get<Trainer::RuleTensorRaw<double
-                                                                                                         , ruleRank>>(
-                            ruleVariant
-                    );
-                    auto sumWeight = ruleTensor.contract(
-                                    insideWeights.at(edge->get_sources()[1])
-                                    , Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(2, 0)}
-                            )
-                            .contract(
-                                    insideWeights.at(edge->get_sources()[0]), Eigen::array<Eigen::IndexPair<long>, 1>{
-                                            Eigen::IndexPair<long>(1, 0)}
-                            )
-                            .contract(
-                                    outsideWeights.at(edge->get_target()), Eigen::array<Eigen::IndexPair<long>, 1>{
-                                            Eigen::IndexPair<long>(0, 0)}
-                            );
-                    RuleTensorRaw<double, 0> calc = sumWeight;
-                    RuleTensorRaw<double, 3> res(1, 1, 1);
-                    res.setValues({{{calc(0) / normalisationVector(0)}}});
-
-//                    std::ostringstream rTstr;
-//                    rTstr << ruleTensor;
-//                    std::vector<double> dimens{ruleTensor.dimension(0), ruleTensor.dimension(1), ruleTensor.dimension(2)};
-//                    std::vector<Trainer::WeightVector> insides{insideWeights[nodeElements.at(rule.at(1))], insideWeights[nodeElements.at(rule.at(2))]};
-//                    check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, calc(0));
-
-                    projRuleWeights.push_back(res);
-                    break;
-                }
-                case 4: {
-                    constexpr unsigned ruleRank{4};
-                    const RuleTensorRaw<double, ruleRank>& ruleTensor = boost::get<Trainer::RuleTensorRaw<double
-                                                                                                         , ruleRank>>(
-                            ruleVariant
-                    );
-                    auto sumWeight = ruleTensor.contract(
-                                    insideWeights.at(edge->get_sources()[2])
-                                    , Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(3, 0)}
-                            )
-                            .contract(
-                                    insideWeights.at(edge->get_sources()[1]), Eigen::array<Eigen::IndexPair<long>, 1>{
-                                            Eigen::IndexPair<long>(2, 0)}
-                            )
-                            .contract(
-                                    insideWeights.at(edge->get_sources()[0]), Eigen::array<Eigen::IndexPair<long>, 1>{
-                                            Eigen::IndexPair<long>(1, 0)}
-                            )
-                            .contract(
-                                    outsideWeights.at(edge->get_target()), Eigen::array<Eigen::IndexPair<long>, 1>{
-                                            Eigen::IndexPair<long>(0, 0)}
-                            );
-                    RuleTensorRaw<double, 0> calc = sumWeight;
-                    RuleTensorRaw<double, 4> res(1, 1, 1, 1);
-                    res.setValues({{{{calc(0) / normalisationVector(0)}}}});
-
-//                    std::ostringstream rTstr;
-//                    rTstr << ruleTensor;
-//                    std::vector<double> dimens{ruleTensor.dimension(0), ruleTensor.dimension(1), ruleTensor.dimension(2), ruleTensor.dimension(3)};
-//                    std::vector<Trainer::WeightVector> insides{insideWeights[nodeElements.at(rule.at(1))], insideWeights[nodeElements.at(rule.at(2))], insideWeights[nodeElements.at(rule.at(3))]};
-//                    check_rule_weight_for_consistency(res, insides, outsideWeights[nodeElements.at(rule.at(0))], normalisationVector, rTstr, dimens, calc(0));
-
-                    projRuleWeights.push_back(res);
-                    break;
-                }
-                default:
-                    std::cerr << "Rules with " << rule.size() - 1 << " RHS nonterminals are not supported";
-                    abort();
-            }
+            InsideOutsideMultiplierAndNormalizer<Nonterminal> ioMultiplier(edge, insideWeights, outsideWeights, normalisationVector(0));
+            projRuleWeights.push_back(boost::apply_visitor(ioMultiplier, ruleVariant));
         }
 
         // calculate root weights
@@ -400,37 +337,6 @@ namespace Trainer {
     };
 
 
-
-
-    struct TensorMultiplyer : boost::static_visitor<RuleTensor<double>> {
-        const WeightVector& factor;
-        int multiplyDimension;
-
-        TensorMultiplyer(
-            const WeightVector& f
-            , int multiplyDimension = -1
-        )
-        :
-            factor(f)
-            , multiplyDimension(multiplyDimension)
-        {};
-
-        template<int rank>
-        typename std::enable_if<rank != 1, RuleTensorRaw<double, rank-1>>::type
-        operator()(const RuleTensorRaw<double, rank>& tensor) {
-            if (multiplyDimension < 0 || multiplyDimension > rank-1)
-                multiplyDimension = rank -1;
-            RuleTensorRaw<double, rank-1> result = tensor.contract(
-                    factor, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(multiplyDimension, 0)});
-            return result;
-        }
-
-        RuleTensorRaw<double, 1>
-        operator()(const RuleTensorRaw<double, 1>& /*tensor*/) const {
-            std::cerr << "TensorMultiplyer can only handle Tensors of at least dimension 2!";
-            abort();
-        }
-    };
 
 
     template <typename Nonterminal>
@@ -471,9 +377,6 @@ namespace Trainer {
             return sum(0);
         }
     };
-
-
-
 
 
     template <typename Nonterminal, int numberInOne>
