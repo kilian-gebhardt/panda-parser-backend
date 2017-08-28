@@ -246,6 +246,11 @@ namespace Trainer {
                 outsideWeights.at(edge->get_target()), Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
             );
 
+            // if the sum is 0, then some inside or outside value was 0. Thus, use a default value of 1/normalization.
+            double sum = ioSum(0);
+            if(std::abs(sum) < std::exp(-50)){
+                sum = 1;
+            }
 
             Eigen::array<Eigen::Index, rank> dim;
             for(Eigen::Index i = 0; i < rank; ++i)
