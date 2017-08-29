@@ -154,14 +154,14 @@ namespace Trainer {
     }
 
 
-    struct NormalisationVectorCreator : boost::static_visitor<RuleTensor<double>> {
-    double norm;
+    struct OneDimensionalVectorCreator : boost::static_visitor<RuleTensor<double>> {
+    double value;
 
-        NormalisationVectorCreator(
-            double norm
+        OneDimensionalVectorCreator(
+            double value
         )
         :
-            norm(norm)
+            value(value)
         {};
 
 
@@ -172,8 +172,25 @@ namespace Trainer {
             for(Eigen::Index i = 0; i < rank; ++i)
                 dim[i] = 1;
             RuleTensorRaw<double, rank> result(dim);
-            result.setConstant(1.0/norm);
+            result.setConstant(value);
+
             return result;
+        }
+    };
+
+
+    struct RuleTensorDivider : boost::static_visitor<RuleTensor<double>> {
+        double value;
+
+        RuleTensorDivider(double value)
+            : value(value)
+            {};
+
+
+        template<int rank>
+        RuleTensorRaw<double, rank>
+        operator()(const RuleTensorRaw<double, rank>& tensor) {
+            return tensor * (1.0 / value);
         }
     };
 
@@ -246,20 +263,27 @@ namespace Trainer {
                 outsideWeights.at(edge->get_target()), Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
             );
 
-            // if the sum is 0, then some inside or outside value was 0. Thus, use a default value of 1/normalization.
-            double sum = ioSum(0);
-            if(std::abs(sum) < std::exp(-50)){
-                sum = 1;
-            }
-
             Eigen::array<Eigen::Index, rank> dim;
             for(Eigen::Index i = 0; i < rank; ++i)
                 dim[i] = 1;
 
             RuleTensorRaw<double, rank> res(dim);
-            res.setConstant(ioSum(0) / normalize);
+            res.setConstant(ioSum(0)/normalize);
+
 
             return res;
+        }
+    };
+
+
+
+    struct VectorSummer : boost::static_visitor<double> {
+
+        template<int rank>
+        double operator()(const Eigen::Tensor<double, rank>& vector) const {
+
+            Eigen::Tensor<double, 0> sum = vector.sum();
+            return sum(0);
         }
     };
 
@@ -303,10 +327,9 @@ namespace Trainer {
             );
             Eigen::Tensor<double, 0> normalisationVector = normalisationCalc;
 
-            if (std::abs(normalisationVector(0)) < std::exp(-50)) { // either in(A)=0 or out(A)=0
-                // weight of rule is defined to be equally distributed
+            if (std::abs(normalisationVector(0)) < std::exp(-50)) { // normalization is 0, apply a defalut value
                 size_t norm = grammarInfo.normalizationGroups[rule[0]].size();
-                NormalisationVectorCreator nvc(norm);
+                OneDimensionalVectorCreator nvc(1.0/(double)norm);
 
                 projRuleWeights.push_back(boost::apply_visitor(nvc, ruleVariant));
                 continue;
@@ -323,35 +346,59 @@ namespace Trainer {
         root.setValues({rootval(0)});
 
 
+        // make the LA proper
+        // (this is needed, since inside or outside values of some nonterminals might be 0)
+        VectorSummer vectorSummer;
+        for (auto ruleSet : grammarInfo.normalizationGroups){
+            double sum = 0;
+            for (auto ruleID : ruleSet){
+                sum += boost::apply_visitor(vectorSummer, projRuleWeights[ruleID]);
+            }
+
+            if(std::abs(sum) < std::exp(-50)){ // The sum is 0
+                for (auto ruleID : ruleSet){
+                    OneDimensionalVectorCreator odvc(1.0 / (double) ruleSet.size());
+                    projRuleWeights[ruleID] = boost::apply_visitor(odvc, projRuleWeights[ruleID]);
+                }
+            } else if(std::abs(sum - 1.0) < std::exp(-50)) { // does not sum to 1
+                RuleTensorDivider rtd(sum);
+                for (auto ruleID : ruleSet){
+                    projRuleWeights[ruleID] = boost::apply_visitor(rtd, projRuleWeights[ruleID]);
+                }
+            }
+        }
+
+
         return LatentAnnotation(
                 std::vector<size_t>(annotation.nonterminalSplits.size(), 1)
                 , std::move(root)
-                , std::make_unique<std::vector<RuleTensor<double>>>(projRuleWeights));
+                , std::make_unique<std::vector<RuleTensor<double>>>(std::move(projRuleWeights)));
     }
 
 
 
-    struct SizeVisitor : boost::static_visitor<unsigned long> {
+//    struct SizeVisitor : boost::static_visitor<unsigned long> {
+//
+//        SizeVisitor(){};
+//
+//        template<int rank>
+//        double operator()(const RuleTensorRaw<double, rank>& weight) const {
+//            return weight.size();
+//        }
+//    };
 
-        SizeVisitor(){};
-
-        template<int rank>
-        double operator()(const RuleTensorRaw<double, rank>& weight) const {
-            return weight.size();
-        }
-    };
 
 
 
 
     template <typename Nonterminal>
-    struct RuleSummer : boost::static_visitor<double> {
+    struct RuleSummerIO : boost::static_visitor<double> {
 
         const Element<HyperEdge<Nonterminal>> edge;
         const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector>& inside;
         const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector>& outside;
 
-        RuleSummer(
+        RuleSummerIO(
             const Element<HyperEdge<Nonterminal>> edge
             , const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector>& inside
             , const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector>& outside
@@ -702,7 +749,7 @@ namespace Trainer {
 
 
             // calculate the sum of the whole rule:
-            RuleSummer<Nonterminal> ruleSummer(edge, inside, outside);
+            RuleSummerIO<Nonterminal> ruleSummer(edge, inside, outside);
             double ruleSum = boost::apply_visitor(ruleSummer, weight2);
 
 
@@ -803,13 +850,13 @@ namespace Trainer {
                 rootWeights[i] = la2.rootWeights[i];
 
 
-        // Debug: compute the size of the LA in doubles:
-        unsigned long laSize {0};
-        for (const RuleTensor<double>& rw : ruleWeights) {
-            SizeVisitor sizeVisitor;
-            laSize += boost::apply_visitor(sizeVisitor, rw);
-        }
-        std::cerr << "Genetic[debug]: Size of crossed LA: " << laSize << std::endl;
+//        // Debug: compute the size of the LA in doubles:
+//        unsigned long laSize {0};
+//        for (const RuleTensor<double>& rw : ruleWeights) {
+//            SizeVisitor sizeVisitor;
+//            laSize += boost::apply_visitor(sizeVisitor, rw);
+//        }
+//        std::cerr << "Genetic[debug]: Size of crossed LA: " << laSize << std::endl;
 
         return LatentAnnotation(nonterminalSplits
                                 , std::move(rootWeights)
