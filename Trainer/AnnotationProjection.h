@@ -511,36 +511,6 @@ namespace Trainer {
                 broadcastDimensions[i] = weight2.dimension(i);
             }
 
-//            Eigen::Tensor<double, rank> weightDistribution(weight2.dimensions());
-//
-//            weightDistribution
-//                    = outside2.at(edge->get_target()).reshape(reshapeDimensions)
-//                              .broadcast(broadcastDimensions);
-//
-//            weightDistribution *= weight2;
-//
-//            for (unsigned int lhsNumber : sumDimensions1) {
-//                if(lhsNumber == 0)
-//                    continue; // outside-values have already been multiplied
-////                // The same reshape-Dimensions as for outside can be used
-////                reshapeDimensions[0] = 1;
-////                broadcastDimensions[0] = weight2.dimension(0);
-////                for (unsigned int i = 1; i < rank; ++i) {
-////                    if (i == lhsNumber) {
-////                        reshapeDimensions[i] = weight2.dimension(i);
-////                        broadcastDimensions[i] = 1;
-////                    } else {
-////                        reshapeDimensions[i] = 1;
-////                        broadcastDimensions[i] = weight2.dimension(i);
-////                    }
-////                }
-//
-//                weightDistribution
-//                        *= inside2.at(edge->get_sources()[lhsNumber-1]).reshape(reshapeDimensions)
-//                                  .broadcast(broadcastDimensions);
-//            }
-
-
             RuleTensor<double> intermediate{RuleTensorRaw<double, rank>(weight2.dimensions())};
             intermediate = weight2;
             int sumDimCount = 0;
@@ -554,27 +524,6 @@ namespace Trainer {
 
             Eigen::Tensor<double, rank - numberInOne> &weightDistribution
                     = boost::get<RuleTensorRaw<double, rank - numberInOne>>(intermediate);
-
-//            // Debug-Check:
-//            Eigen::Tensor<double, 0> wdsum = weightDistribution.sum();
-//            if (std::abs(wdsum(0) - ruleSum) > std::exp(-10))
-//                std::cerr << "Bad: Normalization vector does not sum to ruleSum: " << wdsum(0) << " / " << ruleSum << "\n";
-//            else
-//                std::cerr << "OK: Normalization vector.sum() == ruleSum: " << wdsum(0) << " / " << ruleSum << "\n";
-
-
-//            Eigen::Tensor<double, rank - numberInOne> weightSum
-//                    = weightDistribution.sum(sumDimensions1) / ruleSum;
-
-
-
-//            // Debug-Checks:
-//            weightSum = weightSum.unaryExpr([&](double x){if (x > 1 + std::exp(-5)) {std::cerr << "Bad x: " << x << "\n"; }; return x;});
-//            Eigen::Tensor<double, 0> wsumsum = weightSum.sum();
-//            if (std::abs(wsumsum(0) - 1.0) > std::exp(-10))
-//                std::cerr << "Bad: The normalization count does not sum to 1, but " << wsumsum(0) << "\n";
-//            else
-//                std::cerr << "OK: normalization.sum = " << wsumsum(0) << "\n";
 
 
             // extend the tensors and multiply pointwise
@@ -612,15 +561,6 @@ namespace Trainer {
             Eigen::Tensor<bool, rank - numberInOne> isWeightNonZero = weightDistribution.unaryExpr([](double x){return x > std::exp(-50);});
 
             weightDistribution = isWeightNonZero.select(weightDistribution, equalDistribution);
-
-
-
-            // The following line can be directly encoded in the return statement
-//            Eigen::Tensor<double, rank - numberInOne> weightSum
-//                    = weightDistribution / ruleSum;
-//            return probabilityMass.reshape(reshape1).broadcast(broadcast1)
-//                    *
-//                    weightSum.reshape(reshape2).broadcast(broadcast2);
 
             return probabilityMass.reshape(reshape1).broadcast(broadcast1)
                    *
