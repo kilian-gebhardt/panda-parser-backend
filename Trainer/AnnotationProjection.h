@@ -154,139 +154,6 @@ namespace Trainer {
     }
 
 
-    struct OneDimensionalVectorCreator : boost::static_visitor<RuleTensor<double>> {
-    double value;
-
-        OneDimensionalVectorCreator(
-            double value
-        )
-        :
-            value(value)
-        {};
-
-
-        template<int rank>
-        RuleTensorRaw<double, rank>
-        operator()(const RuleTensorRaw<double, rank>& tensor) {
-            Eigen::array<Eigen::Index, rank> dim;
-            for(Eigen::Index i = 0; i < rank; ++i)
-                dim[i] = 1;
-            RuleTensorRaw<double, rank> result(dim);
-            result.setConstant(value);
-
-            return result;
-        }
-    };
-
-
-    struct RuleTensorDivider : boost::static_visitor<RuleTensor<double>> {
-        double value;
-
-        RuleTensorDivider(double value)
-            : value(value)
-            {};
-
-
-        template<int rank>
-        RuleTensorRaw<double, rank>
-        operator()(const RuleTensorRaw<double, rank>& tensor) {
-            return tensor * (1.0 / value);
-        }
-    };
-
-
-
-    struct TensorMultiplyer : boost::static_visitor<RuleTensor<double>> {
-    const WeightVector& factor;
-    int multiplyDimension;
-
-        TensorMultiplyer(
-                const WeightVector& f
-                , int multiplyDimension = -1
-        )
-                :
-                factor(f)
-                , multiplyDimension(multiplyDimension)
-        {};
-
-        template<int rank>
-        typename std::enable_if<rank != 1, RuleTensorRaw<double, rank-1>>::type
-        operator()(const RuleTensorRaw<double, rank>& tensor) {
-            if (multiplyDimension < 0 || multiplyDimension > rank-1)
-                multiplyDimension = rank -1;
-            RuleTensorRaw<double, rank-1> result = tensor.contract(
-                    factor, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(multiplyDimension, 0)});
-            return result;
-        }
-
-        RuleTensorRaw<double, 1>
-        operator()(const RuleTensorRaw<double, 1>& /*tensor*/) const {
-            std::cerr << "TensorMultiplyer can only handle Tensors of at least dimension 2!";
-            abort();
-        }
-    };
-
-
-
-
-
-
-    template <typename Nonterminal>
-    struct InsideOutsideMultiplierAndNormalizer : boost::static_visitor<RuleTensor<double>> {
-        const Element<HyperEdge<Nonterminal>> edge;
-        const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& insideWeights;
-        const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& outsideWeights;
-        const double normalize;
-
-        InsideOutsideMultiplierAndNormalizer(
-            const Element<HyperEdge<Nonterminal>> e,
-            const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& inside,
-            const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& outside,
-            const double norm
-        )
-        :
-        edge(e), insideWeights(inside), outsideWeights(outside), normalize(norm)
-        {}
-
-        template<int rank>
-        RuleTensor<double>
-        operator()(const RuleTensorRaw<double, rank> &tensor){
-            RuleTensor<double> intermediate {tensor};
-            // Multiply all inside weights
-            for(int dim = 0; dim < rank - 1 ; ++dim) {
-                TensorMultiplyer tmult(insideWeights.at(edge->get_sources()[dim]), 1);
-                intermediate = boost::apply_visitor(tmult, intermediate);
-            }
-
-            // multiply outside weight
-            Eigen::Tensor<double, 0> ioSum = boost::get<RuleTensorRaw<double, 1>>(intermediate).contract(
-                outsideWeights.at(edge->get_target()), Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
-            );
-
-            Eigen::array<Eigen::Index, rank> dim;
-            for(Eigen::Index i = 0; i < rank; ++i)
-                dim[i] = 1;
-
-            RuleTensorRaw<double, rank> res(dim);
-            res.setConstant(ioSum(0)/normalize);
-
-
-            return res;
-        }
-    };
-
-
-
-    struct VectorSummer : boost::static_visitor<double> {
-
-        template<int rank>
-        double operator()(const Eigen::Tensor<double, rank>& vector) const {
-
-            Eigen::Tensor<double, 0> sum = vector.sum();
-            return sum(0);
-        }
-    };
-
 
 
     template<typename Nonterminal>
@@ -352,93 +219,18 @@ namespace Trainer {
         root.setValues({rootval(0)});
 
 
-        // make the LA proper
-        // (this is needed, since inside or outside values of some nonterminals might be 0)
-        size_t ruleSetId = 0;
-        VectorSummer vectorSummer;
-        for (auto ruleSet : grammarInfo.normalizationGroups){
-            double sum = 0;
-            for (auto ruleID : ruleSet){
-                sum += boost::apply_visitor(vectorSummer, projRuleWeights[ruleID]);
-            }
-
-            if(std::abs(sum) < std::exp(-30)){ // The sum is 0
-                std::cerr << "0-problem: Rule set " << ruleSetId << " has sum " << sum << std::endl;
-                for (auto ruleID : ruleSet){
-                    OneDimensionalVectorCreator odvc(1.0 / (double) ruleSet.size());
-                    projRuleWeights[ruleID] = boost::apply_visitor(odvc, projRuleWeights[ruleID]);
-                }
-            } else if(std::abs(sum - 1.0) > std::exp(-30)) { // does not sum to 1
-                std::cerr << "Not-1-problem: Rule set " << ruleSetId << " has sum " << sum << std::endl;
-                RuleTensorDivider rtd(sum);
-                for (auto ruleID : ruleSet){
-                    projRuleWeights[ruleID] = boost::apply_visitor(rtd, projRuleWeights[ruleID]);
-                }
-            }
-            ++ruleSetId;
-        }
-
-
-        return LatentAnnotation(
+        LatentAnnotation result(
                 std::vector<size_t>(annotation.nonterminalSplits.size(), 1)
                 , std::move(root)
                 , std::make_unique<std::vector<RuleTensor<double>>>(std::move(projRuleWeights)));
+
+
+        // make the LA proper
+        // (this is needed, since inside or outside values of some nonterminals might be 0)
+        result.make_proper(grammarInfo);
+
+        return result;
     }
-
-
-
-//    struct SizeVisitor : boost::static_visitor<unsigned long> {
-//
-//        SizeVisitor(){};
-//
-//        template<int rank>
-//        double operator()(const RuleTensorRaw<double, rank>& weight) const {
-//            return weight.size();
-//        }
-//    };
-
-
-
-
-
-    template <typename Nonterminal>
-    struct RuleSummerIO : boost::static_visitor<double> {
-
-        const Element<HyperEdge<Nonterminal>> edge;
-        const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector>& inside;
-        const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector>& outside;
-
-        RuleSummerIO(
-            const Element<HyperEdge<Nonterminal>> edge
-            , const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector>& inside
-            , const MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector>& outside
-        )
-        :
-            edge(edge)
-            , inside(inside)
-            , outside(outside)
-        {};
-
-        template<int rank>
-        double operator()(const RuleTensorRaw<double, rank>& weight) const {
-
-            RuleTensor<double> intermediate{RuleTensorRaw<double, rank>(weight.dimensions())};
-            intermediate = weight;
-            for(int dim = rank - 1; dim > 0 ; --dim) {
-                TensorMultiplyer tmult(inside.at(edge->get_sources()[dim - 1]));
-                intermediate = boost::apply_visitor(tmult, intermediate);
-            }
-
-            const RuleTensorRaw<double, 1>& withoutInside = boost::get<RuleTensorRaw<double, 1>>(intermediate);
-            RuleTensorRaw<double, 0> sum = withoutInside
-                        .contract(outside.at(edge->get_target())
-                                , Eigen::array<Eigen::IndexPair<long>, 1>{
-                                        Eigen::IndexPair<long>(0, 0)}
-                        );
-
-            return sum(0);
-        }
-    };
 
 
     template <typename Nonterminal, int numberInOne>
@@ -527,7 +319,7 @@ namespace Trainer {
             for(int dim : sumDimensions1) {
                 const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& inout {dim == 0 ? outside2 : inside2};
                 const Element<Node<Nonterminal>> nt {dim == 0 ? edge->get_target() : edge->get_sources()[dim - 1]};
-                TensorMultiplyer tmult(inout.at(nt), dim - sumDimCount);
+                RuleTensorContractor tmult(inout.at(nt), dim - sumDimCount);
                 intermediate = boost::apply_visitor(tmult, intermediate);
                 ++sumDimCount;
             }

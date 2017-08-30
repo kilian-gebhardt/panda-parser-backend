@@ -158,6 +158,35 @@ namespace Trainer {
             return proper;
         }
 
+
+        void make_proper(const GrammarInfo2& grammarInfo) {
+            VectorSummer vectorSummer;
+            for (auto ruleSet : grammarInfo.normalizationGroups){
+                double sum = 0;
+                for (auto ruleID : ruleSet){
+                    sum += boost::apply_visitor(vectorSummer, (*ruleWeights)[ruleID]);
+                }
+
+                if(std::abs(sum) < std::exp(-30)){ // The sum is 0
+                    for (auto ruleID : ruleSet){
+                        OneDimensionalVectorCreator odvc(1.0 / (double) ruleSet.size());
+                        (*ruleWeights)[ruleID] = boost::apply_visitor(odvc, (*ruleWeights)[ruleID]);
+                    }
+                } else if(std::abs(sum - 1.0) > std::exp(-30)) { // does not sum to 1
+                    RuleTensorMultiplier rtd(1.0/sum);
+                    for (auto ruleID : ruleSet){
+                        (*ruleWeights)[ruleID] = boost::apply_visitor(rtd, (*ruleWeights)[ruleID]);
+                    }
+                }
+            }
+        }
+
+
+        void make_proper(std::shared_ptr<GrammarInfo2>& grammarInfo) {
+            make_proper(*grammarInfo);
+        }
+
+
         void add_random_noise(std::shared_ptr<const GrammarInfo2> grammarInfo, double randPercent=1.0, size_t seed=0) {
             std::mt19937 generator(seed);
             std::uniform_real_distribution<double> distribution
