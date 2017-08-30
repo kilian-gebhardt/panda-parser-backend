@@ -312,10 +312,16 @@ namespace Trainer {
         );
 
 
-        // do projection
+
         auto projRuleWeights = std::vector<RuleTensor<double>>();
         projRuleWeights.reserve(hg->get_edges().lock()->size());
+        OneDimensionalVectorCreator odc(0.0);
+        for(size_t ruleId = 0; ruleId < (*annotation.ruleWeights).size(); ++ruleId)
+            projRuleWeights.push_back(boost::apply_visitor(odc, (*annotation.ruleWeights)[ruleId]));
 
+
+
+        // do projection
         for (const auto &edge : *hg->get_edges().lock()) {
             size_t ruleId = edge->get_label();
             const std::vector<size_t> &rule = grammarInfo.rule_to_nonterminals[ruleId];
@@ -331,13 +337,13 @@ namespace Trainer {
                 size_t norm = grammarInfo.normalizationGroups[rule[0]].size();
                 OneDimensionalVectorCreator nvc(1.0/(double)norm);
 
-                projRuleWeights.push_back(boost::apply_visitor(nvc, ruleVariant));
+                projRuleWeights[ruleId]  = boost::apply_visitor(nvc, ruleVariant);
                 continue;
 
             }
 
             InsideOutsideMultiplierAndNormalizer<Nonterminal> ioMultiplier(edge, insideWeights, outsideWeights, normalisationVector(0));
-            projRuleWeights.push_back(boost::apply_visitor(ioMultiplier, ruleVariant));
+            projRuleWeights[ruleId] = boost::apply_visitor(ioMultiplier, ruleVariant);
         }
 
         // calculate root weights
@@ -360,7 +366,7 @@ namespace Trainer {
                     OneDimensionalVectorCreator odvc(1.0 / (double) ruleSet.size());
                     projRuleWeights[ruleID] = boost::apply_visitor(odvc, projRuleWeights[ruleID]);
                 }
-            } else if(std::abs(sum - 1.0) < std::exp(-50)) { // does not sum to 1
+            } else if(std::abs(sum - 1.0) > std::exp(-50)) { // does not sum to 1
                 RuleTensorDivider rtd(sum);
                 for (auto ruleID : ruleSet){
                     projRuleWeights[ruleID] = boost::apply_visitor(rtd, projRuleWeights[ruleID]);
