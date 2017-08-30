@@ -354,6 +354,7 @@ namespace Trainer {
 
         // make the LA proper
         // (this is needed, since inside or outside values of some nonterminals might be 0)
+        size_t ruleSetId = 0;
         VectorSummer vectorSummer;
         for (auto ruleSet : grammarInfo.normalizationGroups){
             double sum = 0;
@@ -361,17 +362,20 @@ namespace Trainer {
                 sum += boost::apply_visitor(vectorSummer, projRuleWeights[ruleID]);
             }
 
-            if(std::abs(sum) < std::exp(-50)){ // The sum is 0
+            if(std::abs(sum) < std::exp(-30)){ // The sum is 0
+                std::cerr << "0-problem: Rule set " << ruleSetId << " has sum " << sum << std::endl;
                 for (auto ruleID : ruleSet){
                     OneDimensionalVectorCreator odvc(1.0 / (double) ruleSet.size());
                     projRuleWeights[ruleID] = boost::apply_visitor(odvc, projRuleWeights[ruleID]);
                 }
-            } else if(std::abs(sum - 1.0) > std::exp(-50)) { // does not sum to 1
+            } else if(std::abs(sum - 1.0) > std::exp(-30)) { // does not sum to 1
+                std::cerr << "Not-1-problem: Rule set " << ruleSetId << " has sum " << sum << std::endl;
                 RuleTensorDivider rtd(sum);
                 for (auto ruleID : ruleSet){
                     projRuleWeights[ruleID] = boost::apply_visitor(rtd, projRuleWeights[ruleID]);
                 }
             }
+            ++ruleSetId;
         }
 
 
