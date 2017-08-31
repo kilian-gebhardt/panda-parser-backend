@@ -150,7 +150,7 @@ namespace Trainer {
                 for (auto idx = 0; idx < normalizationDivisor.dimension(0); ++idx) {
                     if (std::abs(normalizationDivisor(idx) - 1.0) > std::exp(-5)) {
                         std::cerr << "nont " << nont << " has non-proper LA at idx " << idx << ": "
-                                  << normalizationDivisor << std::endl;
+                                  << normalizationDivisor[idx] << std::endl;
                         proper = false;
                     }
                 }
