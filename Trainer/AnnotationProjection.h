@@ -295,38 +295,48 @@ namespace Trainer {
                     sumDimensions1[dimIndex1++] = dim + 1;
                 else
                     sumDimensions2[dimIndex2++] = dim + 1;
-
-
             }
 
             // calculate the probability to be distributed
             Eigen::Tensor<double, numberInOne> probabilityMass = weight1.sum(sumDimensions2);
 
 
-            // calculate the factor
-            Eigen::array<int, rank> reshapeDimensions;
-            Eigen::array<int, rank> broadcastDimensions;
-            reshapeDimensions[0] = weight2.dimension(0);
-            broadcastDimensions[0] = 1;
-            for (unsigned int i = 1; i < rank; ++i) {
-                reshapeDimensions[i] = 1;
-                broadcastDimensions[i] = weight2.dimension(i);
+
+            // Calculate the weightDistribution tensor
+            Eigen::Tensor<double, rank - numberInOne> weightDistribution;
+
+            if (std::abs(ruleSum) > std::exp(-30)) { // the value is not 0
+
+                RuleTensor<double> intermediate{RuleTensorRaw<double, rank>(weight2.dimensions())};
+                intermediate = weight2;
+                int sumDimCount = 0;
+                for (int dim : sumDimensions1) {
+                    const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &inout{
+                            dim == 0 ? outside2 : inside2};
+                    const Element<Node<Nonterminal>> nt{dim == 0 ? edge->get_target() : edge->get_sources()[dim - 1]};
+                    RuleTensorContractor tmult(inout.at(nt), dim - sumDimCount);
+                    intermediate = boost::apply_visitor(tmult, intermediate);
+                    ++sumDimCount;
+                }
+
+                weightDistribution = boost::get<RuleTensorRaw<double, rank - numberInOne>>(intermediate);
+            } else {
+                // in case inside- or outside-values are 0, the ruleSum is equally distributed to weightdistribution
+
+                Eigen::array<Eigen::Index, rank - numberInOne> dimensions;
+                for (size_t i = 0; i < sumDimensions2.size(); ++i)
+                    dimensions[i] = weight2.dimension(sumDimensions2[i]);
+                Eigen::Tensor<double, rank - numberInOne> equalDistribution(dimensions);
+                equalDistribution.setConstant(ruleSum);
+                // determine how many entries there are
+                size_t weightCount = 1;
+                for (int i : sumDimensions1)
+                    weightCount *= weight2.dimension(i);
+
+                equalDistribution = equalDistribution / ((double) weightCount);
+
+                weightDistribution = equalDistribution;
             }
-
-            RuleTensor<double> intermediate{RuleTensorRaw<double, rank>(weight2.dimensions())};
-            intermediate = weight2;
-            int sumDimCount = 0;
-            for(int dim : sumDimensions1) {
-                const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& inout {dim == 0 ? outside2 : inside2};
-                const Element<Node<Nonterminal>> nt {dim == 0 ? edge->get_target() : edge->get_sources()[dim - 1]};
-                RuleTensorContractor tmult(inout.at(nt), dim - sumDimCount);
-                intermediate = boost::apply_visitor(tmult, intermediate);
-                ++sumDimCount;
-            }
-
-            Eigen::Tensor<double, rank - numberInOne> &weightDistribution
-                    = boost::get<RuleTensorRaw<double, rank - numberInOne>>(intermediate);
-
 
             // extend the tensors and multiply pointwise
             Eigen::array<int, rank> reshape1;
@@ -349,20 +359,6 @@ namespace Trainer {
                 broadcast2[i] = weight1.dimension(i);
             }
 
-
-            // in case inside- or outside-values are 0, the ruleSum is equally distributed to weightdistribution
-            Eigen::Tensor<double, rank - numberInOne> equalDistribution(weightDistribution.dimensions());
-            equalDistribution.setConstant(ruleSum);
-            // determine how many entries there are
-            size_t weightCount = 1;
-            for(int i : sumDimensions1)
-                weightCount *= weight2.dimension(i);
-
-            equalDistribution = equalDistribution / ((double)weightCount);
-
-            Eigen::Tensor<bool, rank - numberInOne> isWeightNonZero = weightDistribution.unaryExpr([](double x){return x > std::exp(-50);});
-
-            weightDistribution = isWeightNonZero.select(weightDistribution, equalDistribution);
 
             return probabilityMass.reshape(reshape1).broadcast(broadcast1)
                    *
@@ -454,27 +450,9 @@ namespace Trainer {
         // prepare the new ruleWeight vector by initializing with the correct ranks
         std::vector<RuleTensor<double>> ruleWeights;
         ruleWeights.reserve(la1.ruleWeights->size());
+        OneDimensionalVectorCreator odvc(0);
         for(size_t ruleId = 0; ruleId < la1.ruleWeights->size(); ++ ruleId){
-            switch (info.rule_to_nonterminals[ruleId].size()) {
-                case 1:
-                    ruleWeights.push_back(RuleTensorRaw<double, 1>(1));
-                    break;
-                case 2:
-                    ruleWeights.push_back(RuleTensorRaw<double, 2>(1,1));
-                    break;
-                case 3:
-                    ruleWeights.push_back(RuleTensorRaw<double, 3>(1,1,1));
-                    break;
-                case 4:
-                    ruleWeights.push_back(RuleTensorRaw<double, 4>(1,1,1,1));
-                    break;
-                case 5:
-                    ruleWeights.push_back(RuleTensorRaw<double, 5>(1,1,1,1,1));
-                    break;
-                default:
-                    std::cerr << "Cannot create empty rule tensor for rules with LHS > 4! (Requested: " << info.rule_to_nonterminals[ruleId].size() << ")\n";
-                    abort();
-            }
+            ruleWeights.push_back(boost::apply_visitor(odvc, (*la1.ruleWeights)[ruleId]));
         }
 
 
@@ -496,8 +474,6 @@ namespace Trainer {
 
 
             unsigned int countFirsts{1}; // LHS always belongs to first
-//            if(keepFromOne[edge->get_target()->get_label()])
-//                ++countFirsts;
             for (Element<Node<Nonterminal>> choice : edge->get_sources())
                 if (keepFromOne[choice->get_label()] ^ (!lhsIsFirst)) // XOR ensures first being the one with LHS
                     ++countFirsts;
