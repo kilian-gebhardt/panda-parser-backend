@@ -642,12 +642,14 @@ namespace Trainer {
 
                     }
 
+                    /*// for debugging
                     for (size_t i = 0; i < mergeLists.size(); ++i) {
                         std::cerr << nont << ": " << i << " [ ";
                         for (auto elem : mergeLists[i])
                             std::cerr << elem << ", ";
                         std::cerr << "]" << std::endl;
                     }
+                     */
 
                     if (merged_splits != latentAnnotation.nonterminalSplits[nont]) {
                         for (size_t la = 0; la < latentAnnotation.nonterminalSplits[nont]; ++la) {
@@ -681,13 +683,14 @@ namespace Trainer {
                     }
                     mergeSources.push_back(mergeLists);
 
+                    /*// for debugging
                     for (size_t i = 0; i < mergeLists.size(); ++i) {
                         std::cerr << nont << ": " << i << " [ ";
                         for (auto elem : mergeLists[i])
                             std::cerr << elem << ", ";
                         std::cerr << "]" << std::endl;
                     }
-
+                    */
                 }
             }
 
