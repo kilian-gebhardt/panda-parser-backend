@@ -305,7 +305,7 @@ namespace Trainer {
             // Calculate the weightDistribution tensor
             Eigen::Tensor<double, rank - numberInOne> weightDistribution;
 
-            if (std::abs(ruleSum) > std::exp(-30)) { // the value is not 0
+            if (std::abs(ruleSum) > std::exp(-30)) { // the rule has probability > 0
 
                 RuleTensor<double> intermediate{RuleTensorRaw<double, rank>(weight2.dimensions())};
                 intermediate = weight2;
@@ -319,21 +319,20 @@ namespace Trainer {
                     ++sumDimCount;
                 }
 
-                weightDistribution = boost::get<RuleTensorRaw<double, rank - numberInOne>>(intermediate);
-            } else {
-                // in case inside- or outside-values are 0, the ruleSum is equally distributed to weightdistribution
+                weightDistribution = boost::get<RuleTensorRaw<double, rank - numberInOne>>(intermediate) / ruleSum;
+            } else { // rule has probability 0
+                // weightdistribution is an equal distribution over all annotations
 
-                Eigen::array<Eigen::Index, rank - numberInOne> dimensions;
-                for (size_t i = 0; i < sumDimensions2.size(); ++i)
-                    dimensions[i] = weight2.dimension(sumDimensions2[i]);
-                Eigen::Tensor<double, rank - numberInOne> equalDistribution(dimensions);
-                equalDistribution.setConstant(ruleSum);
                 // determine how many entries there are
                 size_t weightCount = 1;
                 for (int i : sumDimensions1)
                     weightCount *= weight2.dimension(i);
 
-                equalDistribution = equalDistribution / ((double) weightCount);
+                Eigen::array<Eigen::Index, rank - numberInOne> dimensions;
+                for (size_t i = 0; i < sumDimensions2.size(); ++i)
+                    dimensions[i] = weight2.dimension(sumDimensions2[i]);
+                Eigen::Tensor<double, rank - numberInOne> equalDistribution(dimensions);
+                equalDistribution.setConstant(1.0 / (double) weightcount);
 
                 weightDistribution = equalDistribution;
             }
@@ -362,7 +361,7 @@ namespace Trainer {
 
             return probabilityMass.reshape(reshape1).broadcast(broadcast1)
                    *
-                   (weightDistribution / ruleSum).reshape(reshape2).broadcast(broadcast2);
+                   (weightDistribution).reshape(reshape2).broadcast(broadcast2);
 
         }
 
@@ -566,15 +565,7 @@ namespace Trainer {
         else
             for(int i = 0; i < noRootWeights; ++i)
                 rootWeights[i] = la2.rootWeights[i];
-
-
-//        // Debug: compute the size of the LA in doubles:
-//        unsigned long laSize {0};
-//        for (const RuleTensor<double>& rw : ruleWeights) {
-//            SizeVisitor sizeVisitor;
-//            laSize += boost::apply_visitor(sizeVisitor, rw);
-//        }
-//        std::cerr << "Genetic[debug]: Size of crossed LA: " << laSize << std::endl;
+    
 
         return LatentAnnotation(nonterminalSplits
                                 , std::move(rootWeights)
