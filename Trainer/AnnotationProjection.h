@@ -332,7 +332,7 @@ namespace Trainer {
                 for (size_t i = 0; i < sumDimensions2.size(); ++i)
                     dimensions[i] = weight2.dimension(sumDimensions2[i]);
                 Eigen::Tensor<double, rank - numberInOne> equalDistribution(dimensions);
-                equalDistribution.setConstant(1.0 / (double) weightcount);
+                equalDistribution.setConstant(1.0 / (double) weightCount);
 
                 weightDistribution = equalDistribution;
             }
@@ -565,7 +565,7 @@ namespace Trainer {
         else
             for(int i = 0; i < noRootWeights; ++i)
                 rootWeights[i] = la2.rootWeights[i];
-    
+
 
         return LatentAnnotation(nonterminalSplits
                                 , std::move(rootWeights)
