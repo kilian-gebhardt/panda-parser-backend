@@ -337,7 +337,7 @@ namespace Trainer {
                 weightDistribution = equalDistribution;
             }
 
-            // extend the tensors and multiply pointwise
+            // extend the tensors
             Eigen::array<int, rank> reshape1;
             Eigen::array<int, rank> reshape2;
             Eigen::array<int, rank> broadcast1;
@@ -569,7 +569,7 @@ namespace Trainer {
 
         return LatentAnnotation(nonterminalSplits
                                 , std::move(rootWeights)
-                                , std::make_unique<std::vector <RuleTensor<double>>>(ruleWeights)
+                                , std::make_unique<std::vector <RuleTensor<double>>>(std::move(ruleWeights))
         );
 
     }
