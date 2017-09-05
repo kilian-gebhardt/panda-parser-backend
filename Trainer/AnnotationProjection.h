@@ -325,7 +325,7 @@ namespace Trainer {
 
                 // determine how many entries there are
                 size_t weightCount = 1;
-                for (int i : sumDimensions1)
+                for (int i : sumDimensions2)
                     weightCount *= weight2.dimension(i);
 
                 Eigen::array<Eigen::Index, rank - numberInOne> dimensions;
