@@ -24,6 +24,16 @@ namespace Trainer {
                 , start(start) {
         }
 
+
+        bool check_for_consistency(){
+            // check that the number of rules matches
+            size_t numberOfRules = 0;
+            for(auto& group : normalizationGroups){
+                numberOfRules += group.size();
+            }
+            return numberOfRules == rule_to_nonterminals.size();
+        }
+
     private:
         static std::vector<std::vector<size_t>> compute_normalization_groups(
                 const std::vector<std::vector<size_t>> & rule_to_nonterminals) {
@@ -34,7 +44,8 @@ namespace Trainer {
                         normGroups.resize(rule_to_nonterminals[rule_idx][0] + 1);
                     }
                     normGroups[rule_to_nonterminals[rule_idx][0]].push_back(rule_idx);
-                }
+                } else
+                    std::cerr << "[Error] Rule " << rule_idx << " has 0 Nonterminals";
             }
             return normGroups;
         }

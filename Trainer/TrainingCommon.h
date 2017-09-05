@@ -151,8 +151,8 @@ namespace Trainer {
 
     template<long rank, typename VECTOR>
     inline void compute_normalization_divisor_ranked(VECTOR &goal, const RuleTensor<double> &tensor) {
-        Eigen::array<long, rank - 1> sum_dimensions;
-        for (size_t index = 0; index < rank - 1; ++index) {
+        Eigen::array<Eigen::Index, rank - 1> sum_dimensions;
+        for (Eigen::Index index = 0; index < rank - 1; ++index) {
             sum_dimensions[index] = index + 1;
         }
         goal += boost::get<RuleTensorRaw<double, rank>>(tensor).sum(sum_dimensions);
