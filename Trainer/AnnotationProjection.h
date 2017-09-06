@@ -290,6 +290,9 @@ namespace Trainer {
                 abort();
             }
 
+            // The following loop guarantees the initialization of sumDimension1/2, because
+            // a) edge->get_sources().size() == rank - 1
+            // b) rank > numberInOne > 0  ==> rank >= 2
             for (int dim = 0; dim < edge->get_sources().size(); ++dim) {
                 if (keepFromOne[edge->get_sources()[dim]->get_label()] ^ (!lhsIsFirst))
                     sumDimensions1[dimIndex1++] = dim + 1;
