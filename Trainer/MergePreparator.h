@@ -795,12 +795,12 @@ namespace Trainer {
             }
 
 
-            for (auto nont = 0; nont < nontDimensions.size(); ++nont) {
-                for (size_t j = 0; j < nontDimensions[nont]; ++j)
-                    for (size_t i = 0; i < j; ++i)
-                        std::cerr << "(" << nont << ": " << j << " vs. " << i << ": " << mergeDelta[nont][j][i] << ") ";
-            }
-            std::cerr << std::endl;
+//            for (auto nont = 0; nont < nontDimensions.size(); ++nont) {
+//                for (size_t j = 0; j < nontDimensions[nont]; ++j)
+//                    for (size_t i = 0; i < j; ++i)
+//                        std::cerr << "(" << nont << ": " << j << " vs. " << i << ": " << mergeDelta[nont][j][i] << ") ";
+//            }
+//            std::cerr << std::endl;
         }
 
         // not used in this class

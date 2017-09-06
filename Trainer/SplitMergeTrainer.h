@@ -53,7 +53,7 @@ namespace Trainer {
                     , [](auto x) { return x * 2; }
             );
 
-            std::cerr << "la root weights: " << std::endl << la.rootWeights << std::endl;
+//            std::cerr << "la root weights: " << std::endl << la.rootWeights << std::endl;
             // new root weights
             Eigen::Tensor<double, 1> rootWeights(la.rootWeights.dimension(0) * 2);
             rootWeights = la.rootWeights.broadcast(Eigen::array<long, 1>{2});
@@ -61,7 +61,7 @@ namespace Trainer {
             // normalization
             Eigen::Tensor<double, 0> total_root_weight = rootWeights.sum();
             rootWeights = rootWeights.unaryExpr([&total_root_weight](double x) { return x / total_root_weight(0); });
-            std::cerr << "split root weights: " << std::endl << rootWeights << std::endl;
+//            std::cerr << "split root weights: " << std::endl << rootWeights << std::endl;
 
             // new unnormalized rule weights
             auto ruleWeights = std::make_unique<std::vector<RuleTensor<double>>>();
