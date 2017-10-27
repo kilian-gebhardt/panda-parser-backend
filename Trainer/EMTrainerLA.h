@@ -246,7 +246,7 @@ namespace Trainer {
                 }
 
 
-//                std::cerr << " validation corpus " << validator->quantity() << " " << validationScore;
+                std::cerr << " validation corpus " << validator->quantity() << " " << validationScore;
 
                 if (drops >= maxDrops) {
                     std::cerr << std::endl;
@@ -257,16 +257,16 @@ namespace Trainer {
 
                 // output likelihood information based on old probability assignment
                 Eigen::Tensor<double, 0> corpusProbSum = counts.rootCounts.sum();
-//                std::cerr << " training corpus prob. sum " << corpusProbSum;
-//                std::cerr << " training corpus likelihood " << counts.logLikelihood;
+                std::cerr << " training corpus prob. sum " << corpusProbSum;
+                std::cerr << " training corpus likelihood " << counts.logLikelihood;
 
                 maximizer->maximize(latentAnnotation, counts);
 
-//                std::cerr << " root weights: " << latentAnnotation.rootWeights << std::endl;
+                std::cerr << " root weights: " << latentAnnotation.rootWeights << std::endl;
             }
             if (epoch == epochs) {
                 validationScore = validator->validation_score(latentAnnotation);
-//                std::cerr << " validation corpus " << validator->quantity() << " " << validationScore << std::endl;
+                std::cerr << " validation corpus " << validator->quantity() << " " << validationScore << std::endl;
 
                 if (validationScore >= bestValidationScore) {
                     bestValidationScore = validationScore;
