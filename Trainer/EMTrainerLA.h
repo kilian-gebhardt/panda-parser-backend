@@ -15,6 +15,8 @@
 #include "LatentAnnotation.h"
 #include "Validation.h"
 #include <memory>
+#include <algorithm>
+#include <iostream>
 #ifdef _OPENMP
 # include <omp.h>
 #endif
@@ -409,7 +411,7 @@ namespace Trainer {
                      and not std::isinf(traceRootProbability(0))
                      and traceRootProbability(0) > 0
                     ) {
-                    counts.rootCounts += traceRootProbabilities;
+                    counts.rootCounts += traceRootProbabilities / traceRootProbability(0);
                     counts.logLikelihood += log(traceRootProbability(0));
 
                     Eigen::Tensor<bool, 0> badCounts = counts.rootCounts.isinf().any() || counts.rootCounts.isnan().any();
