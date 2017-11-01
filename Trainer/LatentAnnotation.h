@@ -230,7 +230,7 @@ namespace Trainer {
                     (*ruleWeights)[rule] = (*other.ruleWeights)[rule];
                 }
             } else {
-                std::cerr << "Latent annotation assignment is only support, if the nonterminal splits match.";
+                std::cerr << "Latent annotation assignment is only supported, if the nonterminal splits match.";
                 abort();
             }
             return *this;
