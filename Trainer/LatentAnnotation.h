@@ -167,7 +167,7 @@ namespace Trainer {
                     sum += boost::apply_visitor(vectorSummer, (*ruleWeights)[ruleID]);
                 }
 
-                if(std::abs(sum) < std::exp(-30)){ // The sum is 0
+                if(std::abs(sum) < std::exp(-30) or std::isnan(sum)){ // The sum is 0 or nan
                     for (auto ruleID : ruleSet){
                         OneDimensionalVectorCreator odvc(1.0 / (double) ruleSet.size());
                         (*ruleWeights)[ruleID] = boost::apply_visitor(odvc, (*ruleWeights)[ruleID]);

@@ -56,7 +56,7 @@ namespace Trainer {
                 break;
             }
             default: {
-                std::cerr << "Rules with such a fanout are not supported to be checked!";
+                std::cerr << "Rules with such a rank are not supported to be checked!";
             }
         }
         if (sum > 1) {
