@@ -158,8 +158,10 @@ namespace Trainer {
             return proper;
         }
 
-
         void make_proper(const GrammarInfo2& grammarInfo) {
+            /*
+             * TODO: only works for trivial latent annotations
+             */
             VectorSummer vectorSummer;
             for (auto ruleSet : grammarInfo.normalizationGroups){
                 double sum = 0;
