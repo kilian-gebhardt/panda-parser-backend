@@ -535,6 +535,7 @@ namespace Trainer {
             // computing Δ per nont and pair of LAs j and i (where j > i)
             std::vector<std::vector<std::vector<double>>> merge_delta;
             computePairwiseMergeDeltas(nonterminalFrequencies, latentAnnotation.nonterminalSplits, merge_delta);
+            mergeWeightStatistics(merge_delta);
 
             // ingredients for the MergeInfo
             std::vector<std::vector<std::vector<size_t>>> mergeSources;
@@ -805,6 +806,49 @@ namespace Trainer {
 
         // not used in this class
         double computeMergeThreshold(const std::vector<std::vector<double>> &) { return 0.0; };
+
+        // compute merge Δ statistics
+        void mergeWeightStatistics(const std::vector<std::vector<std::vector<double>>>& mergeDeltas) {
+            double min {std::numeric_limits<double>::max()};
+            double max {std::numeric_limits<double>::min()};
+            double sum {0.0};
+            size_t count {0};
+            for (auto nont_vec : mergeDeltas) {
+                for (auto la_1 : nont_vec){
+                    for (auto la_1_2_delta : la_1) {
+                        if (la_1_2_delta > max) max = la_1_2_delta;
+                        if (la_1_2_delta < min) min = la_1_2_delta;
+                        sum += la_1_2_delta;
+                        count++;
+                    }
+                }
+            }
+            const double mean {sum / count};
+            double above_mean_sum {0.0};
+            size_t above_mean_count {0};
+            double below_mean_sum {0.0};
+            size_t below_mean_count {0};
+            for (auto nont_vec : mergeDeltas) {
+                for (auto la_1 : nont_vec){
+                    for (auto la_1_2_delta : la_1) {
+                        if (la_1_2_delta > mean) {
+                            above_mean_sum += la_1_2_delta;
+                            above_mean_count++;
+                        } else if (la_1_2_delta < mean) {
+                            below_mean_sum += la_1_2_delta;
+                            below_mean_count++;
+                        }
+                    }
+                }
+            }
+            const double third_quartile {above_mean_sum / above_mean_count};
+            const double first_quartile {below_mean_sum / below_mean_count};
+
+            std::cerr << "SCC merge Δ statistics {";
+            std::cerr << "min: " << min << " first quartile: " << first_quartile << " mean: " << mean
+                                 << " third quartile: " << third_quartile << " max: " << max << " }" << std::endl;
+        }
+
     };
 
 
