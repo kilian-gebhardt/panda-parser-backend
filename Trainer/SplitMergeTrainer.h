@@ -282,23 +282,8 @@ namespace Trainer {
             LatentAnnotation laSplit{splitter->split(la)};
             emTrainer->setTrainingMode(Splitting);
             emTrainer->train(laSplit);
-            auto mergeInfo = mergePreparator->merge_prepare(laSplit);
 
-            if (not mergeInfo.is_proper())
-                if (debug)
-                    abort();
-
-            if (debug) {
-                std::cerr << mergeInfo;
-                std::cerr << "rules weights before merge" << std::endl;
-                size_t rule_id{0};
-                for (const auto &ruleTensor : *laSplit.ruleWeights) {
-                    std::cerr << "rule " << rule_id << std::endl << ruleTensor << std::endl;
-                    ++rule_id;
-                }
-            }
-
-            LatentAnnotation laMerged{merger->merge(laSplit, mergeInfo)};
+            LatentAnnotation laMerged{merge(laSplit)};
 
             if (debug) {
                 size_t rule_id{0};
@@ -330,6 +315,26 @@ namespace Trainer {
             }
 
             return laMerged;
+        }
+
+        LatentAnnotation merge(const LatentAnnotation & la) {
+            auto mergeInfo = mergePreparator->merge_prepare(la);
+
+            if (not mergeInfo.is_proper())
+                if (debug)
+                    abort();
+
+            if (debug) {
+                std::cerr << mergeInfo;
+                std::cerr << "rules weights before merge" << std::endl;
+                size_t rule_id{0};
+                for (const auto &ruleTensor : *la.ruleWeights) {
+                    std::cerr << "rule " << rule_id << std::endl << ruleTensor << std::endl;
+                    ++rule_id;
+                }
+            }
+
+            return merger->merge(la, mergeInfo);
         }
 
     };
