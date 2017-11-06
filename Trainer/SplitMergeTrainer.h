@@ -233,6 +233,7 @@ namespace Trainer {
         std::shared_ptr<MergePreparator> mergePreparator;
         std::shared_ptr<Merger> merger;
         std::shared_ptr<Smoother> smoother;
+        std::shared_ptr<MergeInfo> mergeInfo;
         const bool debug;
     public:
         SplitMergeTrainer(
@@ -318,9 +319,9 @@ namespace Trainer {
         }
 
         LatentAnnotation merge(const LatentAnnotation & la) {
-            auto mergeInfo = mergePreparator->merge_prepare(la);
+            mergeInfo = std::make_shared<MergeInfo>(mergePreparator->merge_prepare(la));
 
-            if (not mergeInfo.is_proper())
+            if (not mergeInfo->is_proper())
                 if (debug)
                     abort();
 
@@ -334,7 +335,15 @@ namespace Trainer {
                 }
             }
 
-            return merger->merge(la, mergeInfo);
+            return merger->merge(la, *mergeInfo);
+        }
+
+        std::vector<std::vector<std::vector<size_t>>> get_current_merge_sources() const {
+            if (mergeInfo) {
+                return mergeInfo->mergeSources;
+            } else {
+                return std::vector<std::vector<std::vector<size_t>>>();
+            }
         }
 
     };

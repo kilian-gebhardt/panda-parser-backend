@@ -26,7 +26,7 @@ namespace Trainer {
         MergeInfo build_merge_info(
                 const std::vector<std::vector<double>> &&merge_factors
                 , const double merge_threshold
-                , const std::vector<std::vector<double>> &merge_delta
+                , const std::vector<std::vector<double>> &&merge_delta
                 , const std::vector<size_t> &nontSplits
         ) {
             std::vector<std::vector<std::vector<size_t>>> mergeSelection;
@@ -98,9 +98,9 @@ namespace Trainer {
             double merge_threshold = std::log(0.5);
 
             return build_merge_info(
-                    std::move(mergeFactors)
+                      std::move(mergeFactors)
                     , merge_threshold
-                    , mergeDelta
+                    , std::move(mergeDelta)
                     , latentAnnotation.nonterminalSplits
             );
         }
@@ -164,7 +164,7 @@ namespace Trainer {
             return build_merge_info(
                     std::move(mergeFactors)
                     , merge_threshold
-                    , mergeDelta
+                    , std::move(mergeDelta)
                     , latentAnnotation.nonterminalSplits
             );
         }
