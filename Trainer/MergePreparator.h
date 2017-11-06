@@ -9,6 +9,7 @@
 #include "GrammarInfo.h"
 #include "LatentAnnotation.h"
 #include "TrainingCommon.h"
+#include <numeric>
 #include <omp.h>
 
 namespace Trainer {

@@ -7,6 +7,7 @@
 
 #include "TrainingCommon.h"
 #include "LatentAnnotation.h"
+#include "SplitMergeTrainer.h"
 
 namespace Trainer {
 
@@ -232,6 +233,97 @@ namespace Trainer {
         return result;
     }
 
+
+    /**
+     * Merges according to externally provided Merge lists.
+     * Merge weights are computed w.r.t. exected frequency of latently annotated nonterminals in the grammar.
+     */
+    template<typename Nonterminal>
+    class MergeListMergePreparator {
+    private:
+        const GrammarInfo2& grammarInfo;
+        bool debug;
+        const double ioPrecision;
+        const unsigned int ioCycleLimit;
+    public:
+        MergeListMergePreparator(const GrammarInfo2& grammarInfo
+                                 , bool debug = false
+                                 , const double ioPrecision=IO_PRECISION_DEFAULT
+                                 , const unsigned ioCycleLimit=IO_CYCLE_LIMIT_DEFAULT)
+                : grammarInfo(grammarInfo), debug(debug), ioPrecision(ioPrecision), ioCycleLimit(ioCycleLimit) {};
+
+        MergeInfo merge_prepare(const LatentAnnotation &latentAnnotation,
+                const std::vector<std::vector<std::vector<size_t>>> mergeSources
+        ) {
+            std::vector<std::vector<double>> mergeFactors;
+            std::vector<size_t> new_splits;
+            new_splits.reserve(mergeSources.size());
+
+            MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> insideWeights;
+            MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> outsideWeights;
+            HypergraphPtr<Nonterminal> hg = hypergraph_from_grammar<Nonterminal>(grammarInfo);
+            io_weights_for_grammar(hg
+                                   , latentAnnotation
+                                   , hg->get_node_by_label(grammarInfo.start)
+                                   , insideWeights
+                                   , outsideWeights
+                                   , ioPrecision
+                                   , ioCycleLimit);
+
+            size_t nont_id {0};
+            for (auto sourceLists : mergeSources) {
+                new_splits.push_back(sourceLists.size());
+                std::vector<double> factors(latentAnnotation.nonterminalSplits[nont_id], 1.0);
+                size_t count {0};
+
+                auto inside = insideWeights.at(hg->get_node_by_label(nont_id));
+                auto outside = outsideWeights.at(hg->get_node_by_label(nont_id));
+                Eigen::Tensor<double, 1> io_prod = inside * outside;
+
+                for (auto sourceList : sourceLists){
+                    count += sourceList.size();
+                    if (sourceList.size() == 1)
+                        continue;
+                    if (sourceList.size() == 0) {
+                        std::cerr << "Empty merge source lists are not permitted. nont_id: " << nont_id << std::endl;
+                        abort();
+                    }
+
+                    double io_sum {0.0};
+                    for (size_t source : sourceList) {
+                        io_sum += io_prod(source);
+                    }
+                    for (size_t source : sourceList) {
+                        factors[source] = io_prod(source) / io_sum;
+                    }
+                }
+                if (count != latentAnnotation.nonterminalSplits[nont_id]) {
+                    std::cerr << "Non-exhaustive merge sources: nont_id: " << nont_id
+                              << ", #la: " << latentAnnotation.nonterminalSplits[nont_id]
+                              << " but counted: " << count << std::endl;
+                    abort();
+                }
+                mergeFactors.push_back(factors);
+                ++nont_id;
+            }
+
+            return MergeInfo(mergeSources, new_splits, mergeFactors);
+        }
+    };
+
+    template<typename Nonterminal>
+    LatentAnnotation project_annotation_by_merging(
+            const LatentAnnotation &annotation
+            , const GrammarInfo2 &grammarInfo
+            , const std::vector<std::vector<std::vector<size_t>>> & merge_sources
+            , const double ioPrecision = IO_PRECISION_DEFAULT
+            , const unsigned int ioCycleLimit = IO_CYCLE_LIMIT_DEFAULT
+    ) {
+        MergeListMergePreparator<Nonterminal> mergePreparator(grammarInfo, ioPrecision, ioCycleLimit);
+        MergeInfo mi = mergePreparator.merge_prepare(annotation, merge_sources);
+        Merger merger(grammarInfo, std::make_shared<StorageManager>());
+        return merger.merge(annotation, mi);
+    }
 
     template <typename Nonterminal, int numberInOne>
     struct GeneticCrosser : boost::static_visitor<RuleTensor<double>> {

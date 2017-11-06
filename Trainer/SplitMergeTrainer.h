@@ -123,24 +123,31 @@ namespace Trainer {
     };
 
     class Merger {
-        std::shared_ptr<const GrammarInfo2> grammarInfo;
+        const GrammarInfo2& grammarInfo;
         std::shared_ptr<StorageManager> storageManager;
         const bool debug;
 
     public:
         Merger(
-                std::shared_ptr<const GrammarInfo2> grammarInfo
+                const GrammarInfo2& grammarInfo
                 , std::shared_ptr<StorageManager> storageManager
                 , bool debug = false
         )
                 : grammarInfo(grammarInfo), storageManager(storageManager), debug(debug) {}
 
+        Merger(
+                std::shared_ptr<const GrammarInfo2> grammarInfo
+                , std::shared_ptr<StorageManager> storageManager
+                , bool debug = false
+        )
+                : grammarInfo(*grammarInfo), storageManager(storageManager), debug(debug) {}
+
         LatentAnnotation merge(const LatentAnnotation &la, const MergeInfo &mergeInfo) {
             // root weights
-            Eigen::Tensor<double, 1> rootWeights(mergeInfo.nontSplitsAfterMerge[grammarInfo->start]);
+            Eigen::Tensor<double, 1> rootWeights(mergeInfo.nontSplitsAfterMerge[grammarInfo.start]);
             for (Eigen::DenseIndex idx = 0; idx < rootWeights.dimension(0); ++idx) {
                 rootWeights(idx) = 0.0;
-                for (size_t idx_origin : mergeInfo.mergeSources[grammarInfo->start][idx])
+                for (size_t idx_origin : mergeInfo.mergeSources[grammarInfo.start][idx])
                     rootWeights(idx) += la.rootWeights(idx_origin);
             }
 
@@ -148,10 +155,10 @@ namespace Trainer {
 
             // rule weights
             auto ruleWeights = std::make_unique<std::vector<RuleTensor<double>>>();
-            for (size_t rule_id = 0; rule_id < grammarInfo->rule_to_nonterminals.size(); ++rule_id) {
+            for (size_t rule_id = 0; rule_id < grammarInfo.rule_to_nonterminals.size(); ++rule_id) {
                 RuleTensor<double> merged_tensor = storageManager->create_uninitialized_tensor(
                         rule_id
-                        , *grammarInfo
+                        , grammarInfo
                         , mergeInfo.nontSplitsAfterMerge
                 );
                 merge_tensor(merged_tensor, (*la.ruleWeights)[rule_id], rule_id, mergeInfo);
@@ -205,7 +212,7 @@ namespace Trainer {
                         , ruleId
                         , &(tensorIterator.get_index())
                         , &mergeInfo
-                        , &(grammarInfo->rule_to_nonterminals)
+                        , &(grammarInfo.rule_to_nonterminals)
                 ); mergeIterator != mergeIterator.end(); ++mergeIterator) {
                     /* (for debugging)
                     if (ruleId == 1417) {
