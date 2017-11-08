@@ -289,12 +289,29 @@ namespace Trainer {
                         abort();
                     }
 
-                    double io_sum {0.0};
-                    for (size_t source : sourceList) {
-                        io_sum += io_prod(source);
+                    Eigen::Tensor<double, 0> max = io_prod.maximum();
+                    size_t safe_count = 3;
+                    while (max(0) < exp(-100) and safe_count > 0) {
+                        io_prod = io_prod * exp(100);
+                        max = io_prod.maximum();
+                        safe_count--;
                     }
-                    for (size_t source : sourceList) {
-                        factors[source] = io_prod(source) / io_sum;
+                    Eigen::Tensor<double, 0> io_sum = io_prod.sum();
+                    if (std::isnan(io_sum(0)) or std::isinf(io_sum(0))) {
+                        for (size_t source : sourceList)
+                            factors[source] = 1.0 / sourceList.size();
+                    } else {
+                        bool invalid = false;
+                        for (size_t source : sourceList) {
+                            factors[source] = io_prod(source) / io_sum(0);
+                            if (std::isnan(factors[source]) or std::isinf(factors[source])) {
+                                invalid = true;
+                                break;
+                            }
+                        }
+                        if (invalid)
+                            for (size_t source : sourceList)
+                                factors[source] = 1.0 / sourceList.size();
                     }
                 }
                 if (count != latentAnnotation.nonterminalSplits[nont_id]) {
