@@ -514,20 +514,35 @@ namespace Trainer {
         }
     };
 
+    struct TensorValueSetter : boost::static_visitor<void> {
+        const double value;
+        const int index;
+
+        TensorValueSetter(double value, int index) : value(value), index(index) {};
+
+        template<int rank>
+        void
+        operator()(RuleTensorRaw<double, rank>& tensor) {
+            tensor.chip(index, 0).setConstant(value);
+        }
+
+    };
 
 
-    struct RuleTensorMultiplier : boost::static_visitor<RuleTensor<double>> {
+
+    struct RuleTensorMultiplier : boost::static_visitor<void> {
         double value;
+        const int index;
 
-        RuleTensorMultiplier(double value)
-                : value(value)
+        RuleTensorMultiplier(double value, int index=0)
+                : value(value), index(index)
         {};
 
 
         template<int rank>
-        RuleTensorRaw<double, rank>
-        operator()(const RuleTensorRaw<double, rank>& tensor) {
-            return tensor * (value);
+        void
+        operator()(RuleTensorRaw<double, rank>& tensor) {
+            tensor.chip(index, 0) = tensor.chip(index, 0) * (value);
         }
     };
 
@@ -611,11 +626,14 @@ namespace Trainer {
 
 
     struct VectorSummer : boost::static_visitor<double> {
+        const int index;
+
+        VectorSummer(int index=0) : index(index) {}
 
         template<int rank>
         double operator()(const Eigen::Tensor<double, rank>& vector) const {
 
-            Eigen::Tensor<double, 0> sum = vector.sum();
+            Eigen::Tensor<double, 0> sum = vector.chip(index, 0).sum();
             return sum(0);
         }
     };

@@ -162,24 +162,29 @@ namespace Trainer {
             /*
              * TODO: only works for trivial latent annotations
              */
-            VectorSummer vectorSummer;
-            for (auto ruleSet : grammarInfo.normalizationGroups){
-                double sum = 0;
-                for (auto ruleID : ruleSet){
-                    sum += boost::apply_visitor(vectorSummer, (*ruleWeights)[ruleID]);
-                }
+            size_t nont_id {0};
+            for (auto ruleSet : grammarInfo.normalizationGroups) {
+                for (int index = 0; index < nonterminalSplits[nont_id]; ++index) {
+                    VectorSummer vectorSummer(index);
+                    double sum {0};
+                    for (auto ruleID : ruleSet) {
+                        sum += boost::apply_visitor(vectorSummer, (*ruleWeights)[ruleID]);
+                    }
 
-                if(std::abs(sum) < std::exp(-30) or std::isnan(sum)){ // The sum is 0 or nan
-                    for (auto ruleID : ruleSet){
-                        OneDimensionalVectorCreator odvc(1.0 / (double) ruleSet.size());
-                        (*ruleWeights)[ruleID] = boost::apply_visitor(odvc, (*ruleWeights)[ruleID]);
-                    }
-                } else if(std::abs(sum - 1.0) > std::exp(-30)) { // does not sum to 1
-                    RuleTensorMultiplier rtd(1.0/sum);
-                    for (auto ruleID : ruleSet){
-                        (*ruleWeights)[ruleID] = boost::apply_visitor(rtd, (*ruleWeights)[ruleID]);
+                    if (std::abs(sum) < std::exp(-30) or std::isnan(sum)) { // The sum is 0 or nan
+                        for (auto ruleID : ruleSet) {
+//                            OneDimensionalVectorCreator odvc(1.0 / (double) ruleSet.size());
+                            TensorValueSetter tvs(1.0 / (double) ruleSet.size(), index);
+                            boost::apply_visitor(tvs, (*ruleWeights)[ruleID]);
+                        }
+                    } else if (std::abs(sum - 1.0) > std::exp(-30)) { // does not sum to 1
+                        RuleTensorMultiplier rtd(1.0 / sum, index);
+                        for (auto ruleID : ruleSet) {
+                            boost::apply_visitor(rtd, (*ruleWeights)[ruleID]);
+                        }
                     }
                 }
+                ++nont_id;
             }
         }
 
