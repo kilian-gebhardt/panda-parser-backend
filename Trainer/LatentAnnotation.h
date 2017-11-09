@@ -159,23 +159,27 @@ namespace Trainer {
         }
 
         void make_proper(const GrammarInfo2& grammarInfo) {
-            /*
-             * TODO: only works for trivial latent annotations
-             */
             size_t nont_id {0};
-            for (auto ruleSet : grammarInfo.normalizationGroups) {
-                for (int index = 0; index < nonterminalSplits[nont_id]; ++index) {
+            for (const auto ruleSet : grammarInfo.normalizationGroups) {
+                for (int index {0}; index < nonterminalSplits[nont_id]; ++index) {
                     VectorSummer vectorSummer(index);
-                    double sum {0};
+                    double sum {0.0};
                     for (auto ruleID : ruleSet) {
                         sum += boost::apply_visitor(vectorSummer, (*ruleWeights)[ruleID]);
                     }
 
                     if (std::abs(sum) < std::exp(-30) or std::isnan(sum)) { // The sum is 0 or nan
                         for (auto ruleID : ruleSet) {
-//                            OneDimensionalVectorCreator odvc(1.0 / (double) ruleSet.size());
-                            TensorValueSetter tvs(1.0 / (double) ruleSet.size(), index);
+                            TensorValueSetter tvs(1.0, index);
                             boost::apply_visitor(tvs, (*ruleWeights)[ruleID]);
+                        }
+                        double sum2 {0.0};
+                        for (auto ruleID : ruleSet) {
+                            sum2 += boost::apply_visitor(vectorSummer, (*ruleWeights)[ruleID]);
+                        }
+                        RuleTensorMultiplier rtd(1.0 / sum2, index);
+                        for (auto ruleID : ruleSet) {
+                            boost::apply_visitor(rtd, (*ruleWeights)[ruleID]);
                         }
                     } else if (std::abs(sum - 1.0) > std::exp(-30)) { // does not sum to 1
                         RuleTensorMultiplier rtd(1.0 / sum, index);

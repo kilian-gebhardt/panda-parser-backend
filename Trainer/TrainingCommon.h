@@ -631,9 +631,9 @@ namespace Trainer {
         VectorSummer(int index=0) : index(index) {}
 
         template<int rank>
-        double operator()(const Eigen::Tensor<double, rank>& vector) const {
+        double operator()(const Eigen::Tensor<double, rank>& tensor) const {
 
-            Eigen::Tensor<double, 0> sum = vector.chip(index, 0).sum();
+            Eigen::Tensor<double, 0> sum = tensor.chip(index, 0).sum();
             return sum(0);
         }
     };
