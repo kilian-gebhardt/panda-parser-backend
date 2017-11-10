@@ -25,6 +25,7 @@ namespace Trainer {
         std::shared_ptr<StorageManager> storageManager;
         std::shared_ptr<Expector> expector;
         std::shared_ptr<Maximizer> maximizer;
+        std::shared_ptr<CountsModifier> countsModifier;
         std::shared_ptr<EMTrainerLA> emTrainer;
         std::shared_ptr<Splitter> splitter;
         std::shared_ptr<MergePreparator> mergePreparator;
@@ -101,6 +102,16 @@ namespace Trainer {
 
         SplitMergeTrainerBuilder &set_em_epochs(unsigned epochs) {
             em_epochs = epochs;
+            return *this;
+        }
+
+        SplitMergeTrainerBuilder &set_no_count_modification() {
+            countsModifier = std::make_shared<CountsModifier>();
+            return *this;
+        }
+
+        SplitMergeTrainerBuilder &set_count_smoothing(std::vector<size_t> ruleIDs, double smoothValue) {
+            countsModifier = std::make_shared<CountsSmoother>(ruleIDs, smoothValue);
             return *this;
         }
 
@@ -218,15 +229,18 @@ namespace Trainer {
                 set_simple_expector();
             if (maximizer == nullptr)
                 set_simple_maximizer();
+            if (countsModifier == nullptr)
+                set_no_count_modification();
 
             if (validator == nullptr)
-                emTrainer = std::make_shared<EMTrainerLA>(em_epochs, expector, maximizer);
+                emTrainer = std::make_shared<EMTrainerLA>(em_epochs, expector, maximizer, countsModifier);
             else
                 emTrainer = std::make_shared<EMTrainerLAValidation>(
                         em_epochs
                         , expector
                         , maximizer
                         , validator
+                        , countsModifier
                         , maxDrops
                 );
 

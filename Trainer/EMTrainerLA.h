@@ -139,6 +139,11 @@ namespace Trainer {
         virtual void maximize(LatentAnnotation &, const Counts &) = 0;
     };
 
+    class CountsModifier {
+    public:
+        virtual void modifyCounts(Counts&) {};
+    };
+
     enum TrainingMode { Default, Splitting, Merging, Smoothing };
 
 
@@ -148,6 +153,7 @@ namespace Trainer {
         unsigned epochs;
         std::shared_ptr<Expector> expector;
         std::shared_ptr<Maximizer> maximizer;
+        std::shared_ptr<CountsModifier> countsModifier;
         TrainingMode trainingMode { Default };
 
         virtual void updateSettings() {
@@ -158,8 +164,11 @@ namespace Trainer {
         }
 
     public:
-        EMTrainerLA(unsigned epochs, std::shared_ptr<Expector> expector, std::shared_ptr<Maximizer> maximizer)
-                : epochs(epochs), expector(expector), maximizer(maximizer) {
+        EMTrainerLA(unsigned epochs
+                    , std::shared_ptr<Expector> expector
+                    , std::shared_ptr<Maximizer> maximizer
+                    , std::shared_ptr<CountsModifier> countsModifier = std::make_shared<CountsModifier>())
+                : epochs(epochs), expector(expector), maximizer(maximizer), countsModifier(countsModifier) {
             modeEpochs[Default] = epochs;
         };
 
@@ -175,13 +184,14 @@ namespace Trainer {
         virtual void train(LatentAnnotation &latentAnnotation) {
             for (unsigned epoch = 0; epoch < epochs; ++epoch) {
                 Counts counts {expector->expect(latentAnnotation)};
+                countsModifier->modifyCounts(counts);
                 counts.is_numerically_sane();
 
                 std::cerr << "Epoch " << epoch << "/" << epochs << ": ";
 
                 // output likelihood information based on old probability assignment
                 Eigen::Tensor<double, 0> corpusProbSum = counts.rootCounts.sum();
-                std::cerr << "corpus prob. sum " << corpusProbSum;
+                std::cerr << "recognized " << corpusProbSum;
                 std::cerr << " corpus likelihood " << counts.logLikelihood;
 
                 maximizer->maximize(latentAnnotation, counts);
@@ -211,8 +221,9 @@ namespace Trainer {
                               , std::shared_ptr<Expector> expector
                               , std::shared_ptr<Maximizer> maximizer
                               , std::shared_ptr<ValidationLA> validator
+                              , std::shared_ptr<CountsModifier> countsModifier
                               , unsigned maxDrops = 6)
-                : EMTrainerLA(epochs, expector, maximizer) , validator(validator), maxDrops(maxDrops) {
+                : EMTrainerLA(epochs, expector, maximizer, countsModifier) , validator(validator), maxDrops(maxDrops) {
             modeMaxDrops[Default] = maxDrops;
         };
 
@@ -221,13 +232,13 @@ namespace Trainer {
         }
 
         virtual void train(LatentAnnotation &latentAnnotation) {
-            double previousValidationScore = validator->minimum_score();
-            double bestValidationScore = previousValidationScore;
-            double validationScore = previousValidationScore;
+            double previousValidationScore {validator->minimum_score()};
+            double bestValidationScore {previousValidationScore};
+            double validationScore {previousValidationScore};
             LatentAnnotation bestAnnotation {latentAnnotation};
-            unsigned drops = 0;
-            unsigned epoch = 0;
-            unsigned bestEpoch = epoch;
+            unsigned drops {0};
+            unsigned epoch {0};
+            unsigned bestEpoch {epoch};
             for (; epoch < epochs; ++epoch) {
                 std::cerr << "Epoch " << epoch << "/" << epochs << ": ";
 
@@ -254,10 +265,11 @@ namespace Trainer {
                 }
 
                 Counts counts {expector->expect(latentAnnotation)};
+                countsModifier->modifyCounts(counts);
 
                 // output likelihood information based on old probability assignment
                 Eigen::Tensor<double, 0> corpusProbSum = counts.rootCounts.sum();
-                std::cerr << " training corpus prob. sum " << corpusProbSum;
+                std::cerr << " recognized " << corpusProbSum;
                 std::cerr << " training corpus likelihood " << counts.logLikelihood;
 
                 maximizer->maximize(latentAnnotation, counts);
@@ -805,6 +817,36 @@ namespace Trainer {
             }
 
         }
+    };
+
+    struct CountSmoothVisitor : boost::static_visitor<void> {
+        const double smoothValue;
+
+        CountSmoothVisitor(double smoothValue) : smoothValue(smoothValue) {}
+
+        template<int rank>
+        void operator()(Eigen::Tensor<double, rank>& tensor) const {
+            const long chip_size {tensor.size() / tensor.dimension(0)};
+            const double summand { smoothValue / (1.0 * chip_size) };
+            tensor = tensor.unaryExpr(
+                    [summand](const double x) -> double {
+                        return x + summand;
+                    });
+        }
+    };
+
+    class CountsSmoother : public CountsModifier {
+        const std::vector<size_t> ruleIDs;
+        const CountSmoothVisitor csv;
+    public:
+        CountsSmoother(const std::vector<size_t> ruleIDs, double smoothValue)
+                : ruleIDs(ruleIDs), csv(CountSmoothVisitor(smoothValue)) {};
+
+        virtual void modifyCount(Counts & counts) {
+            for (auto ruleID : ruleIDs) {
+                boost::apply_visitor(csv, (*counts.ruleCounts)[ruleID]);
+            }
+        };
     };
 }
 
