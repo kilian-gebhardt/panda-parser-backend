@@ -22,6 +22,8 @@ namespace Trainer {
         virtual std::string quantity() const = 0;
 
         virtual void clean_up() {};
+
+        virtual unsigned getParseFailures() const = 0;
     };
 
     class ValidationLikelihoodLA : public ValidationLA {
@@ -51,6 +53,7 @@ namespace Trainer {
         const TraceManagerPtr<Nonterminal, TraceID> traceManager;
         std::shared_ptr<const GrammarInfo2> grammarInfo;
         std::shared_ptr<StorageManager> storageManager;
+        unsigned parseFailures;
     private:
         const unsigned threads;
     protected:
@@ -89,11 +92,12 @@ namespace Trainer {
                 const LatentAnnotation &latentAnnotation
         ) {
             double logLikelihood{0.0};
+            unsigned failures{0};
 #ifdef _OPENMP
             omp_set_num_threads(threads);
 #endif
 // #pragma omp declare reduction (+ : omp_out += omp_in ) initializer (omp_priv = omp_orig)
-#pragma omp parallel for schedule(dynamic, 10) reduction (+:logLikelihood)
+#pragma omp parallel for schedule(dynamic, 10) reduction (+:logLikelihood, failures)
             for (TraceIterator traceIterator = traceManager->cbegin();
                  traceIterator < traceManager->cend(); ++traceIterator) {
                 const auto &trace = *traceIterator;
@@ -134,6 +138,7 @@ namespace Trainer {
                     and traceRootProbability(0) > 0) {
                     logLikelihood += log(traceRootProbability(0));
                 } else {
+                    ++failures;
                     //std::cerr << "trace Root Probability " << traceRootProbability(0) << std::endl;
                     // sentences with 0 probability are simply ignored, cf.
                     // https://github.com/slavpetrov/berkeleyparser/blob/release-1.0/src/edu/berkeley/nlp/PCFGLA/GrammarTrainer.java?ts=2#L558
@@ -149,8 +154,13 @@ namespace Trainer {
                     std::cerr << "instance root probability: " << std::endl << traceRootProbabilities << std::endl;
             }
 
+            parseFailures = failures;
             return logLikelihood;
         }
+
+    unsigned getParseFailures() const {
+        return parseFailures;
+    }
 
     protected:
         Eigen::Tensor<double, 1> compute_trace_root_probabilities(
@@ -175,6 +185,7 @@ namespace Trainer {
         std::vector<double> maxScores;
         double globalMaxScore {0};
         const double minimumScore;
+        unsigned parseFailures;
     public:
         CandidateScoreValidator(
                 std::shared_ptr<const GrammarInfo2> grammarInfo
@@ -194,18 +205,23 @@ namespace Trainer {
         }
 
         virtual double validation_score(const LatentAnnotation & latentAnnotation) {
-            double globalScore = 0.0;
-            for (size_t entry = 0; entry < scores.size(); ++entry) {
+            double globalScore {0.0};
+            unsigned failures {0};
+            for (size_t entry {0}; entry < scores.size(); ++entry) {
                 auto ranking = traces[entry].rank(latentAnnotation);
                 if (ranking.size() > 0) {
                     size_t selected {ranking[0].first};
                     globalScore += scores[entry][selected];
+                } else {
+                    ++failures;
                 }
             }
 
-            if (globalMaxScore > 0.0)
+            parseFailures = failures;
+
+            if (globalMaxScore > 0.0) {
                 return globalScore / globalMaxScore;
-            else {
+            } else {
                 assert (globalScore == 0.0);
                 return 0.0;
             }
@@ -218,6 +234,10 @@ namespace Trainer {
 
         virtual std::string quantity() const {
             return _quantity;
+        }
+
+        unsigned getParseFailures() const {
+            return parseFailures;
         }
     };
 }
