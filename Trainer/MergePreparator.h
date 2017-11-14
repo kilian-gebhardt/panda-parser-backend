@@ -13,6 +13,8 @@
 #include <omp.h>
 
 namespace Trainer {
+    typedef std::function<double(const::std::vector<double>&)> ThresholdFunction;
+
     class MergePreparator {
     protected:
 
@@ -77,6 +79,8 @@ namespace Trainer {
                 : grammarInfo(grammarInfo), debug(debug) {}
 
         virtual MergeInfo merge_prepare(const LatentAnnotation &latentAnnotation) = 0;
+
+        virtual void setMergeThresholdFunction(ThresholdFunction thresholdFunction) {};
     };
 
     /**
@@ -504,7 +508,7 @@ namespace Trainer {
     template <typename Nonterminal, typename TraceID>
     class SCCMerger : public DefaultMergePreparator<Nonterminal, TraceID> {
         std::vector<size_t> relevantNonterminals;
-        double merge_threshold;
+        ThresholdFunction thresholdFunction;
 
     public:
         SCCMerger(
@@ -512,7 +516,7 @@ namespace Trainer {
                 , std::shared_ptr<StorageManager> storageManager
                 , std::shared_ptr<const GrammarInfo2> grammarInfo
                 , std::vector<size_t> relevantNonterminals
-                , double merge_threshold
+                , ThresholdFunction thresholdFunction
                 , unsigned threads = 1
                 , bool debug = false
         )
@@ -522,7 +526,7 @@ namespace Trainer {
                 , grammarInfo
                 , threads
                 , debug
-        ), relevantNonterminals(relevantNonterminals), merge_threshold(merge_threshold) {};
+        ), relevantNonterminals(relevantNonterminals), thresholdFunction(thresholdFunction) {};
 
         MergeInfo merge_prepare(const LatentAnnotation &latentAnnotation) {
             // setup temporary data structures
@@ -536,7 +540,9 @@ namespace Trainer {
             // computing Δ per nont and pair of LAs j and i (where j > i)
             std::vector<std::vector<std::vector<double>>> merge_delta;
             computePairwiseMergeDeltas(nonterminalFrequencies, latentAnnotation.nonterminalSplits, merge_delta);
-            mergeWeightStatistics(merge_delta);
+            auto stats = mergeWeightStatistics(merge_delta);
+            const double merge_threshold = thresholdFunction(stats);
+            std::cerr << "SCC merging with threshold: " << merge_threshold << std::endl;
 
             // ingredients for the MergeInfo
             std::vector<std::vector<std::vector<size_t>>> mergeSources;
@@ -707,6 +713,10 @@ namespace Trainer {
             return MergeInfo(mergeSources, nontSplitsAfterMerge, mergeFactors);
         }
 
+        void setMergeThresholdFunction(ThresholdFunction thresholdFunction) {
+            this->thresholdFunction = thresholdFunction;
+        }
+
     private:
         /**
              * Compute merge-Δ for each pair of latent annotation. This is an approximation of likelihood after merge
@@ -809,7 +819,7 @@ namespace Trainer {
         double computeMergeThreshold(const std::vector<std::vector<double>> &) { return 0.0; };
 
         // compute merge Δ statistics
-        void mergeWeightStatistics(const std::vector<std::vector<std::vector<double>>>& mergeDeltas) {
+        std::vector<double> mergeWeightStatistics(const std::vector<std::vector<std::vector<double>>>& mergeDeltas) {
             double min {std::numeric_limits<double>::max()};
             double max {std::numeric_limits<double>::min()};
             double sum {0.0};
@@ -848,6 +858,7 @@ namespace Trainer {
             std::cerr << "SCC merge Δ statistics {";
             std::cerr << "min: " << min << " first quartile: " << first_quartile << " mean: " << mean
                                  << " third quartile: " << third_quartile << " max: " << max << " }" << std::endl;
+            return {min, first_quartile, mean, third_quartile, max};
         }
 
     };

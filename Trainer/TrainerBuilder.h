@@ -207,10 +207,15 @@ namespace Trainer {
                     , storageManager
                     , grammarInfo
                     , relevantNonterminals
-                    , threshold
+                    , [threshold](const std::vector<double>&) {return threshold;}
                     , threads
             );
             return *this;
+        }
+
+        SplitMergeTrainerBuilder & set_scc_merge_threshold_function(ThresholdFunction thresholdFunction) {
+            if (mergePreparator)
+                mergePreparator->setMergeThresholdFunction(thresholdFunction);
         }
 
         SplitMergeTrainerBuilder &set_split_randomization(double percent = 1.0, unsigned seed = 0) {
@@ -260,6 +265,12 @@ namespace Trainer {
             return emTrainer;
         }
     };
+
+    ThresholdFunction interpolate3rdQuartileMax(double factor) {
+        return [factor](const std::vector<double> & quartiles)
+            {return quartiles[3] * factor + quartiles[4] * (1.0 -factor);};
+    }
+
 }
 
 #endif //STERMPARSER_TRAINERBUILDER_H
