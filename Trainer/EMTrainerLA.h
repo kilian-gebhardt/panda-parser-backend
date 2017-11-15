@@ -438,8 +438,9 @@ namespace Trainer {
                         abort();
                     }
                 } else {
-                    std::cerr << "trace Root Probability " << traceRootProbability(0) << std::endl;
-                    counts.logLikelihood += minus_infinity;
+                    // std::cerr << "trace Root Probability " << traceRootProbability(0) << std::endl;
+                    // Although formally correct, we do not do this to improve robustness.
+                    // counts.logLikelihood += minus_infinity;
                     continue;
                 }
 
