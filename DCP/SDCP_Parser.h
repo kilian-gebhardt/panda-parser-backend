@@ -434,8 +434,10 @@ namespace DCP {
                     Variable var = boost::get<Variable>(obj);
                     if (var.member > 0) {
                         pos = items[var.member - 1]->spans_syn[var.argument - 1].first;
-                        while (steps > 0)
+                        while (steps > 0) {
                             pos = input.get_previous(pos);
+                            --steps;
+                        }
                         return true;
                     } else {
                         // TODO The case should not occur at top level
