@@ -73,11 +73,11 @@ namespace DCP {
         void set_exit(Position position);
 
         bool is_initial(Position position) {
-            return previous[position] == -1;
+            return previous[position] == undefined_position();
         }
 
         bool is_final(Position position) {
-            return next[position] == -1;
+            return next[position] == undefined_position();
         }
 
         void output();
@@ -87,8 +87,8 @@ namespace DCP {
         const std::vector<std::pair<Position, Terminal>> terminals() {
             std::vector<std::pair<Position, Terminal>> terminals;
             Position position = get_entry();
-            while (position != -1) {
-                if (!is_initial(position))
+            while (not is_final(position)) {
+                if (not is_initial(position))
                     terminals.emplace_back(std::pair<Position, Terminal>(position, get_tree_label(position)));
                 terminals_recur(terminals, get_children(position));
                 position = get_next(position);
@@ -104,6 +104,9 @@ namespace DCP {
             return linearization;
         }
 
+        static Position undefined_position() {
+            return -1;
+        }
     };
 
     template<typename Terminal, typename Position>
@@ -133,13 +136,13 @@ namespace DCP {
             previous.at(position1);
         }
         catch (const std::out_of_range &oor) {
-            previous[position1] = -1;
+            previous[position1] = undefined_position();
         }
         try {
             next.at(position2);
         }
         catch (const std::out_of_range &oor) {
-            next[position2] = -1;
+            next[position2] = undefined_position();
         }
     }
 
@@ -172,7 +175,7 @@ namespace DCP {
     void HybridTree<Terminal, Position>::output_recur(Position position, int indent) {
         while (is_initial(position))
             position = get_next(position);
-        while (position != -1) {
+        while (position != undefined_position()) {
             for (int i = 0; i < indent; ++i)
                 std::cerr << "  ";
             std::cerr << get_previous(position) << " " << get_tree_label(position) << " " << position << std::endl;
