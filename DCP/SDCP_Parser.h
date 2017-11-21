@@ -333,6 +333,8 @@ namespace DCP {
 
             for (TermOrVariable<Terminal> obj : sterm) {
                 if (obj.type() == typeid(Term<Terminal>)) {
+                    if (pos == HybridTree<Terminal, Position>::undefined_position() or input.is_final(pos))
+                        return false;
                     Term<Terminal> &term = boost::get<Term<Terminal>>(obj);
                     if (lhn_var) {
                         // TODO greedy matching is incomplete / requires normal form
@@ -521,6 +523,8 @@ namespace DCP {
             for (const STerm <Terminal> &sterm : rule.inside_attributes[0]) {
                 Position start;
                 if (!find_start(sterm, start, 0, inherited, synthesized, items))
+                    return;
+                if (start == HybridTree<Terminal, Position>::undefined_position())
                     return;
                 Position goal = start;
                 if (!match_sterm_rec(sterm, start, true, goal, inherited, synthesized, items, lcfrs_terminals))
