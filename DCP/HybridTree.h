@@ -87,7 +87,7 @@ namespace DCP {
         const std::vector<std::pair<Position, Terminal>> terminals() {
             std::vector<std::pair<Position, Terminal>> terminals;
             Position position = get_entry();
-            while (not is_final(position)) {
+            while (position != undefined_position()) {
                 if (not is_initial(position))
                     terminals.emplace_back(std::pair<Position, Terminal>(position, get_tree_label(position)));
                 terminals_recur(terminals, get_children(position));
