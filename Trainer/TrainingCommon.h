@@ -149,33 +149,25 @@ namespace Trainer {
         return os;
     }
 
-    template<long rank, typename VECTOR>
-    inline void compute_normalization_divisor_ranked(VECTOR &goal, const RuleTensor<double> &tensor) {
-        Eigen::array<Eigen::Index, rank - 1> sum_dimensions;
-        for (Eigen::Index index = 0; index < rank - 1; ++index) {
-            sum_dimensions[index] = index + 1;
-        }
-        goal += boost::get<RuleTensorRaw<double, rank>>(tensor).sum(sum_dimensions);
+    template<typename VECTOR>
+    struct NormalizationDivisor : boost::static_visitor<void> {
+        VECTOR &goal;
+        NormalizationDivisor(VECTOR & goal) : goal(goal) {};
+        template<int rank>
+        inline void operator()(const RuleTensorRaw<double, rank> &tensor) {
+            Eigen::array<Eigen::Index, rank - 1> sum_dimensions;
+            for (Eigen::Index index = 0; index < rank - 1; ++index) {
+                sum_dimensions[index] = index + 1;
+            }
+            goal += tensor.sum(sum_dimensions);
+        };
     };
+
 
     template<typename VECTOR>
     inline void compute_normalization_divisor(VECTOR &goal, const RuleTensor<double> &tensor) {
-        switch (tensor.which() + 1) {
-            case 1:
-                compute_normalization_divisor_ranked<1>(goal, tensor);
-                break;
-            case 2:
-                compute_normalization_divisor_ranked<2>(goal, tensor);
-                break;
-            case 3:
-                compute_normalization_divisor_ranked<3>(goal, tensor);
-                break;
-            case 4:
-                compute_normalization_divisor_ranked<4>(goal, tensor);
-                break;
-            default:
-                abort();
-        }
+        NormalizationDivisor<VECTOR> nd(goal);
+        boost::apply_visitor(nd, tensor);
     }
 
     template<long rank, typename VECTOR>
