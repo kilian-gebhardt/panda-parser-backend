@@ -22,14 +22,11 @@ namespace Trainer {
         std::uniform_real_distribution<double> distribution;
     public:
         std::shared_ptr<const GrammarInfo2> grammarInfo;
-    private:
         std::shared_ptr<StorageManager> storageManager;
-
         inline double rand_split() {
             return distribution(generator);
         }
 
-    public:
         Splitter(
                 double randPercent
                 , unsigned seed
@@ -91,34 +88,30 @@ namespace Trainer {
         }
 
     private:
-        RuleTensor<double> create_split_tensor(const RuleTensor<double> &wrappedTensor) {
-            switch (wrappedTensor.which() + 1) {
-                case 1:
-                    return create_split_tensor_ranked<1>(wrappedTensor);
-                case 2:
-                    return create_split_tensor_ranked<2>(wrappedTensor);
-                case 3:
-                    return create_split_tensor_ranked<3>(wrappedTensor);
-                case 4:
-                    return create_split_tensor_ranked<4>(wrappedTensor);
-                default:
-                    abort();
-            }
-        }
+        RuleTensor<double> create_split_tensor(const RuleTensor<double> &wrappedTensor);
+    };
 
-        template<long rule_rank>
-        RuleTensor<double> create_split_tensor_ranked(const RuleTensor<double> &tensorWrapped) {
-            const auto &tensorRaw = boost::get<RuleTensorRaw<double, rule_rank>>(tensorWrapped);
-            Eigen::array<Eigen::DenseIndex, rule_rank> splitDimensions = tensorRaw.dimensions();
-            Eigen::array<Eigen::DenseIndex, rule_rank> broadcast;
-            std::fill(broadcast.begin(), broadcast.end(), 2);
-            std::for_each(splitDimensions.begin(), splitDimensions.end(), [](auto &dim) { dim = 2 * dim; });
-            auto tensorSplit = storageManager
-                    ->create_uninitialized_tensor_ranked_typed<RuleTensorRaw<double, rule_rank>>(splitDimensions);
-            tensorSplit = tensorRaw.broadcast(broadcast);
-            tensorSplit = tensorSplit.unaryExpr([this](double x) { return x * rand_split(); });
-            return tensorSplit;
-        }
+    struct SplitTensorCreator : boost::static_visitor<RuleTensor<double>> {
+            Splitter & splitter;
+            SplitTensorCreator(Splitter & splitter) : splitter(splitter) {}
+            template<int rule_rank>
+            RuleTensor<double> operator()(const RuleTensorRaw<double, rule_rank> &tensorRaw) {
+                Eigen::array<Eigen::DenseIndex, rule_rank> splitDimensions = tensorRaw.dimensions();
+                Eigen::array<Eigen::DenseIndex, rule_rank> broadcast;
+                std::fill(broadcast.begin(), broadcast.end(), 2);
+                std::for_each(splitDimensions.begin(), splitDimensions.end(), [](auto &dim) { dim = 2 * dim; });
+                auto tensorSplit = this->splitter.storageManager
+                        ->create_uninitialized_tensor_ranked_typed<RuleTensorRaw<double, rule_rank>>(splitDimensions);
+                tensorSplit = tensorRaw.broadcast(broadcast);
+                tensorSplit = tensorSplit.unaryExpr([this](double x) { return x * this->splitter.rand_split(); });
+                return tensorSplit;
+            }
+    };
+
+    RuleTensor<double> Splitter::create_split_tensor(const RuleTensor<double> &wrappedTensor) {
+        SplitTensorCreator splitTensorCreator(*this);
+        return boost::apply_visitor(splitTensorCreator, wrappedTensor);
+    }
 
     };
 
