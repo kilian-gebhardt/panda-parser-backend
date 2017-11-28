@@ -312,6 +312,145 @@ namespace Trainer {
         }
     };
 
+
+    template<typename Nonterminal>
+    struct RuleCountComputer : boost::static_visitor<void> {
+        const Element<HyperEdge<Nonterminal>> &edge;
+        const RuleTensorRaw<double, 1> &lhnOutsideWeight;
+        const double traceRootProbability;
+        const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &insideWeights;
+        RuleTensor<double> & ruleCount;
+        const double scale;
+
+        RuleCountComputer(
+              const Element<HyperEdge<Nonterminal>> & edge
+            , const RuleTensorRaw<double, 1> &lhnOutsideWeight
+            , const double traceRootProbability
+            , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> & insideWeights
+            , RuleTensor<double> &ruleCount
+            , const double scale = 1.0
+        ) : edge(edge)
+                , lhnOutsideWeight(lhnOutsideWeight)
+                , traceRootProbability(traceRootProbability)
+                , insideWeights(insideWeights)
+                , ruleCount(ruleCount)
+                , scale(scale) {};
+
+        template<int rank>
+        inline
+        typename std::enable_if<(rank > 3), void>::type
+        operator()(const RuleTensorRaw<double, rank> & ruleWeightRaw) {
+            const auto &ruleDimension = ruleWeightRaw.dimensions();
+
+            Eigen::array<long, rank> reshapeDimensions;
+            Eigen::array<long, rank> broadcastDimensions;
+            for (unsigned i = 0; i < rank; ++i) {
+                reshapeDimensions[i] = 1;
+                broadcastDimensions[i] = ruleDimension[i];
+            }
+
+            Eigen::Tensor<double, rank> rule_val = ruleWeightRaw;
+            for (unsigned nont = 0; nont < rank; ++nont) {
+                const auto &itemWeight = (nont == 0)
+                                         ? lhnOutsideWeight
+                                         : insideWeights.at(edge->get_sources()[nont - 1]);
+                reshapeDimensions[nont] = broadcastDimensions[nont];
+                broadcastDimensions[nont] = 1;
+                rule_val *= itemWeight.reshape(reshapeDimensions).broadcast(broadcastDimensions);
+                broadcastDimensions[nont] = reshapeDimensions[nont];
+                reshapeDimensions[nont] = 1;
+            }
+            rule_val = rule_val * scale;
+
+            auto &ruleCountRaw = boost::get<RuleTensorRaw<double, rank>>(ruleCount);
+            const double trp {traceRootProbability};
+
+            if (traceRootProbability > 0) {
+                ruleCountRaw += rule_val.unaryExpr(
+                        [trp](double x) {
+                            return safe_division(x, trp);
+                        }
+                );
+            }
+        }
+
+        inline void operator()(const RuleTensorRaw<double, 1> & ruleWeightRaw) {
+            auto ruleValue = ruleWeightRaw * lhnOutsideWeight * scale;
+
+            auto &ruleCountRaw = boost::get<RuleTensorRaw<double, 1>>(ruleCount);
+            const double trp {traceRootProbability};
+
+            if (traceRootProbability > 0) {
+                ruleCountRaw += ruleValue.unaryExpr(
+                        [trp](double x) {
+                            return safe_division(x, trp);
+                        }
+                );
+            }
+        }
+
+        inline void operator()(const RuleTensorRaw<double, 2> & ruleWeightRaw) {
+            constexpr unsigned ruleRank{2};
+
+            const auto &rhsWeight = insideWeights.at(edge->get_sources()[0]);
+            auto ruleValue = lhnOutsideWeight.reshape(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1})
+                                     .broadcast(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1)})
+                             * rhsWeight.reshape(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1)})
+                                     .broadcast(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1}).eval()
+                             * ruleWeightRaw
+                             * scale;
+
+            auto &ruleCountRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleCount);
+            const double trp {traceRootProbability};
+
+            if (traceRootProbability > 0) {
+                ruleCountRaw += ruleValue.unaryExpr(
+                        [trp](double x) {
+                            return safe_division(x, trp);
+                        }
+                );
+            }
+        }
+
+        inline void operator()(const RuleTensorRaw<double, 3> & ruleWeightRaw) {
+            constexpr unsigned ruleRank{3};
+
+            const auto &rhsWeight1 = insideWeights.at(edge->get_sources()[0]);
+            const auto &rhsWeight2 = insideWeights.at(edge->get_sources()[1]);
+
+            auto ruleValue = lhnOutsideWeight.reshape(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1, 1})
+                                     .broadcast(
+                                             Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1),
+                                                                          ruleWeightRaw.dimension(2)}
+                                     )
+                             * rhsWeight1.reshape(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1), 1})
+                                     .broadcast(
+                                             Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1,
+                                                                          ruleWeightRaw.dimension(2)}
+                                     ).eval()
+                             * rhsWeight2.reshape(Eigen::array<long, ruleRank>{1, 1, ruleWeightRaw.dimension(2)})
+                                     .broadcast(
+                                             Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0),
+                                                                          ruleWeightRaw.dimension(1), 1}
+                                     ).eval()
+                             * ruleWeightRaw
+                             * scale;
+
+            auto &ruleCountRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleCount);
+            const double trp {traceRootProbability};
+
+            if (traceRootProbability > 0) {
+                ruleCountRaw += ruleValue.unaryExpr(
+                        [trp](double x) {
+                            return safe_division(x, trp);
+                        }
+                );
+            }
+        }
+
+    };
+
+
     template<typename Nonterminal, typename TraceID>
     class SimpleExpector : public Expector {
     protected:
@@ -460,55 +599,14 @@ namespace Trainer {
                     }
                     for (const auto &edge : trace->get_hypergraph()->get_incoming_edges(node)) {
                         const int ruleId = edge->get_label_id();
-                        const size_t rule_dim = edge->get_sources().size() + 1;
-
-                        switch (rule_dim) {
-                            case 1:
-                                compute_rule_count1(
-                                        (*latentAnnotation.ruleWeights)[ruleId]
-                                        , lhnOutsideWeight
-                                        , traceRootProbability(0)
-                                        , (*counts.ruleCounts)[ruleId]
-                                        , scale
-                                );
-                                break;
-                            case 2:
-                                compute_rule_count2(
-                                        (*latentAnnotation.ruleWeights)[ruleId]
-                                        , edge
-                                        , lhnOutsideWeight
-                                        , traceRootProbability(0)
-                                        , insideWeights
-                                        , (*counts.ruleCounts)[ruleId]
-                                        , scale
-                                );
-                                break;
-                            case 3:
-                                compute_rule_count3(
-                                        (*latentAnnotation.ruleWeights)[ruleId]
-                                        , edge
-                                        , lhnOutsideWeight
-                                        , traceRootProbability(0)
-                                        , insideWeights
-                                        , (*counts.ruleCounts)[ruleId]
-                                        , scale
-                                );
-                                break;
-                            case 4:
-                                compute_rule_count<4>(
-                                        (*latentAnnotation.ruleWeights)[ruleId]
-                                        , edge
-                                        , lhnOutsideWeight
-                                        , traceRootProbability(0)
-                                        , insideWeights
-                                        , (*counts.ruleCounts)[ruleId]
-                                        , scale
-                                );
-                                break;
-                            default:
-                                std::cerr << "Rules with RHS > " << 3 << " are not implemented." << std::endl;
-                                abort();
-                        }
+//                        const size_t rule_dim = edge->get_sources().size() + 1;
+                        RuleCountComputer<Nonterminal> ruleCountComputer(edge
+                                                            , lhnOutsideWeight
+                                                            , traceRootProbability(0)
+                                                            , insideWeights
+                                                            , (*counts.ruleCounts)[ruleId]
+                                                            , scale);
+                        boost::apply_visitor(ruleCountComputer, (*latentAnnotation.ruleWeights)[ruleId]);
                     }
                 }
 
@@ -534,151 +632,7 @@ namespace Trainer {
 
     private:
 
-        inline void compute_rule_count1(
-                const RuleTensor<double> &ruleWeight
-                , const RuleTensorRaw<double, 1> &lhnOutsideWeight
-                , const double traceRootProbability
-                , RuleTensor<double> &ruleCount
-                , const double scale = 1.0
-        ) {
-            constexpr unsigned ruleRank{1};
 
-            const auto &ruleWeightRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleWeight);
-
-            auto ruleValue = ruleWeightRaw * lhnOutsideWeight * scale;
-
-            auto &ruleCountRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleCount);
-
-            if (traceRootProbability > 0) {
-                ruleCountRaw += ruleValue.unaryExpr(
-                        [traceRootProbability](double x) {
-                            return safe_division(x, traceRootProbability);
-                        }
-                );
-            }
-        }
-
-
-        inline void compute_rule_count2(
-                const RuleTensor<double> &ruleWeight
-                , const Element<HyperEdge<Nonterminal>> &edge
-                , const RuleTensorRaw<double, 1> &lhnOutsideWeight
-                , const double traceRootProbability
-                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &insideWeights
-                , RuleTensor<double> &ruleCount
-                , const double scale = 1.0
-        ) {
-            constexpr unsigned ruleRank{2};
-
-            const auto &ruleWeightRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleWeight);
-
-            const auto &rhsWeight = insideWeights.at(edge->get_sources()[0]);
-            auto ruleValue = lhnOutsideWeight.reshape(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1})
-                                     .broadcast(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1)})
-                             * rhsWeight.reshape(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1)})
-                                     .broadcast(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1}).eval()
-                             * ruleWeightRaw
-                             * scale;
-
-            auto &ruleCountRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleCount);
-
-            if (traceRootProbability > 0) {
-                ruleCountRaw += ruleValue.unaryExpr(
-                        [traceRootProbability](double x) {
-                            return safe_division(x, traceRootProbability);
-                        }
-                );
-            }
-        }
-
-
-        inline void compute_rule_count3(
-                const RuleTensor<double> &ruleWeight
-                , const Element<HyperEdge<Nonterminal>> &edge
-                , const RuleTensorRaw<double, 1> &lhnOutsideWeight
-                , const double traceRootProbability
-                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &insideWeights
-                , RuleTensor<double> &ruleCount
-                , const double scale = 1.0
-        ) {
-            constexpr unsigned ruleRank{3};
-
-            const auto &ruleWeightRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleWeight);
-            const auto &rhsWeight1 = insideWeights.at(edge->get_sources()[0]);
-            const auto &rhsWeight2 = insideWeights.at(edge->get_sources()[1]);
-
-            auto ruleValue = lhnOutsideWeight.reshape(Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1, 1})
-                                     .broadcast(
-                                             Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1),
-                                                                          ruleWeightRaw.dimension(2)}
-                                     )
-                             * rhsWeight1.reshape(Eigen::array<long, ruleRank>{1, ruleWeightRaw.dimension(1), 1})
-                                     .broadcast(
-                                             Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0), 1,
-                                                                          ruleWeightRaw.dimension(2)}
-                                     ).eval()
-                             * rhsWeight2.reshape(Eigen::array<long, ruleRank>{1, 1, ruleWeightRaw.dimension(2)})
-                                     .broadcast(
-                                             Eigen::array<long, ruleRank>{ruleWeightRaw.dimension(0),
-                                                                          ruleWeightRaw.dimension(1), 1}
-                                     ).eval()
-                             * ruleWeightRaw
-                             * scale;
-
-            auto &ruleCountRaw = boost::get<RuleTensorRaw<double, ruleRank>>(ruleCount);
-
-            if (traceRootProbability > 0) {
-                ruleCountRaw += ruleValue.unaryExpr(
-                        [traceRootProbability](double x) {
-                            return safe_division(x, traceRootProbability);
-                        }
-                );
-            }
-        }
-
-        template<long rank>
-        inline void compute_rule_count(
-                const RuleTensor<double> &ruleWeight
-                , const Element<HyperEdge<Nonterminal>> &edge
-                , const RuleTensorRaw<double, 1> &lhnOutsideWeight
-                , const double traceRootProbability
-                , const MAPTYPE<Element<Node<Nonterminal>>, WeightVector> &insideWeights
-                , RuleTensor<double> &ruleCount
-                , const double scale = 1.0
-        ) {
-
-            const auto &ruleWeightRaw = boost::get<RuleTensorRaw<double, rank>>(ruleWeight);
-            const auto &ruleDimension = ruleWeightRaw.dimensions();
-
-            Eigen::array<long, rank> reshapeDimensions;
-            Eigen::array<long, rank> broadcastDimensions;
-            for (unsigned i = 0; i < rank; ++i) {
-                reshapeDimensions[i] = 1;
-                broadcastDimensions[i] = ruleDimension[i];
-            }
-
-            Eigen::Tensor<double, rank> rule_val = ruleWeightRaw;
-            for (unsigned nont = 0; nont < rank; ++nont) {
-                const auto &itemWeight = (nont == 0)
-                                         ? lhnOutsideWeight
-                                         : insideWeights.at(edge->get_sources()[nont - 1]);
-                reshapeDimensions[nont] = broadcastDimensions[nont];
-                broadcastDimensions[nont] = 1;
-                rule_val *= itemWeight.reshape(reshapeDimensions).broadcast(broadcastDimensions);
-                broadcastDimensions[nont] = reshapeDimensions[nont];
-                reshapeDimensions[nont] = 1;
-            }
-            rule_val = rule_val * scale;
-
-            auto &ruleCountRaw = boost::get<RuleTensorRaw<double, rank>>(ruleCount);
-            if (traceRootProbability > 0) {
-                ruleCountRaw += rule_val.unaryExpr(
-                        [traceRootProbability](double x) {
-                            return safe_division(x, traceRootProbability);
-                        }
-                );
-            }
-        }
     };
 
 
