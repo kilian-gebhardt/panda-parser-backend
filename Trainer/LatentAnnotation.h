@@ -59,6 +59,15 @@ namespace Trainer {
         }
     };
 
+    struct FormatConversionVisitor : boost::static_visitor<void> {
+        const std::vector<double> &weights;
+        FormatConversionVisitor(const std::vector<double> &weights) : weights(weights) {};
+        template<int rank>
+        inline void operator()(RuleTensorRaw<double, rank>& tensor) {
+            TensorIteratorHighToLow<rank> tensorIterator(&tensor);
+            std::copy(weights.begin(), weights.end(), tensorIterator);
+        }
+    };
 
     struct TensorRandomizer : boost::static_visitor<void> {
         std::mt19937 & generator;
@@ -241,10 +250,12 @@ namespace Trainer {
             rootWeights = rootWeights.unaryExpr([&total_root_weight](double x) { return x / total_root_weight(0); });
 
             TensorRandomizer tensorRandomizer(generator, distribution, bias);
+
             for (size_t nont = 0; nont < grammarInfo->normalizationGroups.size(); ++nont) {
                 auto & group = grammarInfo->normalizationGroups[nont];
 
                 // add noise to rule weights
+
                 for (size_t ruleID : group)
                     boost::apply_visitor(tensorRandomizer, (*ruleWeights)[ruleID]);
 
@@ -298,25 +309,12 @@ namespace Trainer {
                         storageManager.create_uninitialized_tensor(rule, grammarInfo, nonterminal_splits)
                     );
                 auto & rule_tensor = rule_tensors.back();
+
+                FormatConversionVisitor formatConversionVisitor(rule_weight);
+                boost::apply_visitor(formatConversionVisitor, rule_tensor);
+
                 const size_t dims = grammarInfo.rule_to_nonterminals[rule].size();
 
-                switch (dims) {
-                    case 1:
-                        convert_format_no_creation<1>(rule_weight, rule_tensor);
-                        break;
-                    case 2:
-                        convert_format_no_creation<2>(rule_weight, rule_tensor);
-                        break;
-                    case 3:
-                        convert_format_no_creation<3>(rule_weight, rule_tensor);
-                        break;
-                    case 4:
-                        convert_format_no_creation<4>(rule_weight, rule_tensor);
-                        break;
-                    default:
-                        assert(false && "Rules with more than 3 RHS nonterminals are not implemented.");
-                        abort();
-                }
                 allocated += rule_weight.size();
                 ++rule;
             }
