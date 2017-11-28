@@ -216,6 +216,7 @@ namespace Trainer {
         SplitMergeTrainerBuilder & set_scc_merge_threshold_function(ThresholdFunction thresholdFunction) {
             if (mergePreparator)
                 mergePreparator->setMergeThresholdFunction(thresholdFunction);
+            return *this;
         }
 
         SplitMergeTrainerBuilder &set_split_randomization(double percent = 1.0, unsigned seed = 0) {
