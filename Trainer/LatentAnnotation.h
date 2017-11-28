@@ -49,6 +49,15 @@ namespace Trainer {
         }
     };
 
+    struct FormatDeconversionVisitor : boost::static_visitor<std::vector<double>> {
+        template<int rank>
+        inline std::vector<double> operator()(const RuleTensorRaw<double, rank> & tensor) {
+            std::vector<double> weight;
+            TensorIteratorHighToLow<rank, true> tensorIterator(&tensor);
+            std::copy(tensorIterator, tensorIterator.end(), std::back_inserter(weight));
+            return weight;
+        }
+    };
 
     class LatentAnnotation {
     public:
@@ -119,18 +128,10 @@ namespace Trainer {
         }
 
         std::vector<std::vector<double>> get_rule_weights() const {
+            FormatDeconversionVisitor formatConversionVisitor;
             std::vector<std::vector<double>> weights;
             for (const auto & tensor : *ruleWeights) {
-                weights.emplace_back();
-                switch(tensor.which() + 1) {
-                    case 1: de_convert_format<1>(weights.back(), tensor); break;
-                    case 2: de_convert_format<2>(weights.back(), tensor); break;
-                    case 3: de_convert_format<3>(weights.back(), tensor); break;
-                    case 4: de_convert_format<4>(weights.back(), tensor); break;
-                    default:
-                        std::cerr << "Rule of rank " << tensor.which() + 1 << " unsupported." << std::endl;
-                        abort();
-                }
+                weights.push_back(boost::apply_visitor(formatConversionVisitor, tensor));
             }
             return weights;
         }
