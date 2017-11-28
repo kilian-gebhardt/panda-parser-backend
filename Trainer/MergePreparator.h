@@ -852,8 +852,8 @@ namespace Trainer {
                     }
                 }
             }
-            const double third_quartile {above_mean_sum / above_mean_count};
-            const double first_quartile {below_mean_sum / below_mean_count};
+            const double third_quartile {above_mean_count > 0 ? above_mean_sum / above_mean_count : mean};
+            const double first_quartile {below_mean_count > 0 ? below_mean_sum / below_mean_count : mean};
 
             std::cerr << "SCC merge Δ statistics {";
             std::cerr << "min: " << min << " first quartile: " << first_quartile << " mean: " << mean
