@@ -59,6 +59,26 @@ namespace Trainer {
         }
     };
 
+
+    struct TensorRandomizer : boost::static_visitor<void> {
+        std::mt19937 & generator;
+        std::uniform_real_distribution<double> & distribution;
+        const double bias;
+
+        TensorRandomizer(
+                std::mt19937 & generator
+                , std::uniform_real_distribution<double> & distribution
+                , const double bias
+        ) : generator(generator), distribution(distribution), bias(bias) {}
+
+        template<int rule_rank>
+        inline void operator()(RuleTensorRaw<double, rule_rank> &tensor) {
+            tensor = tensor.unaryExpr([&] (double x) -> double {
+                return x * distribution(generator) + bias * distribution(generator);
+            });
+        }
+    };
+
     class LatentAnnotation {
     public:
         const std::vector <std::size_t> nonterminalSplits;
@@ -220,12 +240,13 @@ namespace Trainer {
             Eigen::Tensor<double, 0> total_root_weight = rootWeights.sum();
             rootWeights = rootWeights.unaryExpr([&total_root_weight](double x) { return x / total_root_weight(0); });
 
+            TensorRandomizer tensorRandomizer(generator, distribution, bias);
             for (size_t nont = 0; nont < grammarInfo->normalizationGroups.size(); ++nont) {
                 auto & group = grammarInfo->normalizationGroups[nont];
 
                 // add noise to rule weights
                 for (size_t ruleID : group)
-                    randomize((*ruleWeights)[ruleID], generator, distribution, bias);
+                    boost::apply_visitor(tensorRandomizer, (*ruleWeights)[ruleID]);
 
                 // normalization
                 Eigen::Tensor<double, 1> normalizationDivisor(nonterminalSplits[nont]);
@@ -325,42 +346,6 @@ namespace Trainer {
             }
             return ruleWeightsLa;
         }
-
-
-    private:
-        void randomize(RuleTensor<double> &wrappedTensor
-                       , std::mt19937 & generator
-                       , std::uniform_real_distribution<double> & distribution
-                       , const double bias) {
-            switch (wrappedTensor.which() + 1) {
-                case 1:
-                    randomize_ranked<1>(wrappedTensor, generator, distribution, bias);
-                    break;
-                case 2:
-                    randomize_ranked<2>(wrappedTensor, generator, distribution, bias);
-                    break;
-                case 3:
-                    randomize_ranked<3>(wrappedTensor, generator, distribution, bias);
-                    break;
-                case 4:
-                    randomize_ranked<4>(wrappedTensor, generator, distribution, bias);
-                    break;
-                default:
-                    abort();
-            }
-        }
-
-        template<long rule_rank>
-        inline void randomize_ranked(RuleTensor<double> &tensorWrapped
-                              , std::mt19937 & generator
-                              , std::uniform_real_distribution<double> & distribution
-                              , const double bias) {
-            auto &tensorRaw = boost::get<RuleTensorRaw<double, rule_rank>>(tensorWrapped);
-            tensorRaw = tensorRaw.unaryExpr([&] (double x) -> double {
-                return x * distribution(generator) + bias * distribution(generator);
-            });
-        }
-
 
     public:
         bool check_for_validity(double delta = 0.0005){
