@@ -170,44 +170,37 @@ namespace Trainer {
         boost::apply_visitor(nd, tensor);
     }
 
-    template<long rank, typename VECTOR>
-    inline void
-    normalize_ranked(RuleTensor<double> &normalized, const RuleTensor<double> &unnormalized, const VECTOR &normalizer) {
-        auto &raw_normalized = boost::get<RuleTensorRaw<double, rank>>(normalized);
-        const auto &raw_unnormalized = boost::get<RuleTensorRaw<double, rank>>(unnormalized);
+    template<typename VECTOR>
+    struct NormalizationVisitor : boost::static_visitor<void> {
+        RuleTensor<double> &normalized;
+        const VECTOR &normalizer;
 
-        for (unsigned idx = 0; idx < normalizer.dimension(0); ++idx)
-            if (not std::isnan(normalizer(idx))
-                and not std::isinf(normalizer(idx))
-                and normalizer(idx) > 0) {
-                raw_normalized.chip(idx, 0)
-                        = raw_unnormalized.chip(idx, 0).unaryExpr(
-                        [normalizer, idx](const double x) -> double {
-                            return x / normalizer(idx);
-                        }
-                );
-            }
+        NormalizationVisitor(RuleTensor<double> &normalized, const VECTOR &normalizer)
+                : normalized(normalized), normalizer(normalizer) {};
+
+        template<int rank>
+        inline void operator()(const RuleTensorRaw<double, rank> &raw_unnormalized) {
+            auto &raw_normalized = boost::get<RuleTensorRaw<double, rank>>(normalized);
+            for (unsigned idx = 0; idx < normalizer.dimension(0); ++idx)
+                if (not std::isnan(normalizer(idx))
+                    and not std::isinf(normalizer(idx))
+                    and normalizer(idx) > 0) {
+                    const double normalizationValue {normalizer(idx)};
+                    raw_normalized.chip(idx, 0)
+                            = raw_unnormalized.chip(idx, 0).unaryExpr(
+                            [normalizationValue](const double x) -> double {
+                                return x / normalizationValue;
+                            }
+                    );
+                }
+        };
     };
 
     template<typename VECTOR>
     inline void
     normalize(RuleTensor<double> &normalized, const RuleTensor<double> &unnormalized, const VECTOR &normalizer) {
-        switch (unnormalized.which() + 1) {
-            case 1:
-                normalize_ranked<1>(normalized, unnormalized, normalizer);
-                break;
-            case 2:
-                normalize_ranked<2>(normalized, unnormalized, normalizer);
-                break;
-            case 3:
-                normalize_ranked<3>(normalized, unnormalized, normalizer);
-                break;
-            case 4:
-                normalize_ranked<4>(normalized, unnormalized, normalizer);
-                break;
-            default:
-                abort();
-        }
+        NormalizationVisitor<VECTOR> normalizationVisitor(normalized, normalizer);
+        boost::apply_visitor(normalizationVisitor, unnormalized);
     }
 
     struct SetZeroVisitor : boost::static_visitor<void> {
