@@ -10,12 +10,28 @@
 #include <memory>
 
 namespace Trainer {
+    struct TensorSmoother : boost::static_visitor<void> {
+        const double smoothingFactor;
+
+        explicit TensorSmoother(const double smoothingFactor) : smoothingFactor(smoothingFactor) {}
+
+        template <int rank>
+        void operator()(RuleTensorRaw<double, rank> & ruleTensor) {
+            const Eigen::Tensor<double, 0> sumt = ruleTensor.sum();
+            const double sum = sumt(0);
+            const double sf = smoothingFactor;
+            ruleTensor = ruleTensor.unaryExpr([sum, sf](double x) -> double {
+                return x * (1 - sf) + sum * sf;
+            });
+        }
+    };
+
     class Smoother {
         std::shared_ptr<const GrammarInfo2> grammarInfo;
         const double smoothingFactor;
 
     public:
-        Smoother(std::shared_ptr<const GrammarInfo2> grammarInfo
+        explicit Smoother(std::shared_ptr<const GrammarInfo2> grammarInfo
                  , double smoothingFactor = 0.01)
                 : grammarInfo(grammarInfo), smoothingFactor(smoothingFactor) {
             if (0.0 > smoothingFactor or 1.0 < smoothingFactor) {
@@ -27,8 +43,9 @@ namespace Trainer {
 
         void smooth(LatentAnnotation & latentAnnotation) {
             std::cerr << "Smoothing rules with factor " << smoothingFactor << "." << std::endl;
+            TensorSmoother tensorSmoother(smoothingFactor);
             for (RuleTensor<double> & rule : *(latentAnnotation.ruleWeights)) {
-                smooth_rule(rule);
+                boost::apply_visitor(tensorSmoother, rule);
             }
             for (size_t nont = 0; nont < grammarInfo->normalizationGroups.size(); ++nont) {
                 auto & group = grammarInfo->normalizationGroups[nont];
@@ -46,39 +63,6 @@ namespace Trainer {
 
         double get_smoothing_factor() {
             return smoothingFactor;
-        }
-
-    private:
-
-        void smooth_rule(RuleTensor<double> & rule) {
-            switch (rule.which() + 1) {
-                case 1:
-                    smooth_rule_ranked<1>(rule);
-                    break;
-                case 2:
-                    smooth_rule_ranked<2>(rule);
-                    break;
-                case 3:
-                    smooth_rule_ranked<3>(rule);
-                    break;
-                case 4:
-                    smooth_rule_ranked<4>(rule);
-                    break;
-                default:
-                    std::cerr<< "Rule with rank " << rule.which() + 1 << " is not supported." << std::endl;
-                    abort();
-            }
-        }
-
-        template <size_t rank>
-        void smooth_rule_ranked(RuleTensor<double> & rule) {
-            auto & ruleRaw = boost::get<RuleTensorRaw<double, rank>>(rule);
-            const Eigen::Tensor<double, 0> sumt = ruleRaw.sum();
-            const double sum = sumt(0);
-            const double sf = smoothingFactor;
-            ruleRaw = ruleRaw.unaryExpr([sum, sf](double x) -> double {
-                return x * (1 - sf) + sum * sf;
-            });
         }
     };
 }
