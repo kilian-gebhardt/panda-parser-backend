@@ -80,26 +80,8 @@ namespace Trainer {
             logLikelihood += other.logLikelihood;
 
             for (unsigned rule = 0; rule < ruleCounts->size(); ++rule) {
-                switch ((*ruleCounts)[rule].which() + 1) {
-                    case 1:
-                        boost::get<RuleTensorRaw<double, 1>>((*ruleCounts)[rule])
-                                += boost::get<RuleTensorRaw<double, 1>>((*other.ruleCounts)[rule]);
-                        break;
-                    case 2:
-                        boost::get<RuleTensorRaw<double, 2>>((*ruleCounts)[rule])
-                                += boost::get<RuleTensorRaw<double, 2>>((*other.ruleCounts)[rule]);
-                        break;
-                    case 3:
-                        boost::get<RuleTensorRaw<double, 3>>((*ruleCounts)[rule])
-                                += boost::get<RuleTensorRaw<double, 3>>((*other.ruleCounts)[rule]);
-                        break;
-                    case 4:
-                        boost::get<RuleTensorRaw<double, 4>>((*ruleCounts)[rule])
-                                += boost::get<RuleTensorRaw<double, 4>>((*other.ruleCounts)[rule]);
-                        break;
-                    default:
-                        abort();
-                }
+                TensorAdder va((*ruleCounts)[rule]);
+                boost::apply_visitor(va, (*other.ruleCounts)[rule]);
             }
 
             rootCounts += other.rootCounts;

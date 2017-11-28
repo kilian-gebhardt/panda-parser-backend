@@ -679,8 +679,17 @@ namespace Trainer {
         }
     };
 
+    struct TensorAdder : boost::static_visitor<void> {
+        RuleTensor<double> & goal;
 
+        TensorAdder(RuleTensor<double> & goal) : goal(goal) {}
 
+        template<int rank>
+        inline void operator()(const RuleTensorRaw<double, rank>& tensor) const {
+            RuleTensorRaw<double, rank>& goalRaw = boost::get<RuleTensorRaw<double, rank>>(goal);
+            goalRaw += tensor;
+        }
+    };
 
 
 
