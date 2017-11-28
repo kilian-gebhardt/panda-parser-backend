@@ -37,6 +37,17 @@ namespace Trainer {
         }
     };
 
+    struct WeightAccessVisitor : boost::static_visitor<double> {
+        const std::vector<size_t> & index;
+        WeightAccessVisitor(const std::vector<size_t> & index) : index(index) {};
+
+        template <int rank>
+        double operator()(RuleTensorRaw<double, rank>& tensor_raw) const  {
+            Eigen::array<size_t, rank> index_array;
+            std::copy(index.cbegin(), index.cend(), index_array.begin());
+            return tensor_raw(index_array);
+        }
+    };
 
 
     class LatentAnnotation {
@@ -103,15 +114,8 @@ namespace Trainer {
         ) {}
 
         double get_weight(const size_t ruleID, const std::vector<size_t> & index) const {
-            switch ((*ruleWeights)[ruleID].which() + 1) {
-                case 1: return get_weight_ranked<1>(ruleID, index);
-                case 2: return get_weight_ranked<2>(ruleID, index);
-                case 3: return get_weight_ranked<3>(ruleID, index);
-                case 4: return get_weight_ranked<4>(ruleID, index);
-                default:
-                    std::cerr << "Rule of rank " << (*ruleWeights)[ruleID].which() + 1 << " unsupported." << std::endl;
-                    abort();
-            }
+            WeightAccessVisitor weightAccessVisitor(index);
+            return boost::apply_visitor(weightAccessVisitor, (*ruleWeights)[ruleID]);
         }
 
         std::vector<std::vector<double>> get_rule_weights() const {
