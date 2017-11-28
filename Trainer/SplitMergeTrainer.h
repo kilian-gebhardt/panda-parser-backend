@@ -113,6 +113,46 @@ namespace Trainer {
         return boost::apply_visitor(splitTensorCreator, wrappedTensor);
     }
 
+    struct TensorMerger : boost::static_visitor<void> {
+        const RuleTensor<double> &sourceTensor;
+        const size_t ruleId;
+        const MergeInfo &mergeInfo;
+        const GrammarInfo2 & grammarInfo;
+        TensorMerger( const RuleTensor<double> &sourceTensor
+                      , const size_t ruleId
+                      , const MergeInfo &mergeInfo
+                      , const GrammarInfo2 & grammarInfo) :
+                sourceTensor(sourceTensor), ruleId(ruleId), mergeInfo(mergeInfo), grammarInfo(grammarInfo) {}
+
+        template<int rank>
+        inline void operator()( RuleTensorRaw<double, rank> & mergedTensorRaw) {
+            const auto &sourceTensorRaw = boost::get<RuleTensorRaw<double, rank>>(sourceTensor);
+
+            for (TensorIteratorLowToHigh<rank> tensorIterator{&mergedTensorRaw};
+                 tensorIterator != tensorIterator.end(); ++tensorIterator) {
+                *tensorIterator = 0.0;
+                for (MergeIterator<rank, true> mergeIterator(
+                        &sourceTensorRaw
+                        , ruleId
+                        , &(tensorIterator.get_index())
+                        , &mergeInfo
+                        , &(grammarInfo.rule_to_nonterminals)
+                ); mergeIterator != mergeIterator.end(); ++mergeIterator) {
+                    /* (for debugging)
+                    if (ruleId == 1417) {
+                        std::cerr << ruleId << "goal [";
+                        for (auto idx : tensorIterator.get_index())
+                            std::cerr << idx << " ";
+                        std::cerr << "] src: [";
+                        for (auto idx : mergeIterator.get_source_index())
+                            std::cerr << idx << " ";
+                        std::cerr << "] value: " << *mergeIterator << "factor: " << mergeIterator.mergeFactor()
+                                  << std::endl;
+                    } */
+                    *tensorIterator += *mergeIterator * mergeIterator.mergeFactor();
+                }
+            }
+        }
     };
 
     class Merger {
@@ -154,73 +194,15 @@ namespace Trainer {
                         , grammarInfo
                         , mergeInfo.nontSplitsAfterMerge
                 );
-                merge_tensor(merged_tensor, (*la.ruleWeights)[rule_id], rule_id, mergeInfo);
+
+                TensorMerger tensorMerger((*la.ruleWeights)[rule_id], rule_id, mergeInfo, grammarInfo);
+                boost::apply_visitor(tensorMerger, merged_tensor);
+
                 if (debug) std::cerr << rule_id << " " << merged_tensor << std::endl;
                 ruleWeights->push_back(std::move(merged_tensor));
             }
 
             return LatentAnnotation(mergeInfo.nontSplitsAfterMerge, std::move(rootWeights), std::move(ruleWeights));
-        }
-
-    private:
-        inline void merge_tensor(
-                RuleTensor<double> &mergedTensor
-                , const RuleTensor<double> &sourceTensor
-                , const size_t ruleId
-                , const MergeInfo &mergeInfo
-        ) {
-            switch (mergedTensor.which() + 1) {
-                case 1:
-                    merge_tensor_ranked<1>(mergedTensor, sourceTensor, ruleId, mergeInfo);
-                    break;
-                case 2:
-                    merge_tensor_ranked<2>(mergedTensor, sourceTensor, ruleId, mergeInfo);
-                    break;
-                case 3:
-                    merge_tensor_ranked<3>(mergedTensor, sourceTensor, ruleId, mergeInfo);
-                    break;
-                case 4:
-                    merge_tensor_ranked<4>(mergedTensor, sourceTensor, ruleId, mergeInfo);
-                    break;
-                default:
-                    abort();
-            }
-        }
-
-        template<long rank>
-        inline void merge_tensor_ranked(
-                RuleTensor<double> &mergedTensor
-                , const RuleTensor<double> &sourceTensor
-                , const size_t ruleId
-                , const MergeInfo &mergeInfo
-        ) {
-            auto &mergedTensorRaw = boost::get<RuleTensorRaw<double, rank>>(mergedTensor);
-            const auto &sourceTensorRaw = boost::get<RuleTensorRaw<double, rank>>(sourceTensor);
-
-            for (TensorIteratorLowToHigh<rank> tensorIterator{&mergedTensorRaw};
-                 tensorIterator != tensorIterator.end(); ++tensorIterator) {
-                *tensorIterator = 0.0;
-                for (MergeIterator<rank, true> mergeIterator(
-                        &sourceTensorRaw
-                        , ruleId
-                        , &(tensorIterator.get_index())
-                        , &mergeInfo
-                        , &(grammarInfo.rule_to_nonterminals)
-                ); mergeIterator != mergeIterator.end(); ++mergeIterator) {
-                    /* (for debugging)
-                    if (ruleId == 1417) {
-                        std::cerr << ruleId << "goal [";
-                        for (auto idx : tensorIterator.get_index())
-                            std::cerr << idx << " ";
-                        std::cerr << "] src: [";
-                        for (auto idx : mergeIterator.get_source_index())
-                            std::cerr << idx << " ";
-                        std::cerr << "] value: " << *mergeIterator << "factor: " << mergeIterator.mergeFactor()
-                                  << std::endl;
-                    } */
-                    *tensorIterator += *mergeIterator * mergeIterator.mergeFactor();
-                }
-            }
         }
     };
 
