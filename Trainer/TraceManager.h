@@ -143,6 +143,151 @@ namespace Trainer {
         }
     };
 
+    template <typename Nonterminal>
+    struct OutsideWeightComputation : boost::static_visitor<void> {
+        const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights;
+        const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights;
+        Trainer::WeightVector &outsideWeight;
+        const std::pair<Element<HyperEdge<Nonterminal>>, unsigned int> &outgoing;
+        int & targetLogScale;
+        const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales;
+        const MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales;
+
+        OutsideWeightComputation(
+                const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
+                , const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
+                , Trainer::WeightVector &outsideWeight
+                , const std::pair<Element<HyperEdge<Nonterminal>>, unsigned int> &outgoing
+                , int & targetLogScale
+                , const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
+                , const MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales
+        ) : insideWeights(insideWeights)
+                , outsideWeights(outsideWeights)
+                , outsideWeight(outsideWeight)
+                , outgoing(outgoing)
+                , targetLogScale(targetLogScale)
+                , insideLogScales(insideLogScales)
+                , outsideLogScales(outsideLogScales){}
+
+        inline void operator()(const Trainer::RuleTensorRaw<double, 1>& /* ruleWeight */) {
+            // Cannot happen, since there is at least one source (namely 'node')
+            std::cerr << "The trace is inconsistent!";
+            abort();
+        }
+
+        inline void operator()(const Trainer::RuleTensorRaw<double, 2>& ruleWeight) {
+
+            const auto &parent = outgoing.first->get_target();
+//            constexpr unsigned ruleRank{2};
+
+            const auto &parentWeight = outsideWeights.at(parent);
+
+            auto outsideWeightSummand = ruleWeight.contract(
+                    parentWeight, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
+            );
+
+            const int parentLogScale = outsideLogScales.at(parent);
+            if (std::abs(parentLogScale) > std::abs(targetLogScale)) {
+                outsideWeight = outsideWeight * calcScaleFactor(parentLogScale - targetLogScale) + outsideWeightSummand;
+                targetLogScale = parentLogScale;
+            } else {
+                outsideWeight = outsideWeight + outsideWeightSummand * calcScaleFactor(targetLogScale - parentLogScale);
+            }
+        }
+
+        inline void operator()(const Trainer::RuleTensorRaw<double, 3>& ruleWeight) {
+            const auto &siblings = outgoing.first->get_sources();
+            const auto &parent = outgoing.first->get_target();
+            const unsigned position = outgoing.second;
+//            constexpr unsigned ruleRank{3};
+
+
+            const auto &parentWeight = outsideWeights.at(parent);
+            const auto &rhsWeight = insideWeights.at(siblings[position == 0 ? 1 : 0]);
+
+            auto tmpValue1 = ruleWeight.contract(
+                    rhsWeight, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(position == 0 ? 2 : 1, 0)}
+            );
+            auto tmpValue2 = tmpValue1.contract(
+                    parentWeight, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
+            );
+
+            const int tmpScale = outsideLogScales.at(parent) + insideLogScales.at(siblings[position == 0 ? 1 : 0]);
+
+            if (abs(tmpScale) > abs(targetLogScale)) {
+                outsideWeight = outsideWeight * calcScaleFactor(tmpScale - targetLogScale) + tmpValue2;
+                targetLogScale = tmpScale;
+            }
+            else
+                outsideWeight = outsideWeight + tmpValue2 * calcScaleFactor(targetLogScale - tmpScale);
+        }
+
+        template<int ruleRank>
+        inline void operator()(const Trainer::RuleTensorRaw<double, ruleRank>& ruleWeight) {
+            const auto &siblings = outgoing.first->get_sources();
+            const auto &parent = outgoing.first->get_target();
+            const unsigned position = outgoing.second;
+
+//            const auto &ruleWeight = boost::get<Trainer::RuleTensorRaw<double, ruleRank>>(rules[outgoing.first->get_label_id()]);
+            const Eigen::array<long, ruleRank> &ruleDimension = ruleWeight.dimensions();
+            Eigen::array<long, ruleRank> reshapeDimension;
+            Eigen::array<long, ruleRank> broadcastDimension;
+
+            for (unsigned idx = 0; idx < ruleRank; ++idx) {
+                reshapeDimension[idx] = 1;
+                broadcastDimension[idx] = ruleDimension[idx];
+            }
+
+            const auto &parent_weight = outsideWeights.at(parent);
+            int tmpScale = outsideLogScales.at(parent);
+
+            Eigen::Tensor<double, ruleRank> tmpValue = ruleWeight;
+//        std::cerr << "init tmpValue" << std::endl<< tmpValue << std::endl << std::endl;
+
+            reshapeDimension[0] = broadcastDimension[0];
+            broadcastDimension[0] = 1;
+            tmpValue *= parent_weight.reshape(reshapeDimension).broadcast(broadcastDimension);
+//        std::cerr << "tmpValue" << 0 << std::endl<< tmpValue << std::endl << std::endl;
+            broadcastDimension[0] = ruleDimension[0];
+            reshapeDimension[0] = 1;
+
+            for (unsigned rhsPos = 1; rhsPos < ruleRank; ++rhsPos) {
+                if (rhsPos == position + 1)
+                    continue;
+
+                const auto &item_weight = insideWeights.at(siblings[rhsPos - 1]);
+                tmpScale += insideLogScales.at(siblings[rhsPos - 1]);
+//            std::cerr << "inside weight " << rhsPos << std::endl<< item_weight << std::endl << std::endl;
+                reshapeDimension[rhsPos] = broadcastDimension[rhsPos];
+                broadcastDimension[rhsPos] = 1;
+                tmpValue *= item_weight.reshape(reshapeDimension).broadcast(broadcastDimension);
+//            std::cerr << "int tmpValue" << rhsPos << std::endl<< tmpValue << std::endl << std::endl;
+                broadcastDimension[rhsPos] = reshapeDimension[rhsPos];
+                reshapeDimension[rhsPos] = 1;
+            }
+
+            Eigen::array<long, ruleRank - 1> sum_array;
+            for (unsigned idx = 0; idx < ruleRank - 1; ++idx) {
+                if (idx < position + 1)
+                    sum_array[idx] = idx;
+                if (idx >= position + 1)
+                    sum_array[idx] = idx + 1;
+            }
+            Eigen::Tensor<double, 1> outsideWeightSummand = tmpValue.sum(sum_array);
+
+//        std::cerr << "final tmpValue" << std::endl<< tmpValue << std::endl << std::endl;
+//        std::cerr << "outside weight summand" << std::endl << outsideWeightSummand << std::endl << std::endl;
+
+
+            if (abs(tmpScale) > abs(targetLogScale)) {
+                outsideWeight = outsideWeight * calcScaleFactor(tmpScale - targetLogScale) + outsideWeightSummand;
+                targetLogScale = tmpScale;
+            }
+            else
+                outsideWeight = outsideWeight + outsideWeightSummand * calcScaleFactor(targetLogScale - tmpScale);
+        }
+    };
+
     template<typename Nonterminal, typename oID>
     class Trace {
     private:
@@ -395,24 +540,16 @@ namespace Trainer {
 
 
                 for (const auto &outgoing : get_hypergraph()->get_outgoing_edges(node)) {
-                    switch (outgoing.first->get_sources().size() + 1) {
-                        case 1:
-                            // Cannot happen, since there is at least one source (namely 'node')
-                            std::cerr << "The trace is inconsistent!";
-                            abort();
-                        case 2:
-                            outside_weight_step2(rules, outsideWeights, outsideWeight, outgoing, targetLogScale, outsideLogScales);
-                            break;
-                        case 3:
-                            outside_weight_step3(rules, insideWeights, outsideWeights, outsideWeight, outgoing, targetLogScale, insideLogScales, outsideLogScales);
-                            break;
-                        case 4:
-                            outside_weight_step<4>(rules, insideWeights, outsideWeights, outsideWeight, outgoing, targetLogScale, insideLogScales, outsideLogScales);
-                            break;
-                        default:
-                            std::cerr << "Rules with more than 3 RHS nonterminals are not implemented." << std::endl;
-                            abort();
-                    }
+                    OutsideWeightComputation<Nonterminal>
+                            outsideWeightComputation(  insideWeights
+                                                     , outsideWeights
+                                                     , outsideWeight
+                                                     , outgoing
+                                                     , targetLogScale
+                                                     , insideLogScales
+                                                     , outsideLogScales
+                            );
+                    boost::apply_visitor(outsideWeightComputation, rules[outgoing.first->get_label_id()]);
                 }
 
                 if (scaling)
@@ -420,152 +557,6 @@ namespace Trainer {
 //            std::cerr << "outside weight " << node << std::endl << outsideWeight << std::endl;
             }
         }
-
-        inline void outside_weight_step2(
-                const std::vector<Trainer::RuleTensor<double>> &rules
-                , const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
-                , Trainer::WeightVector &outsideWeight
-                , const std::pair<Element<HyperEdge<Nonterminal>>, unsigned int> &outgoing
-                , int & targetLogScale
-                , const MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales
-        ) const {
-
-            const auto &parent = outgoing.first->get_target();
-            constexpr unsigned ruleRank{2};
-
-            const auto &ruleWeight = boost::get<Trainer::RuleTensorRaw<double
-                                                                       , ruleRank>>(rules[outgoing.first->get_label_id()]);
-            const auto &parentWeight = outsideWeights.at(parent);
-
-            auto outsideWeightSummand = ruleWeight.contract(
-                    parentWeight, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
-            );
-
-            const int parentLogScale = outsideLogScales.at(parent);
-            if (std::abs(parentLogScale) > std::abs(targetLogScale)) {
-                outsideWeight = outsideWeight * calcScaleFactor(parentLogScale - targetLogScale) + outsideWeightSummand;
-                targetLogScale = parentLogScale;
-            } else {
-                outsideWeight = outsideWeight + outsideWeightSummand * calcScaleFactor(targetLogScale - parentLogScale);
-            }
-        }
-
-
-        inline void outside_weight_step3(
-                const std::vector<Trainer::RuleTensor<double>> &rules
-                , const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
-                , const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
-                , Trainer::WeightVector &outsideWeight
-                , const std::pair<Element<HyperEdge<Nonterminal>>, unsigned int> &outgoing
-                , int & targetLogScale
-                , const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
-                , const MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales
-        ) const {
-            const auto &siblings = outgoing.first->get_sources();
-            const auto &parent = outgoing.first->get_target();
-            const unsigned position = outgoing.second;
-            constexpr unsigned ruleRank{3};
-
-
-            const auto &ruleWeight = boost::get<Trainer::RuleTensorRaw<double
-                                                                       , ruleRank>>(rules[outgoing.first->get_label_id()]);
-            const auto &parentWeight = outsideWeights.at(parent);
-            const auto &rhsWeight = insideWeights.at(siblings[position == 0 ? 1 : 0]);
-
-            auto tmpValue1 = ruleWeight.contract(
-                    rhsWeight, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(position == 0 ? 2 : 1, 0)}
-            );
-            auto tmpValue2 = tmpValue1.contract(
-                    parentWeight, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
-            );
-
-            const int tmpScale = outsideLogScales.at(parent) + insideLogScales.at(siblings[position == 0 ? 1 : 0]);
-
-            if (abs(tmpScale) > abs(targetLogScale)) {
-                outsideWeight = outsideWeight * calcScaleFactor(tmpScale - targetLogScale) + tmpValue2;
-                targetLogScale = tmpScale;
-            }
-            else
-                outsideWeight = outsideWeight + tmpValue2 * calcScaleFactor(targetLogScale - tmpScale);
-        }
-
-
-        template<int ruleRank>
-        void outside_weight_step(
-                const std::vector<Trainer::RuleTensor<double>> &rules
-                , const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
-                , const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
-                , Trainer::WeightVector &outsideWeight
-                , const std::pair<Element<HyperEdge<Nonterminal>>, unsigned int> &outgoing
-                , int & targetLogScale
-                , const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
-                , const MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales
-        ) const {
-            const auto &siblings = outgoing.first->get_sources();
-            const auto &parent = outgoing.first->get_target();
-            const unsigned position = outgoing.second;
-
-            const auto &ruleWeight = boost::get<Trainer::RuleTensorRaw<double
-                                                                       , ruleRank>>(rules[outgoing.first->get_label_id()]);
-            const Eigen::array<long, ruleRank> &ruleDimension = ruleWeight.dimensions();
-            Eigen::array<long, ruleRank> reshapeDimension;
-            Eigen::array<long, ruleRank> broadcastDimension;
-
-            for (unsigned idx = 0; idx < ruleRank; ++idx) {
-                reshapeDimension[idx] = 1;
-                broadcastDimension[idx] = ruleDimension[idx];
-            }
-
-            const auto &parent_weight = outsideWeights.at(parent);
-            int tmpScale = outsideLogScales.at(parent);
-
-            Eigen::Tensor<double, ruleRank> tmpValue = ruleWeight;
-//        std::cerr << "init tmpValue" << std::endl<< tmpValue << std::endl << std::endl;
-
-            reshapeDimension[0] = broadcastDimension[0];
-            broadcastDimension[0] = 1;
-            tmpValue *= parent_weight.reshape(reshapeDimension).broadcast(broadcastDimension);
-//        std::cerr << "tmpValue" << 0 << std::endl<< tmpValue << std::endl << std::endl;
-            broadcastDimension[0] = ruleDimension[0];
-            reshapeDimension[0] = 1;
-
-            for (unsigned rhsPos = 1; rhsPos < ruleRank; ++rhsPos) {
-                if (rhsPos == position + 1)
-                    continue;
-
-                const auto &item_weight = insideWeights.at(siblings[rhsPos - 1]);
-                tmpScale += insideLogScales.at(siblings[rhsPos - 1]);
-//            std::cerr << "inside weight " << rhsPos << std::endl<< item_weight << std::endl << std::endl;
-                reshapeDimension[rhsPos] = broadcastDimension[rhsPos];
-                broadcastDimension[rhsPos] = 1;
-                tmpValue *= item_weight.reshape(reshapeDimension).broadcast(broadcastDimension);
-//            std::cerr << "int tmpValue" << rhsPos << std::endl<< tmpValue << std::endl << std::endl;
-                broadcastDimension[rhsPos] = reshapeDimension[rhsPos];
-                reshapeDimension[rhsPos] = 1;
-            }
-
-            Eigen::array<long, ruleRank - 1> sum_array;
-            for (unsigned idx = 0; idx < ruleRank - 1; ++idx) {
-                if (idx < position + 1)
-                    sum_array[idx] = idx;
-                if (idx >= position + 1)
-                    sum_array[idx] = idx + 1;
-            }
-            Eigen::Tensor<double, 1> outsideWeightSummand = tmpValue.sum(sum_array);
-
-//        std::cerr << "final tmpValue" << std::endl<< tmpValue << std::endl << std::endl;
-//        std::cerr << "outside weight summand" << std::endl << outsideWeightSummand << std::endl << std::endl;
-
-
-            if (abs(tmpScale) > abs(targetLogScale)) {
-                outsideWeight = outsideWeight * calcScaleFactor(tmpScale - targetLogScale) + outsideWeightSummand;
-                targetLogScale = tmpScale;
-            }
-            else
-                outsideWeight = outsideWeight + outsideWeightSummand * calcScaleFactor(targetLogScale - tmpScale);
-        }
-
-
 
         template<typename Val>
         std::pair<MAPTYPE<Element<Node<Nonterminal>>, Val>
@@ -693,50 +684,14 @@ namespace Trainer {
 
 
                     for (const auto &outgoing : get_hypergraph()->get_outgoing_edges(node)) {
-                        switch (outgoing.first->get_sources().size() + 1) {
-                            case 1:
-                                // Cannot happen, since there is at least one source (namely 'node')
-                                std::cerr << "The trace is inconsistent!";
-                                abort();
-                            case 2:
-                                outside_weight_step2(
-                                        rules
-                                        , outsideWeights
-                                        , outsideWeight
-                                        , outgoing
-                                        , outsideLogScales[node]
-                                        , outsideLogScales
-                                );
-                                break;
-                            case 3:
-                                outside_weight_step3(
-                                        rules
-                                        , insideWeights
-                                        , outsideWeights
-                                        , outsideWeight
-                                        , outgoing
-                                        , outsideLogScales[node]
-                                        , insideLogScales
-                                        , outsideLogScales
-                                );
-                                break;
-                            case 4:
-                                outside_weight_step<4>(
-                                        rules
-                                        , insideWeights
-                                        , outsideWeights
-                                        , outsideWeight
-                                        , outgoing
-                                        , outsideLogScales[node]
-                                        , insideLogScales
-                                        , outsideLogScales
-                                );
-                                break;
-                            default:
-                                std::cerr << "Rules with more than 3 RHS nonterminals are not implemented."
-                                          << std::endl;
-                                abort();
-                        }
+                        OutsideWeightComputation<Nonterminal> outsideWeightComputation(
+                                insideWeights
+                                , outsideWeights
+                                ,outsideWeight
+                                , outgoing
+                                , outsideLogScales[node]
+                                , insideLogScales
+                                , outsideLogScales);
                     }
 
                     // TODO: move scaling to outer loop!
