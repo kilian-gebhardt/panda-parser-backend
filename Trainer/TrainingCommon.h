@@ -218,30 +218,16 @@ namespace Trainer {
         }
     }
 
-    template<int rule_rank>
-    inline void set_zero_ranked(
-            RuleTensor<double> &ruleTensor
-    ) {
-        boost::get<RuleTensorRaw<double, rule_rank>>(ruleTensor).setZero();
-    }
+    struct SetZeroVisitor : boost::static_visitor<void> {
+        template<int rule_rank>
+        inline void operator()(RuleTensorRaw<double, rule_rank> & ruleTensor) {
+            ruleTensor.setZero();
+        }
+    };
 
     inline void set_zero(RuleTensor<double> &ruleTensor) {
-        switch (ruleTensor.which() + 1) {
-            case 1:
-                set_zero_ranked<1>(ruleTensor);
-                break;
-            case 2:
-                set_zero_ranked<2>(ruleTensor);
-                break;
-            case 3:
-                set_zero_ranked<3>(ruleTensor);
-                break;
-            case 4:
-                set_zero_ranked<4>(ruleTensor);
-                break;
-            default:
-                abort();
-        }
+        SetZeroVisitor setZeroVisitor;
+        boost::apply_visitor(setZeroVisitor, ruleTensor);
     }
 
     template<unsigned rank, bool isConst = false>
