@@ -461,10 +461,10 @@ namespace Trainer {
     // Boost static visitors
 
 
-    struct OneDimensionalVectorCreator : boost::static_visitor<RuleTensor<double>> {
+    struct SizeOneTensorCreator : boost::static_visitor<RuleTensor<double>> {
         double value;
 
-        OneDimensionalVectorCreator(
+        SizeOneTensorCreator(
                 double value
         )
                 :
@@ -476,8 +476,7 @@ namespace Trainer {
         RuleTensorRaw<double, rank>
         operator()(const RuleTensorRaw<double, rank>& /*tensor*/) {
             Eigen::array<Eigen::Index, rank> dim;
-            for(Eigen::Index i = 0; i < rank; ++i)
-                dim[i] = 1;
+            std::fill(dim.begin(), dim.end(), 1);
             RuleTensorRaw<double, rank> result(dim);
             result.setConstant(value);
 

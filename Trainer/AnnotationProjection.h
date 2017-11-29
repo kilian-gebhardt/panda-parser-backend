@@ -118,7 +118,7 @@ namespace Trainer {
 
         auto projRuleWeights = std::vector<RuleTensor<double>>();
         projRuleWeights.reserve(hg->get_edges().lock()->size());
-        OneDimensionalVectorCreator odc(0.0);
+        SizeOneTensorCreator odc(0.0);
         for(size_t ruleId = 0; ruleId < (*annotation.ruleWeights).size(); ++ruleId)
             projRuleWeights.push_back(boost::apply_visitor(odc, (*annotation.ruleWeights)[ruleId]));
 
@@ -138,7 +138,7 @@ namespace Trainer {
 
             if (std::abs(normalisationVector(0)) < std::exp(-50)) { // normalization is 0, apply a defalut value
                 size_t norm = grammarInfo.normalizationGroups[rule[0]].size();
-                OneDimensionalVectorCreator nvc(1.0/(double)norm);
+                SizeOneTensorCreator nvc(1.0/(double)norm);
 
                 projRuleWeights[ruleId]  = boost::apply_visitor(nvc, ruleVariant);
                 continue;

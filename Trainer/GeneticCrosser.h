@@ -233,7 +233,7 @@ namespace Trainer {
         // prepare the new ruleWeight vector by initializing with the correct ranks
         std::vector<RuleTensor<double>> ruleWeights;
         ruleWeights.reserve(la1.ruleWeights->size());
-        OneDimensionalVectorCreator odvc(0);
+        SizeOneTensorCreator odvc(0);
         for(size_t ruleId = 0; ruleId < la1.ruleWeights->size(); ++ ruleId){
             ruleWeights.push_back(boost::apply_visitor(odvc, (*la1.ruleWeights)[ruleId]));
         }
