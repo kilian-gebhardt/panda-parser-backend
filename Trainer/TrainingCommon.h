@@ -531,7 +531,7 @@ namespace Trainer {
         {};
 
         template<int rank>
-        typename std::enable_if<rank != 1, RuleTensorRaw<double, rank-1>>::type
+        typename std::enable_if<(rank > 1), RuleTensorRaw<double, rank-1>>::type
         operator()(const RuleTensorRaw<double, rank>& tensor) {
             if (multiplyDimension < 0 || multiplyDimension > rank-1)
                 multiplyDimension = rank -1;
@@ -540,8 +540,9 @@ namespace Trainer {
             return result;
         }
 
-        RuleTensorRaw<double, 1>
-        operator()(const RuleTensorRaw<double, 1>& /*tensor*/) const {
+        template <int rank>
+        typename std::enable_if<(rank <= 1), RuleTensorRaw<double, 1>>::type
+        operator()(const RuleTensorRaw<double, rank>& /*tensor*/) const {
             std::cerr << "RuleTensorContractor can only handle Tensors of at least dimension 2!";
             abort();
         }
