@@ -313,8 +313,6 @@ namespace Trainer {
                 FormatConversionVisitor formatConversionVisitor(rule_weight);
                 boost::apply_visitor(formatConversionVisitor, rule_tensor);
 
-                const size_t dims = grammarInfo.rule_to_nonterminals[rule].size();
-
                 allocated += rule_weight.size();
                 ++rule;
             }

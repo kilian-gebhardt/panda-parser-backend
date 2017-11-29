@@ -29,7 +29,8 @@ namespace Trainer {
         {
             RuleTensorRaw<bool, 0> insane = ruleCountRaw.isnan().any() || ruleCountRaw.isinf().any();
             if (insane(0)) {
-                std::cerr << " rule count " << std::endl << ruleCountRaw << std::endl << " is numerically problematic " << std::endl;
+                std::cerr << " rule count " << std::endl << ruleCountRaw << std::endl
+                          << " is numerically problematic " << std::endl;
                 return false;
             }
             return true;
@@ -95,7 +96,8 @@ namespace Trainer {
             }
             RuleTensorRaw<bool, 0> insane = rootCounts.isnan().any() || rootCounts.isinf().any();
             if (insane(0)) {
-                std::cerr << " root counts " << std::endl << rootCounts << std::endl << " are numerically problematic " << std::endl;
+                std::cerr << " root counts " << std::endl << rootCounts << std::endl
+                          << " are numerically problematic " << std::endl;
                 return false;
             }
             auto visitor = ruleSanityVisitor();
