@@ -22,22 +22,6 @@
 #endif
 
 namespace Trainer {
-    struct ruleSanityVisitor : boost::static_visitor<bool>
-    {
-        template<class T>
-        bool operator()(const T& ruleCountRaw)const
-        {
-            RuleTensorRaw<bool, 0> insane = ruleCountRaw.isnan().any() || ruleCountRaw.isinf().any();
-            if (insane(0)) {
-                std::cerr << " rule count " << std::endl << ruleCountRaw << std::endl
-                          << " is numerically problematic " << std::endl;
-                return false;
-            }
-            return true;
-        }
-    };
-
-
     class Counts : boost::addable<Counts> {
     public:
         std::shared_ptr<StorageManager> storageManager;
@@ -100,7 +84,7 @@ namespace Trainer {
                           << " are numerically problematic " << std::endl;
                 return false;
             }
-            auto visitor = ruleSanityVisitor();
+            auto visitor = ValidityChecker();
             for (auto ruleCount : *ruleCounts) {
                 if (not ruleCount.apply_visitor(visitor))
                     return false;
