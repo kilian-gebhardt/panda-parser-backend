@@ -274,9 +274,9 @@ namespace Trainer {
             return quotient;
         else {
             if (numerator >= denominator)
-                return 1;
+                return 1.0;
             else
-                return 0;
+                return 0.0;
         }
     };
 
@@ -644,8 +644,8 @@ namespace Trainer {
             if (SimpleExpector<Nonterminal, TraceID>::debug or p_xy_joined(0) > p_x(0))
                 std::cerr << "p(x,y)/p(x) = " << p_xy_joined(0) << '/' << p_x(0) << ", ";
 
-            double scale = p_x(0) / p_xy_joined(0);
-            if (std::isinf(scale) or scale < 1.0 or std::isnan(scale))
+            double scale = safe_division(p_x(0), p_xy_joined(0));
+            if (scale < 1.0)
                 return 1.0;
             else
                 return std::min(scale, maxScale);
