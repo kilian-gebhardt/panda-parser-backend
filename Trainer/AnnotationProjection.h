@@ -15,69 +15,6 @@ namespace Trainer {
     static const unsigned int IO_CYCLE_LIMIT_DEFAULT = 200;
 
 
-    void check_rule_weight_for_consistency(
-            const RuleTensor<double> &res
-            , const std::vector<Trainer::WeightVector> &insides
-            , const Trainer::WeightVector &outside
-            , const Eigen::Tensor<double, 0> &normalization
-            , std::ostringstream &rTstr
-            , std::vector<double> dimens
-            , double calc
-    ) {
-        double sum = 0;
-        switch (res.which() + 1) {
-            case 1: {
-                const unsigned int ruleRank = 1;
-                const RuleTensorRaw<double, ruleRank>& ruleTensor = boost::get<Trainer::RuleTensorRaw<double
-                                                                                                     , ruleRank>>(
-                        res
-                );
-                RuleTensorRaw<double, 0> sumvec = ruleTensor.sum();
-                sum = sumvec(0);
-                break;
-            }
-            case 2: {
-                const unsigned int ruleRank = 2;
-                const RuleTensorRaw<double, ruleRank>& ruleTensor = boost::get<Trainer::RuleTensorRaw<double
-                                                                                                     , ruleRank>>(
-                        res
-                );
-                RuleTensorRaw<double, 0> sumvec = ruleTensor.sum();
-                sum = sumvec(0);
-                break;
-            }
-            case 3: {
-                const unsigned int ruleRank = 3;
-                const RuleTensorRaw<double, ruleRank>& ruleTensor = boost::get<Trainer::RuleTensorRaw<double
-                                                                                                     , ruleRank>>(
-                        res
-                );
-                RuleTensorRaw<double, 0> sumvec = ruleTensor.sum();
-                sum = sumvec(0);
-                break;
-            }
-            default: {
-                std::cerr << "Rules with such a rank are not supported to be checked!";
-            }
-        }
-        if (sum > 1) {
-            std::cerr << "The sum of a rule was larger than 1: " << sum
-                      << "  inside weights: \n";
-            for (auto &inside : insides)
-                std::cerr << " / " << inside << "(dim: " << inside.dimension(0) << ")";
-            std::cerr << "\n  outside weights: " << outside
-                      << "  rule tensor:\n" << rTstr.str() << "\n"
-                      << "  normalization: " << normalization
-                      << "  calc: " << calc
-                      << "  dimensions: ";
-
-            for (const auto d : dimens)
-                std::cerr << " " << d;
-            std::cerr << std::endl;
-        }
-    }
-
-
     template<typename Nonterminal>
     HypergraphPtr<Nonterminal> hypergraph_from_grammar(const GrammarInfo2& grammarInfo) {
         // build HG
