@@ -54,6 +54,8 @@ namespace Trainer {
 
             Eigen::array<int, numberInOne> sumDimensions1;
             Eigen::array<int, rank - numberInOne> sumDimensions2;
+            sumDimensions1.fill(0);
+            sumDimensions2.fill(0);
             size_t dimIndex1 = 0;
             size_t dimIndex2 = 0;
 
@@ -69,11 +71,14 @@ namespace Trainer {
             // The following loop guarantees the initialization of sumDimension1/2, because
             // a) edge->get_sources().size() == rank - 1
             // b) rank > numberInOne > 0  ==> rank >= 2
-            for (int dim = 0; dim < edge->get_sources().size(); ++dim) {
+            for (size_t dim {0}; dim < edge->get_sources().size(); ++dim) {
+//                #pragma GCC diagnostic push
+//                #pragma GCC diagnostic ignored "-W"
                 if (keepFromOne[edge->get_sources()[dim]->get_label()] ^ (!lhsIsFirst))
-                    sumDimensions1[dimIndex1++] = dim + 1;
+                    sumDimensions1[dimIndex1++] = (int) (dim + 1);
                 else
-                    sumDimensions2[dimIndex2++] = dim + 1;
+                    sumDimensions2[dimIndex2++] = (int) (dim + 1);
+//                #pragma GCC diagnostic pop
             }
 
             // calculate the probability to be distributed

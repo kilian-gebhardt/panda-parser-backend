@@ -194,7 +194,9 @@ namespace Trainer {
 
         void make_proper(const GrammarInfo2& grammarInfo) {
             size_t nont_id {0};
+            #pragma GCC diagnostic push
             for (const auto ruleSet : grammarInfo.normalizationGroups) {
+                #pragma GCC diagnostic ignored "-Wsign-compare"
                 for (int index {0}; index < nonterminalSplits[nont_id]; ++index) {
                     VectorSummer vectorSummer(index);
                     double sum {0.0};
@@ -224,6 +226,7 @@ namespace Trainer {
                 }
                 ++nont_id;
             }
+            #pragma GCC diagnostic pop
         }
 
 
