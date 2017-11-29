@@ -206,7 +206,7 @@ namespace Trainer {
 
                     if (std::abs(sum) < std::exp(-30) or std::isnan(sum)) { // The sum is 0 or nan
                         for (auto ruleID : ruleSet) {
-                            TensorValueSetter tvs(1.0, index);
+                            TensorChipValueSetter tvs(1.0, index);
                             boost::apply_visitor(tvs, (*ruleWeights)[ruleID]);
                         }
                         double sum2 {0.0};

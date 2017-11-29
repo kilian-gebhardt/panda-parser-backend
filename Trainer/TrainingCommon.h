@@ -484,11 +484,11 @@ namespace Trainer {
         }
     };
 
-    struct TensorValueSetter : boost::static_visitor<void> {
+    struct TensorChipValueSetter : boost::static_visitor<void> {
         const double value;
         const int index;
 
-        TensorValueSetter(double value, int index) : value(value), index(index) {};
+        TensorChipValueSetter(double value, int index) : value(value), index(index) {};
 
         template<int rank>
         void
