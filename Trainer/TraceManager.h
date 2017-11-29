@@ -296,6 +296,7 @@ namespace Trainer {
         oID originalID;
         HypergraphPtr<Nonterminal> hypergraph;
         Element<Node<Nonterminal>> goal;
+        double frequency;
 
 
         mutable std::vector<Element<Node<Nonterminal>>> topologicalOrder;
@@ -307,9 +308,10 @@ namespace Trainer {
                 , const oID oid
                 , HypergraphPtr<Nonterminal> aHypergraph
                 , Element<Node<Nonterminal>> aGoal
+                , double aFrequency = 1.0
         )
                 : id(aId), manager(std::move(aManager)), originalID(std::move(oid)), hypergraph(std::move(aHypergraph)),
-                  goal(std::move(aGoal)) {}
+                  goal(std::move(aGoal)), frequency(aFrequency) {}
 
 
         const Element<Trace<Nonterminal, oID>> get_element() const noexcept {
@@ -328,6 +330,9 @@ namespace Trainer {
             return goal;
         }
 
+        double get_frequency() const {
+            return frequency;
+        }
 
         bool has_topological_order() const {
             return get_topological_order().size() == hypergraph->size();
@@ -780,7 +785,7 @@ namespace Trainer {
         serialize(std::ostream &out) const {
             Manage::serialize_string_or_size_t(out, originalID);
             out << ";" << goal;
-            out << std::endl;
+            out << ";" << frequency << std::endl;
             hypergraph->serialize(out);
         }
 
@@ -796,8 +801,11 @@ namespace Trainer {
             char sep;
             Manage::ID goalID;
             Manage::deserialize_string_or_size_t(in, l);
+            double freq;
             in >> sep;
             in >> goalID;
+            in >> sep;
+            in >> freq;
             HypergraphPtr<Nonterminal> hg = Hypergraph<Nonterminal>::deserialize(
                     in
                     , man->get_node_labels()
@@ -805,7 +813,7 @@ namespace Trainer {
             );
             Element<Node<Nonterminal>> goalElement(goalID, hg);
 
-            return Trace<Nonterminal, oID>(id, man, l, hg, goalElement);
+            return Trace<Nonterminal, oID>(id, man, l, hg, goalElement, freq);
         }
 
     };
@@ -840,9 +848,9 @@ namespace Trainer {
         };
 
         Element<Trace<Nonterminal, TraceID>>
-        create(TraceID oid, HypergraphPtr<Nonterminal> hg, Element<Node<Nonterminal>> goal){
+        create(TraceID oid, HypergraphPtr<Nonterminal> hg, Element<Node<Nonterminal>> goal, double frequency = 1.0){
             const Manage::ID id = Manager<Trace<Nonterminal, TraceID>>::infos.size();
-            Manager<Trace<Nonterminal, TraceID>>::infos.emplace_back(id, this->get_shared_ptr(), oid, hg, goal);
+            Manager<Trace<Nonterminal, TraceID>>::infos.emplace_back(id, this->get_shared_ptr(), oid, hg, goal, frequency);
             return Manager<Trace<Nonterminal, TraceID>>::infos[id].get_element();
         }
 
@@ -876,7 +884,7 @@ namespace Trainer {
 
 
         void serialize(std::ostream &o) {
-            o << "TraceManager Version 1" << std::endl;
+            o << "TraceManager Version 1.1" << std::endl;
 
             o << "NodeLabels:" << std::endl;
             Manage::serialize_labels<Nonterminal>(o, *nodeLabels);
@@ -894,7 +902,7 @@ namespace Trainer {
         static TraceManagerPtr<Nonterminal, TraceID> deserialize(std::istream &in) {
             std::string line;
             std::getline(in, line);
-            if (line != "TraceManager Version 1")
+            if (line != "TraceManager Version 1.1")
                 throw std::string("Version Mismatch for TraceManager");
 
             std::getline(in, line); // read: "NodeLabels:"
@@ -923,7 +931,7 @@ namespace Trainer {
 
             for (int i = 0; i < noItems; ++i) {
                 Trace<Nonterminal, TraceID> trace{Trace<Nonterminal, TraceID>::deserialize(in, i, traceManager)};
-                traceManager->create(trace.get_original_id(), trace.get_hypergraph(), trace.get_goal());
+                traceManager->create(trace.get_original_id(), trace.get_hypergraph(), trace.get_goal(), trace.get_frequency());
             }
 
             return traceManager;
@@ -1024,8 +1032,9 @@ namespace Trainer {
     template<typename Nonterminal, typename TraceID>
     void add_hypergraph_to_trace(TraceManagerPtr<Nonterminal, TraceID> traceManager
                                  , HypergraphPtr<Nonterminal> hypergraph
-                                 , Element<Node<Nonterminal>> root) {
-        traceManager->create(0L, hypergraph, root);
+                                 , Element<Node<Nonterminal>> root
+                                 , double frequency = 1.0) {
+        traceManager->create(0L, hypergraph, root, frequency);
     };
 
     template<typename Nonterminal, typename TraceID>

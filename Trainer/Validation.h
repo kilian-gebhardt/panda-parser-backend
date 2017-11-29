@@ -136,7 +136,7 @@ namespace Trainer {
                 if (not std::isnan(traceRootProbability(0))
                     and not std::isinf(traceRootProbability(0))
                     and traceRootProbability(0) > 0) {
-                    logLikelihood += log(traceRootProbability(0));
+                    logLikelihood += log(traceRootProbability(0)) * trace->get_frequency();
                 } else {
                     ++failures;
                     //std::cerr << "trace Root Probability " << traceRootProbability(0) << std::endl;

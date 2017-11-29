@@ -11,10 +11,11 @@
     template<typename Nonterminal, typename Terminal, typename TraceID>
     void add_trace_to_manager(const LCFR::LCFRS_Parser<Nonterminal, Terminal> & parser
                               , Trainer::TraceManagerPtr<Nonterminal, TraceID> traceManager
+                              , double frequency = 1.0
     ) {
         auto hg = parser.convert_trace_to_hypergraph(traceManager->get_node_labels()
                                                      , traceManager->get_edge_labels());
-        traceManager->create(0L, hg.first, hg.second);
+        traceManager->create(0L, hg.first, hg.second, frequency);
     }
 //}
 

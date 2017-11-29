@@ -262,7 +262,7 @@ namespace Trainer {
                     Eigen::Tensor<bool, 0> inf = fraction.isinf().any();
                     if (not nan(0) and not inf(0)) {
                         auto &target = nonterminalFrequencies.nonterminalFrequencies[node->get_label_id()];
-                        target += fraction;
+                        target += fraction * traceIterator->get_frequency();
                     }
                 }
             }

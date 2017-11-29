@@ -14,7 +14,7 @@ namespace Manage {
     }
 
 
-    void serialize_string_or_size_t(std::ostream& out, const std::string str){
+    void serialize_string_or_size_t(std::ostream& out, const std::string str) {
         out << str.size() << ';' << str;
     }
 
@@ -32,7 +32,7 @@ namespace Manage {
     }
 
 
-    void deserialize_string_or_size_t(std::istream& in, size_t& s){
+    void deserialize_string_or_size_t(std::istream& in, size_t& s) {
         in >> s;
     }
 

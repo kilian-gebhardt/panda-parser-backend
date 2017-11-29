@@ -53,6 +53,7 @@ namespace DCP {
     template<typename Nonterminal, typename Terminal, typename Position, typename TraceID>
     void add_trace_to_manager(const SDCPParser<Nonterminal, Terminal, Position> & parser
                               , Trainer::TraceManagerPtr<Nonterminal, TraceID> traceManager
+                              , double frequency = 1.0
     ) {
         std::pair<HypergraphPtr<Nonterminal>, Element<Node<Nonterminal>>> transformedTrace{
                 DCP::transform_trace_to_hypergraph<Nonterminal>(
@@ -60,7 +61,7 @@ namespace DCP {
                         , traceManager->get_node_labels()
                         , traceManager->get_edge_labels()
                 )};
-        traceManager->create(0L, transformedTrace.first, transformedTrace.second);
+        traceManager->create(0L, transformedTrace.first, transformedTrace.second, frequency);
     }
 }
 #endif //STERMPARSER_DCP_UTIL_H

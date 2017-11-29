@@ -299,7 +299,7 @@ namespace Manage {
                 , void
         >
         serialize(std::ostream& o) {
-            o << "Hypergraph Version 1" << std::endl;
+            o << "Hypergraph Version 1.1" << std::endl;
 
             o << Manager<Node<NodeLabelT>>::size() << " Nodes:" << std::endl;
             for(const auto& node : *this) {
@@ -330,7 +330,7 @@ namespace Manage {
             std::string line;
             std::getline(in, line); // read the rest of the line (only linebreak)
             std::getline(in, line);
-            if(line != "Hypergraph Version 1")
+            if(line != "Hypergraph Version 1.1")
                 throw std::string("Version Mismatch for Hypergraph!");
 
             size_t noItems;

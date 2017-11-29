@@ -159,7 +159,7 @@ namespace Trainer {
 
                 // output likelihood information based on old probability assignment
                 Eigen::Tensor<double, 0> corpusProbSum = counts.rootCounts.sum();
-                std::cerr << "recognized " << corpusProbSum;
+                std::cerr << "training root counts " << corpusProbSum;
                 std::cerr << " corpus likelihood " << counts.logLikelihood;
 
                 maximizer->maximize(latentAnnotation, counts);
@@ -238,7 +238,7 @@ namespace Trainer {
 
                 // output likelihood information based on old probability assignment
                 Eigen::Tensor<double, 0> corpusProbSum = counts.rootCounts.sum();
-                std::cerr << " training recognized " << corpusProbSum;
+                std::cerr << " training root counts " << corpusProbSum;
                 std::cerr << " training corpus likelihood " << counts.logLikelihood;
 
                 maximizer->maximize(latentAnnotation, counts);
@@ -525,14 +525,15 @@ namespace Trainer {
                 Eigen::Tensor<double, 0> traceRootProbability = traceRootProbabilities.sum();
                 Eigen::Tensor<bool, 0> traceRootProbabilitiesImplausible
                         = (traceRootProbabilities.isinf().any() || traceRootProbabilities.isnan().any());
-                const double scale = compute_counting_scalar(traceRootProbabilities, traceIterator, latentAnnotation);
+                const double scale = trace->get_frequency()
+                                     * compute_counting_scalar(traceRootProbabilities, traceIterator, latentAnnotation);
 
                 if ( not traceRootProbabilitiesImplausible(0)
                      and not std::isnan(traceRootProbability(0))
                      and not std::isinf(traceRootProbability(0))
                      and traceRootProbability(0) > 0
                     ) {
-                    counts.rootCounts += traceRootProbabilities / traceRootProbability(0);
+                    counts.rootCounts += scale * traceRootProbabilities / traceRootProbability(0);
                     counts.logLikelihood += log(traceRootProbability(0));
 
                     Eigen::Tensor<bool, 0> badCounts = counts.rootCounts.isinf().any() || counts.rootCounts.isnan().any();
