@@ -213,12 +213,12 @@ namespace Trainer {
                         for (auto ruleID : ruleSet) {
                             sum2 += boost::apply_visitor(vectorSummer, (*ruleWeights)[ruleID]);
                         }
-                        RuleTensorMultiplier rtd(1.0 / sum2, index);
+                        TensorChipMultiplier rtd(1.0 / sum2, index);
                         for (auto ruleID : ruleSet) {
                             boost::apply_visitor(rtd, (*ruleWeights)[ruleID]);
                         }
                     } else if (std::abs(sum - 1.0) > std::exp(-30)) { // does not sum to 1
-                        RuleTensorMultiplier rtd(1.0 / sum, index);
+                        TensorChipMultiplier rtd(1.0 / sum, index);
                         for (auto ruleID : ruleSet) {
                             boost::apply_visitor(rtd, (*ruleWeights)[ruleID]);
                         }

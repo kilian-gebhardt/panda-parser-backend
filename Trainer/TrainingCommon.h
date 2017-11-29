@@ -500,11 +500,11 @@ namespace Trainer {
 
 
 
-    struct RuleTensorMultiplier : boost::static_visitor<void> {
+    struct TensorChipMultiplier : boost::static_visitor<void> {
         double value;
         const int index;
 
-        RuleTensorMultiplier(double value, int index=0)
+        TensorChipMultiplier(double value, int index=0)
                 : value(value), index(index)
         {};
 
