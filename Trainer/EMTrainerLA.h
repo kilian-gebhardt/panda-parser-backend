@@ -172,9 +172,11 @@ namespace Trainer {
     };
 
     class EMTrainerLAValidation : public EMTrainerLA {
+        std::map<TrainingMode, unsigned> modeMinEpochs;
         std::map<TrainingMode, unsigned> modeMaxDrops;
         std::shared_ptr<ValidationLA> validator;
         unsigned maxDrops {6};
+        unsigned minEpochs {6};
 
         virtual void updateSettings() {
             EMTrainerLA::updateSettings();
@@ -182,6 +184,10 @@ namespace Trainer {
                 maxDrops = modeMaxDrops[trainingMode];
             else
                 maxDrops = modeMaxDrops[Default];
+            if (modeMinEpochs.count(trainingMode))
+                minEpochs = modeMinEpochs[trainingMode];
+            else
+                minEpochs = modeMinEpochs[Default];
         }
 
     public:
@@ -190,13 +196,19 @@ namespace Trainer {
                               , std::shared_ptr<Maximizer> maximizer
                               , std::shared_ptr<ValidationLA> validator
                               , std::shared_ptr<CountsModifier> countsModifier
+                              , unsigned minEpochs = 6
                               , unsigned maxDrops = 6)
                 : EMTrainerLA(epochs, expector, maximizer, countsModifier) , validator(validator), maxDrops(maxDrops) {
             modeMaxDrops[Default] = maxDrops;
+            modeMinEpochs[Default] = minEpochs;
         };
 
         void setMaxDrops(unsigned maxDrops, TrainingMode mode=Default) {
             modeMaxDrops[mode] = maxDrops;
+        }
+
+        void setMinEpochs(unsigned minEpochs, TrainingMode mode = Default) {
+            modeMinEpochs[mode] = minEpochs;
         }
 
         virtual void train(LatentAnnotation &latentAnnotation) {
@@ -218,17 +230,16 @@ namespace Trainer {
                 }
                 previousValidationScore = validationScore;
 
-                if (validationScore >= bestValidationScore) {
+                if (epoch < minEpochs or validationScore >= bestValidationScore) {
                     bestValidationScore = validationScore;
                     bestAnnotation = latentAnnotation;
                     bestEpoch = epoch;
                 }
 
-
                 std::cerr << " validation corpus " << validator->quantity() << " " << validationScore
                           << " validation failures " << validator->getParseFailures();
 
-                if (drops >= maxDrops) {
+                if (epoch >= minEpochs and drops >= maxDrops) {
                     std::cerr << std::endl;
                     break;
                 }
@@ -250,7 +261,7 @@ namespace Trainer {
                 std::cerr << " validation corpus " << validator->quantity() << " " << validationScore
                           << " validation failures " << validator->getParseFailures() << std::endl;
 
-                if (validationScore >= bestValidationScore) {
+                if (epoch < minEpochs or validationScore >= bestValidationScore) {
                     bestValidationScore = validationScore;
                     bestAnnotation = latentAnnotation;
                     bestEpoch = epoch;
