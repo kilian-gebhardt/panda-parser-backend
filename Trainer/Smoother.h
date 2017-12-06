@@ -52,7 +52,8 @@ namespace Trainer {
         }
 
         void smooth(LatentAnnotation & latentAnnotation) {
-            std::cerr << "Smoothing rules with factor " << smoothingFactor << "." << std::endl;
+            std::cerr << "Smoothing rules with factors " << smoothingFactor
+                      << " and " << smoothingFactorUnary << "." << std::endl;
             TensorSmoother tensorSmoother(smoothingFactor, smoothingFactorUnary);
             for (RuleTensor<double> & rule : *(latentAnnotation.ruleWeights)) {
                 boost::apply_visitor(tensorSmoother, rule);
@@ -73,6 +74,10 @@ namespace Trainer {
 
         double get_smoothing_factor() {
             return smoothingFactor;
+        }
+
+        double get_smoothing_factor_unary() {
+            return smoothingFactorUnary;
         }
     };
 }

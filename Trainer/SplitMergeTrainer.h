@@ -288,7 +288,7 @@ namespace Trainer {
                     abort();
 
             // smoothing only if effective
-            if (smoother->get_smoothing_factor() > 0.0) {
+            if (smoother->get_smoothing_factor() > 0.0 or smoother->get_smoothing_factor_unary() > 0.0) {
                 smoother->smooth(laMerged);
                 emTrainer->setTrainingMode(Smoothing);
                 emTrainer->train(laMerged);
