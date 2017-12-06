@@ -68,6 +68,7 @@ namespace Trainer {
             , MAPTYPE <Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
             , const double ioPrecision = IO_PRECISION_DEFAULT
             , const unsigned int ioCycleLimit = IO_CYCLE_LIMIT_DEFAULT
+            , const bool debug = false
     ) {
 
         std::shared_ptr<Trainer::TraceManager2<Nonterminal, size_t>> tMPtr = std::make_shared<Trainer::TraceManager2<
@@ -87,6 +88,8 @@ namespace Trainer {
                 , annotation.rootWeights
                 , insideWeights
                 , outsideWeights
+                , false
+                , debug
         );
 
     }
@@ -98,6 +101,7 @@ namespace Trainer {
             , const GrammarInfo2 &grammarInfo
             , const double ioPrecision = IO_PRECISION_DEFAULT
             , const size_t ioCycleLimit = IO_CYCLE_LIMIT_DEFAULT
+            , const bool debug = false
     ) {
 
         HypergraphPtr<Nonterminal> hg = hypergraph_from_grammar<Nonterminal>(grammarInfo);
@@ -112,6 +116,7 @@ namespace Trainer {
                 , outsideWeights
                 , ioPrecision
                 , ioCycleLimit
+                , debug
         );
 
 
@@ -136,17 +141,29 @@ namespace Trainer {
             );
             Eigen::Tensor<double, 0> normalisationVector = normalisationCalc;
 
-            if (std::abs(normalisationVector(0)) < std::exp(-50)) { // normalization is 0, apply a defalut value
+            if (debug) {
+                std::cerr << "rule " << ruleId << " normalizationVector " << normalisationVector << std::endl;
+                std::cerr << "inside weight " << insideWeights[edge->get_target()] << std::endl;
+                std::cerr << "outside weight " << outsideWeights[edge->get_target()] << std::endl;
+                std::cerr << "rule weight before projection " << ruleVariant << std::endl;
+            }
+
+            if (std::abs(normalisationVector(0)) < std::exp(-50)) { // normalization is 0, apply a default value
                 size_t norm = grammarInfo.normalizationGroups[rule[0]].size();
                 SizeOneTensorCreator nvc(1.0/(double)norm);
 
                 projRuleWeights[ruleId]  = boost::apply_visitor(nvc, ruleVariant);
-                continue;
 
+            } else {
+                InsideOutsideMultiplierAndNormalizer<Nonterminal> ioMultiplier(
+                        edge
+                        , insideWeights
+                        , outsideWeights
+                        , normalisationVector(0));
+                projRuleWeights[ruleId] = boost::apply_visitor(ioMultiplier, ruleVariant);
             }
 
-            InsideOutsideMultiplierAndNormalizer<Nonterminal> ioMultiplier(edge, insideWeights, outsideWeights, normalisationVector(0));
-            projRuleWeights[ruleId] = boost::apply_visitor(ioMultiplier, ruleVariant);
+            if (debug) std::cerr << "rule weight after projection " << projRuleWeights[ruleId] << std::endl;
         }
 
         // calculate root weights
@@ -203,7 +220,8 @@ namespace Trainer {
                                    , insideWeights
                                    , outsideWeights
                                    , ioPrecision
-                                   , ioCycleLimit);
+                                   , ioCycleLimit
+                                   , debug);
 
             size_t nont_id {0};
             for (auto sourceLists : mergeSources) {
@@ -214,6 +232,10 @@ namespace Trainer {
                 auto inside = insideWeights.at(hg->get_node_by_label(nont_id));
                 auto outside = outsideWeights.at(hg->get_node_by_label(nont_id));
                 Eigen::Tensor<double, 1> io_prod = inside * outside;
+
+                if (debug)
+                    std::cerr << nont_id << " inside {" << inside << "} outside {" << outside << "} product {"
+                              << io_prod << "}" << std::endl;
 
                 for (auto sourceList : sourceLists){
                     count += sourceList.size();
@@ -270,9 +292,11 @@ namespace Trainer {
             , const std::vector<std::vector<std::vector<size_t>>> & merge_sources
             , const double ioPrecision = IO_PRECISION_DEFAULT
             , const unsigned int ioCycleLimit = IO_CYCLE_LIMIT_DEFAULT
+            , const bool debug = false
     ) {
-        MergeListMergePreparator<Nonterminal> mergePreparator(grammarInfo, ioPrecision, ioCycleLimit);
+        MergeListMergePreparator<Nonterminal> mergePreparator(grammarInfo, debug, ioPrecision, ioCycleLimit);
         MergeInfo mi = mergePreparator.merge_prepare(annotation, merge_sources);
+        if (debug) std::cerr << mi << std::endl;
         Merger merger(grammarInfo, std::make_shared<StorageManager>());
         return merger.merge(annotation, mi);
     }

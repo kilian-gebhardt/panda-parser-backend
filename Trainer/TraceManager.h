@@ -660,6 +660,7 @@ namespace Trainer {
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
                 , bool scaling = false
+                , bool debug = false
         ) const {
             MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
             MAPTYPE<Element<Node<Nonterminal>>, int> outsideLogScales;
@@ -676,32 +677,40 @@ namespace Trainer {
             while(true) {
                 double maxChange {0.0};
                 ++cycle_count;
+                if (debug) std::cerr << "cycle count " << cycle_count << std::endl;
 
                 for (const Element<Node<Nonterminal>> &node : *hypergraph){
 
-                    Trainer::WeightVector &outsideWeight = outsideWeights.at(node);
-                    Trainer::WeightVector oldWeight = outsideWeight;
+                    Trainer::WeightVector outsideWeight = outsideWeights.at(node);
+                    Trainer::WeightVector oldWeight = outsideWeights.at(node);
 
                     if (node == get_goal())
                         outsideWeight = root;
                     else
                         outsideWeight.setZero();
 
+                    if (debug) std::cerr << "node " << node << " outsideWeight " << outsideWeight << " oldWeight "
+                                         << oldWeight << std::endl;
 
                     for (const auto &outgoing : get_hypergraph()->get_outgoing_edges(node)) {
                         OutsideWeightComputation<Nonterminal> outsideWeightComputation(
                                 insideWeights
                                 , outsideWeights
-                                ,outsideWeight
+                                , outsideWeight
                                 , outgoing
                                 , outsideLogScales[node]
                                 , insideLogScales
                                 , outsideLogScales);
+                        boost::apply_visitor(outsideWeightComputation, rules[outgoing.first->get_label_id()]);
                     }
+
+                    outsideWeights[node] = outsideWeight;
 
                     // TODO: move scaling to outer loop!
                     if (scaling)
                         outsideLogScales[node] = scaleTensor(outsideWeight, outsideLogScales[node]);
+
+                    if (debug) std::cerr << "outsideWeight " << outsideWeight << " log scales " << outsideLogScales[node] << std::endl;
 
                     Trainer::WeightVector diffVector(outsideWeight.dimensions());
                     diffVector = oldWeight - outsideWeight;
@@ -710,6 +719,8 @@ namespace Trainer {
                     double diff = diffP(0);
                     maxChange = std::max(maxChange, diff);
                 }
+
+                if (debug) std::cerr << "maxChange " << maxChange << std::endl;
 
                 // stop the iteration:
                 if(cycle_count > manager.lock()->get_io_cycle_limit() || maxChange < manager.lock()->get_io_precision())
