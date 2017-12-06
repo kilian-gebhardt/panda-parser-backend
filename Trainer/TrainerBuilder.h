@@ -224,8 +224,8 @@ namespace Trainer {
             return *this;
         }
 
-        SplitMergeTrainerBuilder &set_smoothing_factor(double smoothingFactor = 0.01) {
-            smoother = std::make_shared<Smoother>(grammarInfo, smoothingFactor);
+        SplitMergeTrainerBuilder &set_smoothing_factor(double smoothingFactor = 0.01, double smoothingFactorUnary = 0.1) {
+            smoother = std::make_shared<Smoother>(grammarInfo, smoothingFactor, smoothingFactorUnary);
             return *this;
         }
 
