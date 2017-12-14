@@ -484,6 +484,16 @@ namespace Trainer {
         }
     };
 
+    struct SizeOneTensorAccessor : boost::static_visitor<double> {
+        template<int rank>
+        double
+        operator()(const RuleTensorRaw<double, rank>& tensor) {
+            Eigen::array<Eigen::Index, rank> dim;
+            std::fill(dim.begin(), dim.end(), 0);
+            return tensor(dim);
+        }
+    };
+
     struct TensorChipValueSetter : boost::static_visitor<void> {
         const double value;
         const int index;

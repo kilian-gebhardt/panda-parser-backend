@@ -108,6 +108,7 @@ namespace Trainer {
 
         MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> insideWeights;
         MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> outsideWeights;
+
         io_weights_for_grammar<Nonterminal>(
                 hg
                 , annotation
@@ -183,6 +184,79 @@ namespace Trainer {
         result.make_proper(grammarInfo);
 
         return result;
+    }
+
+
+    /**
+     * Compute the weight of an edge in the hypergraph according according to a latent annotation.
+     *
+     * Precisely, for each edge e = (v -> σ(v_1, …, v_n)) of the hypergraph,
+     * we compute
+     *   q(e) / (out(v) * in(v))      if variational
+     *   q(e) / in(root)              otherwise
+     * where q is computed according to the formula in [Petrov and Klein (2007), Figure 3]
+     * cf. http://aclweb.org/anthology/N07-1051
+     *
+     * A vector is returned that contains the projected weights in the order of edges in the hypergraph.
+     */
+    template<typename Nonterminal, typename TraceID>
+    std::vector<double> edge_weight_projection(
+        const LatentAnnotation &annotation
+        , const GrammarInfo2 &grammarInfo
+        , const Trace<Nonterminal, TraceID>& trace
+        , const bool variational=false
+    ) {
+        HypergraphPtr<Nonterminal> hg {trace.get_hypergraph()};
+
+        MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> insideWeights;
+        MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> outsideWeights;
+
+        for (const auto n : *hg) {
+            insideWeights[n] = Trainer::WeightVector(annotation.nonterminalSplits.at(n->get_label_id()));
+            outsideWeights[n] = Trainer::WeightVector(annotation.nonterminalSplits.at(n->get_label_id()));
+        }
+
+        trace.io_weights_la(*annotation.ruleWeights, annotation.rootWeights, insideWeights, outsideWeights);
+
+
+        std::vector<double> projections;
+        projections.reserve(hg->get_edges().lock()->size());
+
+        const auto &rootInsideWeight = insideWeights.at(trace.get_goal());
+        const auto &rootOutsideWeight = outsideWeights.at(trace.get_goal());
+        Eigen::Tensor<double, 0> root_weight{(rootOutsideWeight * rootInsideWeight).sum()};
+
+        double normalizer{root_weight(0)};
+
+        // do projection
+        for (const auto &edge : *hg->get_edges().lock()) {
+            size_t ruleId = edge->get_label();
+            const std::vector<size_t> &rule = grammarInfo.rule_to_nonterminals[ruleId];
+            const auto &ruleVariant = (*(annotation.ruleWeights))[ruleId];
+
+            if (variational) {
+                const auto normalisationCalc = insideWeights[edge->get_target()].contract(
+                        outsideWeights[edge->get_target()]
+                        , Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
+                );
+                Eigen::Tensor<double, 0> normalisationVector = normalisationCalc;
+                normalizer = normalisationVector(0);
+            }
+
+            InsideOutsideMultiplierAndNormalizer<Nonterminal> ioMultiplier(
+                        edge
+                        , insideWeights
+                        , outsideWeights
+                        , normalizer);
+
+            auto tensor {boost::apply_visitor(ioMultiplier, ruleVariant)};
+            SizeOneTensorAccessor sota;
+            double projected_weight {boost::apply_visitor(sota, tensor)};
+
+            projections.push_back(projected_weight);
+        }
+
+        return projections;
     }
 
 
