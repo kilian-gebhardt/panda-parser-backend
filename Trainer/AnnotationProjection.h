@@ -202,7 +202,6 @@ namespace Trainer {
     template<typename Nonterminal, typename TraceID>
     std::vector<double> edge_weight_projection(
         const LatentAnnotation &annotation
-        , const GrammarInfo2 &grammarInfo
         , const Trace<Nonterminal, TraceID>& trace
         , const bool variational=false
     ) {
@@ -231,7 +230,6 @@ namespace Trainer {
         // do projection
         for (const auto &edge : *hg->get_edges().lock()) {
             size_t ruleId = edge->get_label();
-            const std::vector<size_t> &rule = grammarInfo.rule_to_nonterminals[ruleId];
             const auto &ruleVariant = (*(annotation.ruleWeights))[ruleId];
 
             if (variational) {
