@@ -279,19 +279,6 @@ namespace Trainer {
 
     };
 
-    inline double safe_division(double numerator, double denominator) {
-        double quotient = numerator / denominator;
-        if (not std::isnan(quotient) or std::isinf(quotient))
-            return quotient;
-        else {
-            if (numerator >= denominator)
-                return 1.0;
-            else
-                return 0.0;
-        }
-    };
-
-
     template<typename Nonterminal>
     struct RuleCountComputer : boost::static_visitor<void> {
         const Element<HyperEdge<Nonterminal>> &edge;

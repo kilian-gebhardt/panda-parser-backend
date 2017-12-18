@@ -500,7 +500,38 @@ namespace Trainer {
             }
         }
 
-
+        inline void io_weights_la(
+                const std::vector<Trainer::RuleTensor<double>> &rules
+                , const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root
+                , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
+                , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
+                , MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
+                , MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales
+                , bool scaling = false
+                , bool debug = false
+        ) const {
+            if(has_topological_order()) {
+//                std::cerr << "Calculate IO-weights using topological order" << std::endl;
+                return io_weights_topological_la(rules
+                                                 , root
+                                                 , insideWeights
+                                                 , outsideWeights
+                                                 , insideLogScales
+                                                 , outsideLogScales
+                                                 , scaling);
+            }
+            else {
+//                std::cerr << "Calculate IO-weights using fixpoint approximation" << std::endl;
+                return io_weights_fixpoint_la(rules
+                                              , root
+                                              , insideWeights
+                                              , outsideWeights
+                                              , insideLogScales
+                                              , outsideLogScales
+                                              , scaling
+                                              , debug);
+            }
+        }
 
         inline void io_weights_la(
                 const std::vector<Trainer::RuleTensor<double>> &rules
@@ -508,14 +539,30 @@ namespace Trainer {
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
                 , bool scaling = false
+                , bool debug = false
         ) const {
+            MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
+            MAPTYPE<Element<Node<Nonterminal>>, int> outsideLogScales;
             if(has_topological_order()) {
 //                std::cerr << "Calculate IO-weights using topological order" << std::endl;
-                return io_weights_topological_la(rules, root, insideWeights, outsideWeights, scaling);
+                return io_weights_topological_la(rules
+                                                 , root
+                                                 , insideWeights
+                                                 , outsideWeights
+                                                 , insideLogScales
+                                                 , outsideLogScales
+                                                 , scaling);
             }
             else {
 //                std::cerr << "Calculate IO-weights using fixpoint approximation" << std::endl;
-                return io_weights_fixpoint_la(rules, root, insideWeights, outsideWeights, scaling);
+                return io_weights_fixpoint_la(rules
+                                              , root
+                                              , insideWeights
+                                              , outsideWeights
+                                              , insideLogScales
+                                              , outsideLogScales
+                                              , scaling
+                                              , debug);
             }
         }
 
@@ -524,10 +571,11 @@ namespace Trainer {
                 , const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
+                , MAPTYPE<Element<Node<Nonterminal>>, int> &insideLogScales
+                , MAPTYPE<Element<Node<Nonterminal>>, int> &outsideLogScales
                 , bool scaling = false
         ) const {
-            MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
-            MAPTYPE<Element<Node<Nonterminal>>, int> outsideLogScales;
+
 
             inside_weights_la(rules, insideWeights, insideLogScales, scaling);
 
@@ -659,19 +707,17 @@ namespace Trainer {
                 , const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
+                , MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
+                , MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales
                 , bool scaling = false
                 , bool debug = false
         ) const {
-            MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
-            MAPTYPE<Element<Node<Nonterminal>>, int> outsideLogScales;
             for(auto n : *hypergraph){
                 insideLogScales[n] = 0;
                 outsideLogScales[n] = 0;
             }
 
-
             inside_weights_fixpoint_la(rules, insideWeights, insideLogScales, scaling);
-
 
             unsigned int cycle_count {0};
             while(true) {
@@ -689,6 +735,8 @@ namespace Trainer {
                     else
                         outsideWeight.setZero();
 
+                    int targetLogScale {0};
+
                     if (debug) std::cerr << "node " << node << " outsideWeight " << outsideWeight << " oldWeight "
                                          << oldWeight << std::endl;
 
@@ -698,17 +746,18 @@ namespace Trainer {
                                 , outsideWeights
                                 , outsideWeight
                                 , outgoing
-                                , outsideLogScales[node]
+                                , targetLogScale
                                 , insideLogScales
                                 , outsideLogScales);
                         boost::apply_visitor(outsideWeightComputation, rules[outgoing.first->get_label_id()]);
+                        if (scaling)
+                            targetLogScale = scaleTensor(outsideWeight, targetLogScale);
                     }
 
                     outsideWeights[node] = outsideWeight;
 
-                    // TODO: move scaling to outer loop!
                     if (scaling)
-                        outsideLogScales[node] = scaleTensor(outsideWeight, outsideLogScales[node]);
+                        outsideLogScales[node] = targetLogScale;
 
                     if (debug) std::cerr << "outsideWeight " << outsideWeight << " log scales " << outsideLogScales[node] << std::endl;
 
@@ -723,7 +772,7 @@ namespace Trainer {
                 if (debug) std::cerr << "maxChange " << maxChange << std::endl;
 
                 // stop the iteration:
-                if(cycle_count > manager.lock()->get_io_cycle_limit() || maxChange < manager.lock()->get_io_precision())
+                if(cycle_count > manager.lock()->get_io_cycle_limit() || (not scaling and maxChange < manager.lock()->get_io_precision()))
                     break;
 
             }
@@ -750,20 +799,20 @@ namespace Trainer {
                     Trainer::WeightVector oldInside {targetWeight};
 
                     targetWeight.setZero();
+                    int targetScale {0};
 
                     for (const auto &edge : get_hypergraph()->get_incoming_edges(node)) {
                         // the cases are not dependent on the topological order!
                         InsideWeightComputation<Nonterminal>
-                                iwc(insideWeights, targetWeight, edge, insideLogScales[node], insideLogScales);
+                                iwc(insideWeights, targetWeight, edge, targetScale, insideLogScales);
                         boost::apply_visitor(iwc, rules[edge->get_label_id()]);
+                        if (scaling)
+                            targetScale = scaleTensor(targetWeight, targetScale);
                     }
 
                     insideWeights.at(node) = targetWeight;
-
-                    //TODO: move scaling to outer loop!
                     if (scaling)
-                        insideLogScales[node] = scaleTensor(targetWeight, insideLogScales[node]);
-
+                        insideLogScales[node] = targetScale;
 
                     Trainer::WeightVector diffVector(targetWeight.dimensions());
                     diffVector = oldInside - targetWeight;
@@ -774,7 +823,7 @@ namespace Trainer {
                 }
 
 
-                if(cycle_count > manager.lock()->get_io_cycle_limit() || maxChange < manager.lock()->get_io_precision())
+                if(cycle_count > manager.lock()->get_io_cycle_limit() or (not scaling and maxChange < manager.lock()->get_io_precision()))
                     break;
             }
         }

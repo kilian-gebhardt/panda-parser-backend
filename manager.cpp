@@ -12,6 +12,7 @@
 #include "util.h"
 #include "Trainer/LatentAnnotation.h"
 #include "Trainer/AnnotationProjection.h"
+#include "Trainer/GeneticCrosser.h"
 
 
 void test_main();
@@ -266,8 +267,8 @@ void test_fp_io() {
     Eigen::TensorRef<Eigen::Tensor<double,1>> root;
     root = rootWs;
 
-    MAPTYPE<Element<Node<int>>, Trainer::WeightVector> insideWeights;
-    MAPTYPE<Element<Node<int>>, Trainer::WeightVector> outsideWeights;
+    DCP::MAPTYPE<Element<Node<int>>, Trainer::WeightVector> insideWeights;
+    DCP::MAPTYPE<Element<Node<int>>, Trainer::WeightVector> outsideWeights;
     for(auto n : *graph){
         insideWeights[n] = Trainer::WeightVector{1};
         outsideWeights[n] = Trainer::WeightVector{1};
@@ -275,7 +276,7 @@ void test_fp_io() {
 
     std::cerr << "Starting IO by fixpoint_la\n";
 
-    (*tMPtr)[0].io_weights_fixpoint_la(ruleWs, root, insideWeights, outsideWeights);
+    (*tMPtr)[0].io_weights_la(ruleWs, root, insideWeights, outsideWeights);
 
     std::cerr << "Inside: ";
     for(auto n : *graph){

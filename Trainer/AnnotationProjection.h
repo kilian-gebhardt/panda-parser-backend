@@ -83,7 +83,7 @@ namespace Trainer {
 
         tMPtr->set_io_precision(ioPrecision);
         tMPtr->set_io_cycle_limit(ioCycleLimit);
-        (*tMPtr)[0].io_weights_fixpoint_la(
+        (*tMPtr)[0].io_weights_la(
                 *(annotation.ruleWeights)
                 , annotation.rootWeights
                 , insideWeights
@@ -203,19 +203,31 @@ namespace Trainer {
     std::vector<double> edge_weight_projection(
         const LatentAnnotation &annotation
         , const Trace<Nonterminal, TraceID>& trace
-        , const bool variational=false
+        , const bool variational = false
+        , bool debug = false
+        , bool log_mode = true
     ) {
         HypergraphPtr<Nonterminal> hg {trace.get_hypergraph()};
 
         MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> insideWeights;
         MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> outsideWeights;
+        MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
+        MAPTYPE<Element<Node<Nonterminal>>, int> outsideLogScales;
+
+        const bool scaling {true};
 
         for (const auto n : *hg) {
             insideWeights[n] = Trainer::WeightVector(annotation.nonterminalSplits.at(n->get_label_id()));
             outsideWeights[n] = Trainer::WeightVector(annotation.nonterminalSplits.at(n->get_label_id()));
         }
 
-        trace.io_weights_la(*annotation.ruleWeights, annotation.rootWeights, insideWeights, outsideWeights);
+        trace.io_weights_la(*annotation.ruleWeights
+                            , annotation.rootWeights
+                            , insideWeights
+                            , outsideWeights
+                            , insideLogScales
+                            , outsideLogScales
+                            , scaling);
 
 
         std::vector<double> projections;
@@ -226,6 +238,12 @@ namespace Trainer {
         Eigen::Tensor<double, 0> root_weight{(rootOutsideWeight * rootInsideWeight).sum()};
 
         double normalizer{root_weight(0)};
+        int normalizer_scale { scaleScalar(normalizer
+                                           , insideLogScales.at(trace.get_goal())
+                                             + outsideLogScales.at(trace.get_goal()))};
+        if (debug)
+            std::cerr << "normalizer: " << normalizer << "/" << normalizer_scale << std::endl
+                      << "top-ordered: " << trace.has_topological_order() << std::endl;
 
         // do projection
         for (const auto &edge : *hg->get_edges().lock()) {
@@ -239,20 +257,37 @@ namespace Trainer {
                 );
                 Eigen::Tensor<double, 0> normalisationVector = normalisationCalc;
                 normalizer = normalisationVector(0);
+                normalizer_scale = scaleScalar(normalizer
+                                               , insideLogScales.at(edge->get_target())
+                                                 + outsideLogScales.at(edge->get_target()));
             }
 
-            InsideOutsideMultiplierAndNormalizer<Nonterminal> ioMultiplier(
+            int result_scale;
+            InsideOutsideMultiplierAndNormalizerScale<Nonterminal> ioMultiplier(
                         edge
                         , insideWeights
                         , outsideWeights
-                        , normalizer);
+                        , insideLogScales
+                        , outsideLogScales
+                        , normalizer
+                        , normalizer_scale
+                        , result_scale);
 
             auto tensor {boost::apply_visitor(ioMultiplier, ruleVariant)};
             SizeOneTensorAccessor sota;
             double projected_weight {boost::apply_visitor(sota, tensor)};
 
-            projections.push_back(projected_weight);
+            if (log_mode) {
+                projections.push_back(log(projected_weight) + result_scale * LOGSCALE);
+                if (debug and hg->get_edges().lock()->size() < 100)
+                    std::cerr << "(" << projected_weight << ", " << result_scale << "), ";
+            }
+            else
+                projections.push_back(projected_weight * calcScaleFactor(result_scale));
+
         }
+        if (debug and hg->get_edges().lock()->size() < 100)
+            std::cerr << std::endl;
 
         return projections;
     }

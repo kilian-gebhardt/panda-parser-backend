@@ -94,6 +94,31 @@ namespace Trainer {
 
     /**
      * Inspired by Berkeley parser's edu.berkeley.nlp.util.ScalingTools.scaleArray function
+     * @param scalar
+     */
+    int scaleScalar(double & scalar, int previousScale) {
+        int logScale = 0;
+        double scale = 1.0;
+        double max {scalar};
+        if (std::isinf(max) or max == 0)
+            return previousScale;
+        while (max > SCALE) {
+            max = max / SCALE;
+            scale /= SCALE;
+            logScale += 1;
+        }
+        while (max > 0.0 and max < 1.0 / SCALE) {
+            max = max * SCALE;
+            scale *= SCALE;
+            logScale -= 1;
+        }
+        if (logScale != 0)
+            scalar = scalar * scale;
+        return previousScale + logScale;
+    }
+
+    /**
+     * Inspired by Berkeley parser's edu.berkeley.nlp.util.ScalingTools.scaleArray function
      * @param vector
      */
     int scaleTensor(WeightVector & vector, int previousScale) {
@@ -559,6 +584,18 @@ namespace Trainer {
     };
 
 
+    inline double safe_division(double numerator, double denominator) {
+        double quotient = numerator / denominator;
+        if (not std::isnan(quotient) or std::isinf(quotient))
+            return quotient;
+        else {
+            if (numerator >= denominator)
+                return 1.0;
+            else
+                return 0.0;
+        }
+    };
+
 
     template <typename Nonterminal>
     struct InsideOutsideMultiplierAndNormalizer : boost::static_visitor<RuleTensor<double>> {
@@ -597,8 +634,72 @@ namespace Trainer {
                 dim[i] = 1;
 
             RuleTensorRaw<double, rank> res(dim);
-            res.setConstant(ioSum(0)/normalize);
+            res.setConstant(safe_division(ioSum(0), normalize));
 
+            return res;
+        }
+    };
+
+
+    template <typename Nonterminal>
+    struct InsideOutsideMultiplierAndNormalizerScale : boost::static_visitor<RuleTensor<double>> {
+        const Element<HyperEdge<Nonterminal>> edge;
+        const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& insideWeights;
+        const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& outsideWeights;
+        const MAPTYPE<Element<Node<Nonterminal>>, int>& insideLogScales;
+        const MAPTYPE<Element<Node<Nonterminal>>, int>& outsideLogScales;
+        const double normalize;
+        const int normalizeLogScale;
+        int & resultLogScale;
+
+        InsideOutsideMultiplierAndNormalizerScale(
+                const Element<HyperEdge<Nonterminal>> e
+                , const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& inside
+                , const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& outside
+                , const MAPTYPE<Element<Node<Nonterminal>>, int>& insideLogScales
+                , const MAPTYPE<Element<Node<Nonterminal>>, int>& outsideLogScales
+                , const double normalize
+                , const int normalizeLogScale
+                , int & resultLogScale
+        )
+                : edge(e)
+                , insideWeights(inside)
+                , outsideWeights(outside)
+                , insideLogScales(insideLogScales)
+                , outsideLogScales(outsideLogScales)
+                , normalize(normalize)
+                , normalizeLogScale(normalizeLogScale)
+                , resultLogScale(resultLogScale)
+        {}
+
+        template<int rank>
+        RuleTensor<double>
+        operator()(const RuleTensorRaw<double, rank> &tensor){
+            resultLogScale = 0;
+            RuleTensor<double> intermediate {tensor};
+            // Multiply all inside weights
+            for(int dim = 0; dim < rank - 1 ; ++dim) {
+                RuleTensorContractor tmult(insideWeights.at(edge->get_sources()[dim]), 1);
+                intermediate = boost::apply_visitor(tmult, intermediate);
+                resultLogScale += insideLogScales.at(edge->get_sources()[dim]);
+            }
+
+            // multiply outside weight
+            Eigen::Tensor<double, 0> ioSum = boost::get<RuleTensorRaw<double, 1>>(intermediate).contract(
+                    outsideWeights.at(edge->get_target()), Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
+            );
+            resultLogScale += outsideLogScales.at(edge->get_target());
+
+            Eigen::array<Eigen::Index, rank> dim;
+            for(Eigen::Index i = 0; i < rank; ++i)
+                dim[i] = 1;
+
+            RuleTensorRaw<double, rank> res(dim);
+
+            double result = ioSum(0) / normalize;
+            resultLogScale = scaleScalar(result, resultLogScale);
+
+            res.setConstant(result);
 
             return res;
         }
