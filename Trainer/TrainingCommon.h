@@ -121,7 +121,8 @@ namespace Trainer {
      * Inspired by Berkeley parser's edu.berkeley.nlp.util.ScalingTools.scaleArray function
      * @param vector
      */
-    int scaleTensor(WeightVector & vector, int previousScale) {
+    template<int rank>
+    int scaleTensor(Eigen::Tensor<double, rank> & vector, int previousScale) {
         Eigen::Tensor<double, 0> max = vector.maximum();
         int logScale = 0;
         double scale = 1.0;
@@ -140,6 +141,24 @@ namespace Trainer {
         if (logScale != 0)
             vector = vector * scale;
         return previousScale + logScale;
+    }
+
+
+    // Boost static visitors
+    struct TensorScaleVisitor : boost::static_visitor<int> {
+        int previousScale;
+        TensorScaleVisitor(int previousScale) : previousScale(previousScale) {}
+
+        template<int rank>
+        int
+        operator()(RuleTensorRaw<double, rank>& tensor) {
+            return scaleTensor(tensor, previousScale);
+        }
+    };
+
+    int scaleTensor(RuleTensor<double> & tensor, int previousScale) {
+        TensorScaleVisitor tsv(previousScale);
+        return boost::apply_visitor(tsv, tensor);
     }
 
 
@@ -682,6 +701,7 @@ namespace Trainer {
                 RuleTensorContractor tmult(insideWeights.at(edge->get_sources()[dim]), 1);
                 intermediate = boost::apply_visitor(tmult, intermediate);
                 resultLogScale += insideLogScales.at(edge->get_sources()[dim]);
+                resultLogScale = scaleTensor(intermediate, resultLogScale);
             }
 
             // multiply outside weight
@@ -689,6 +709,7 @@ namespace Trainer {
                     outsideWeights.at(edge->get_target()), Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
             );
             resultLogScale += outsideLogScales.at(edge->get_target());
+            resultLogScale = scaleTensor(ioSum, resultLogScale);
 
             Eigen::array<Eigen::Index, rank> dim;
             for(Eigen::Index i = 0; i < rank; ++i)
@@ -697,6 +718,8 @@ namespace Trainer {
             RuleTensorRaw<double, rank> res(dim);
 
             double result = ioSum(0) / normalize;
+            resultLogScale -= normalizeLogScale;
+
             resultLogScale = scaleScalar(result, resultLogScale);
 
             res.setConstant(result);

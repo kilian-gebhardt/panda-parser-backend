@@ -218,16 +218,23 @@ namespace Trainer {
 
         for (const auto n : *hg) {
             insideWeights[n] = Trainer::WeightVector(annotation.nonterminalSplits.at(n->get_label_id()));
+            insideWeights[n].setZero();
+            insideLogScales[n] = 0;
             outsideWeights[n] = Trainer::WeightVector(annotation.nonterminalSplits.at(n->get_label_id()));
+            outsideWeights[n].setZero();
+            outsideLogScales[n] = 0;
         }
 
+        if (debug)
+            std::cerr << std::scientific;
         trace.io_weights_la(*annotation.ruleWeights
                             , annotation.rootWeights
                             , insideWeights
                             , outsideWeights
                             , insideLogScales
                             , outsideLogScales
-                            , scaling);
+                            , scaling
+                            , debug);
 
 
         std::vector<double> projections;
@@ -242,7 +249,8 @@ namespace Trainer {
                                            , insideLogScales.at(trace.get_goal())
                                              + outsideLogScales.at(trace.get_goal()))};
         if (debug)
-            std::cerr << "normalizer: " << normalizer << "/" << normalizer_scale << std::endl
+            std::cerr
+                      << "normalizer: " << normalizer << "/" << normalizer_scale << std::endl
                       << "top-ordered: " << trace.has_topological_order() << std::endl;
 
         // do projection
@@ -278,16 +286,22 @@ namespace Trainer {
             double projected_weight {boost::apply_visitor(sota, tensor)};
 
             if (log_mode) {
-                projections.push_back(log(projected_weight) + result_scale * LOGSCALE);
-                if (debug and hg->get_edges().lock()->size() < 100)
+                projections.push_back(std::log(projected_weight) + result_scale * LOGSCALE);
+                if (debug and hg->get_edges().lock()->size() < 200)
                     std::cerr << "(" << projected_weight << ", " << result_scale << "), ";
+
             }
             else
                 projections.push_back(projected_weight * calcScaleFactor(result_scale));
 
+
+
         }
-        if (debug and hg->get_edges().lock()->size() < 100)
+        if (debug and hg->get_edges().lock()->size() < 200)
             std::cerr << std::endl;
+
+        if (debug)
+            std::cerr << std::defaultfloat;
 
         return projections;
     }

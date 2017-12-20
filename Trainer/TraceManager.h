@@ -32,6 +32,7 @@ namespace Trainer {
         const Element<HyperEdge<Nonterminal>> &edge;
         int & targetLogScale;
         const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales;
+        const bool debug;
 
         InsideWeightComputation(
                 const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
@@ -39,21 +40,30 @@ namespace Trainer {
                 , const Element<HyperEdge<Nonterminal>> &edge
                 , int & targetLogScale
                 , const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
+                , bool debug = false
         ) :  insideWeights(insideWeights)
                 , targetWeight(targetWeight)
                 , edge(edge)
                 , targetLogScale(targetLogScale)
-                , insideLogScales(insideLogScales) {}
+                , insideLogScales(insideLogScales)
+                , debug(debug)
+        {}
 
 
         inline void operator()(const RuleTensorRaw<double, 1> & ruleWeight) {
+            if (debug) {
+                std::cerr << std::endl << "Computing inside weight summand" << std::endl;
+                std::cerr << "rule tensor " << edge->get_label_id() << std::endl << ruleWeight << std::endl;
+            }
             targetWeight += ruleWeight * calcScaleFactor(targetLogScale);
         }
 
 
         inline void operator()(const RuleTensorRaw<double, 2> & ruleWeight) {
-//        std::cerr << std::endl << "Computing inside weight summand" << std::endl;
-//        std::cerr << "rule tensor " << edge->get_label_id() << " address " << rules[edge->get_label_id()] << std::endl << ruleWeight << std::endl;
+            if (debug) {
+                std::cerr << std::endl << "Computing inside weight summand" << std::endl;
+                std::cerr << "rule tensor " << edge->get_label_id() << std::endl << ruleWeight << std::endl;
+            }
 
             constexpr unsigned rhsPos = 1;
             const auto &itemWeight = insideWeights.at(edge->get_sources()[rhsPos - 1]);
@@ -73,9 +83,10 @@ namespace Trainer {
         inline void operator()(
                 const RuleTensorRaw<double, 3> & ruleWeight
         ) {
-//        std::cerr << std::endl << "Computing inside weight summand" << std::endl;
-//        std::cerr << "rule tensor " << edge->get_label_id() << " address " << rules[edge->get_label_id()] << std::endl << ruleWeight << std::endl;
-
+            if (debug) {
+                std::cerr << std::endl << "Computing inside weight summand" << std::endl;
+                std::cerr << "rule tensor " << edge->get_label_id() << std::endl << ruleWeight << std::endl;
+            }
             constexpr unsigned rhsPos1 = 1;
             const auto &rhsItemWeight1 = insideWeights.at(edge->get_sources()[rhsPos1 - 1]);
 
@@ -104,10 +115,11 @@ namespace Trainer {
         void operator()(
                 const Trainer::RuleTensorRaw <double, ruleRank> & ruleWeight
         ) {
-
-//        std::cerr << std::endl << "Computing inside weight summand" << std::endl;
+            if (debug) {
+                std::cerr << std::endl << "Computing inside weight summand" << std::endl;
+                std::cerr << "ruleWeight tensor " << edge->get_label_id() << std::endl << ruleWeight << std::endl;
+            }
             const auto &ruleDimension = ruleWeight.dimensions();
-//        std::cerr << "ruleWeight tensor " << edge->get_label_id() << " address " << rules[edge->get_label_id()] << std::endl << ruleWeight << std::endl;
 
 
             Eigen::Tensor<double, ruleRank> tmpValue = ruleWeight;
@@ -122,12 +134,14 @@ namespace Trainer {
             int tmpScale = 0;
             for (unsigned rhsPos = 1; rhsPos < ruleRank; ++rhsPos) {
                 const auto &item_weight = insideWeights.at(edge->get_sources()[rhsPos - 1]);
-                tmpScale += insideLogScales.at(edge->get_sources()[rhsPos - 1]);
                 reshapeDimension[rhsPos] = broadcastDimension[rhsPos];
                 broadcastDimension[rhsPos] = 1;
                 tmpValue *= item_weight.reshape(reshapeDimension).broadcast(broadcastDimension);
                 broadcastDimension[rhsPos] = reshapeDimension[rhsPos];
                 reshapeDimension[rhsPos] = 1;
+
+                tmpScale += insideLogScales.at(edge->get_sources()[rhsPos - 1]);
+                tmpScale = scaleTensor(tmpValue, tmpScale);
             }
 
             Eigen::array<long, ruleRank - 1> sum_array;
@@ -443,14 +457,15 @@ namespace Trainer {
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
                 , bool scaling = false
+                , bool debug = false
         ) const {
             if(has_topological_order()) {
-//                std::cerr << "Calculate Inside-weights using topological order" << std::endl;
-                inside_weights_topological_la(rules, insideWeights, insideLogScales, scaling);
+                if (debug) std::cerr << "Calculate Inside-weights using topological order" << std::endl;
+                inside_weights_topological_la(rules, insideWeights, insideLogScales, scaling, debug);
             }
             else {
-//                std::cerr << "Calculate Inside-weights using fixpoint approximation" << std::endl;
-                inside_weights_fixpoint_la(rules, insideWeights, insideLogScales, scaling);
+                if (debug) std::cerr << "Calculate Inside-weights using fixpoint approximation" << std::endl;
+                inside_weights_fixpoint_la(rules, insideWeights, insideLogScales, scaling, debug);
             }
         }
 
@@ -459,6 +474,7 @@ namespace Trainer {
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
                 , bool scaling = false
+                , bool debug = false
         ) const {
             if (!has_topological_order()) {
                 std::cerr << "Hypergraph " << id << " cannot be ordered topologically." << std::endl;
@@ -472,14 +488,21 @@ namespace Trainer {
                 int & targetScale = insideLogScales[node] = 0;
 
                 for (const auto &edge : get_hypergraph()->get_incoming_edges(node)) {
-                    InsideWeightComputation<Nonterminal> iwc(insideWeights, targetWeight, edge, targetScale, insideLogScales);
+                    InsideWeightComputation<Nonterminal> iwc(insideWeights
+                                                             , targetWeight
+                                                             , edge
+                                                             , targetScale
+                                                             , insideLogScales
+                                                             , debug);
                     boost::apply_visitor(iwc, rules[edge->get_label_id()]);
                 }
 
                 if (scaling)
                     targetScale = scaleTensor(targetWeight, targetScale);
-//                std::cerr << "inside weight " << node << std::endl;
-//                std::cerr << targetWeight << std::endl;
+                if (debug) {
+                    std::cerr << "inside weight " << node << std::endl;
+                    std::cerr << targetWeight << " " << targetScale << std::endl;
+                }
             }
         }
 
@@ -489,14 +512,15 @@ namespace Trainer {
                 const std::vector<Trainer::RuleTensor<double>> &rules
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , bool scaling = false
+                , bool debug = false
         ) const {
             MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
             if(has_topological_order())
-                inside_weights_la(rules, insideWeights, insideLogScales, scaling);
+                inside_weights_la(rules, insideWeights, insideLogScales, scaling, debug);
             else {
                 for(auto n : *hypergraph)
                     insideLogScales[n] = 0;
-                inside_weights_la(rules, insideWeights, insideLogScales, scaling);
+                inside_weights_la(rules, insideWeights, insideLogScales, scaling, debug);
             }
         }
 
@@ -518,7 +542,8 @@ namespace Trainer {
                                                  , outsideWeights
                                                  , insideLogScales
                                                  , outsideLogScales
-                                                 , scaling);
+                                                 , scaling
+                                                 , debug);
             }
             else {
 //                std::cerr << "Calculate IO-weights using fixpoint approximation" << std::endl;
@@ -574,10 +599,11 @@ namespace Trainer {
                 , MAPTYPE<Element<Node<Nonterminal>>, int> &insideLogScales
                 , MAPTYPE<Element<Node<Nonterminal>>, int> &outsideLogScales
                 , bool scaling = false
+                , bool debug = false
         ) const {
 
 
-            inside_weights_la(rules, insideWeights, insideLogScales, scaling);
+            inside_weights_topological_la(rules, insideWeights, insideLogScales, scaling, debug);
 
             for (auto nodeIterator = get_topological_order().rbegin();
                  nodeIterator != get_topological_order().rend(); ++nodeIterator) {
@@ -607,7 +633,9 @@ namespace Trainer {
 
                 if (scaling)
                     targetLogScale = scaleTensor(outsideWeight, targetLogScale);
-//            std::cerr << "outside weight " << node << std::endl << outsideWeight << std::endl;
+                if (debug)
+                    std::cerr << "outside weight " << node << std::endl
+                              << outsideWeight << " " << targetLogScale << std::endl;
             }
         }
 
@@ -786,6 +814,7 @@ namespace Trainer {
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
                 , bool scaling = false
+                , bool debug = false
         ) const {
             // computation of inside weights
 
