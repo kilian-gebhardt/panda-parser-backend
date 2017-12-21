@@ -24,6 +24,17 @@ namespace Trainer {
     template<typename Nonterminal, typename TraceID>
     using TraceManagerWeakPtr = std::weak_ptr<TraceManager2<Nonterminal, TraceID>>;
 
+    void scaledIncrement(WeightVector & targetWeight
+                         , int & targetScale
+                         , const WeightVector & incrementWeight
+                         , const int incrementScale) {
+        if (std::abs(incrementScale) > std::abs(targetScale)) {
+            targetWeight = targetWeight * calcScaleFactor(incrementScale - targetScale) + incrementWeight;
+            targetScale = incrementScale;
+        } else {
+            targetWeight = targetWeight + incrementWeight * calcScaleFactor(targetScale - incrementScale);
+        }
+    }
 
     template <typename Nonterminal>
     struct InsideWeightComputation : boost::static_visitor<void> {
@@ -71,13 +82,11 @@ namespace Trainer {
                     itemWeight, Eigen::array<Eigen::IndexPair<int>, 1>{Eigen::IndexPair<int>(1, 0)}
             );
 
-            const int rhs1LogScale = insideLogScales.at(edge->get_sources()[rhsPos - 1]);
-            if (std::abs(rhs1LogScale) > std::abs(targetLogScale)) {
-                targetWeight = targetWeight * calcScaleFactor(rhs1LogScale - targetLogScale) + tmpValue;
-                targetLogScale = rhs1LogScale;
-            } else {
-                targetWeight = targetWeight + tmpValue * calcScaleFactor(targetLogScale - rhs1LogScale);
-            }
+            int rhs1LogScale = insideLogScales.at(edge->get_sources()[rhsPos - 1]);
+
+            WeightVector summand = tmpValue;
+
+            scaledIncrement(targetWeight, targetLogScale, summand, rhs1LogScale);
         }
 
         inline void operator()(
@@ -99,15 +108,11 @@ namespace Trainer {
             auto tmpValue2 = tmpValue1.contract(
                     rhsItemWeight1, Eigen::array<Eigen::IndexPair<int>, 1>{Eigen::IndexPair<int>(1, 0)}
             );
-            const int rhs_scales =   insideLogScales.at(edge->get_sources()[rhsPos1 - 1])
+            int rhs_scales =   insideLogScales.at(edge->get_sources()[rhsPos1 - 1])
                                      + insideLogScales.at(edge->get_sources()[rhsPos2 - 1]);
 
-            if (std::abs(rhs_scales) > std::abs(targetLogScale)) {
-                targetWeight = targetWeight * calcScaleFactor(rhs_scales - targetLogScale) + tmpValue2;
-                targetLogScale = rhs_scales;
-            } else {
-                targetWeight = targetWeight + tmpValue2 * calcScaleFactor(targetLogScale - rhs_scales);
-            }
+            WeightVector summand = tmpValue2;
+            scaledIncrement(targetWeight, targetLogScale, summand, rhs_scales);
         }
 
         template<int ruleRank>
@@ -149,11 +154,9 @@ namespace Trainer {
                 sum_array[idx] = idx + 1;
             }
 
-            if (abs(tmpScale) > abs(targetLogScale)) {
-                targetWeight = targetWeight * calcScaleFactor(tmpScale - targetLogScale) + tmpValue.sum(sum_array);
-                targetLogScale = tmpScale;
-            } else
-                targetWeight = targetWeight + tmpValue.sum(sum_array) * calcScaleFactor(targetLogScale - tmpScale);
+            WeightVector summand = tmpValue.sum(sum_array);
+            
+            scaledIncrement(targetWeight, targetLogScale, summand, tmpScale);
         }
     };
 
