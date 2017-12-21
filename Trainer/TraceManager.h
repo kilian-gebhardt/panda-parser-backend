@@ -199,17 +199,13 @@ namespace Trainer {
 
             const auto &parentWeight = outsideWeights.at(parent);
 
-            auto outsideWeightSummand = ruleWeight.contract(
+            WeightVector outsideWeightSummand = ruleWeight.contract(
                     parentWeight, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
             );
 
             const int parentLogScale = outsideLogScales.at(parent);
-            if (std::abs(parentLogScale) > std::abs(targetLogScale)) {
-                outsideWeight = outsideWeight * calcScaleFactor(parentLogScale - targetLogScale) + outsideWeightSummand;
-                targetLogScale = parentLogScale;
-            } else {
-                outsideWeight = outsideWeight + outsideWeightSummand * calcScaleFactor(targetLogScale - parentLogScale);
-            }
+
+            scaledIncrement(outsideWeight, targetLogScale, outsideWeightSummand, parentLogScale);
         }
 
         inline void operator()(const Trainer::RuleTensorRaw<double, 3>& ruleWeight) {
@@ -225,18 +221,13 @@ namespace Trainer {
             auto tmpValue1 = ruleWeight.contract(
                     rhsWeight, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(position == 0 ? 2 : 1, 0)}
             );
-            auto tmpValue2 = tmpValue1.contract(
+            WeightVector tmpValue2 = tmpValue1.contract(
                     parentWeight, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
             );
 
             const int tmpScale = outsideLogScales.at(parent) + insideLogScales.at(siblings[position == 0 ? 1 : 0]);
 
-            if (abs(tmpScale) > abs(targetLogScale)) {
-                outsideWeight = outsideWeight * calcScaleFactor(tmpScale - targetLogScale) + tmpValue2;
-                targetLogScale = tmpScale;
-            }
-            else
-                outsideWeight = outsideWeight + tmpValue2 * calcScaleFactor(targetLogScale - tmpScale);
+            scaledIncrement(outsideWeight, targetLogScale, tmpValue2, tmpScale);
         }
 
         template<int ruleRank>
@@ -296,12 +287,7 @@ namespace Trainer {
 //        std::cerr << "outside weight summand" << std::endl << outsideWeightSummand << std::endl << std::endl;
 
 
-            if (abs(tmpScale) > abs(targetLogScale)) {
-                outsideWeight = outsideWeight * calcScaleFactor(tmpScale - targetLogScale) + outsideWeightSummand;
-                targetLogScale = tmpScale;
-            }
-            else
-                outsideWeight = outsideWeight + outsideWeightSummand * calcScaleFactor(targetLogScale - tmpScale);
+            scaledIncrement(outsideWeight, targetLogScale, outsideWeightSummand, tmpScale);
         }
     };
 
