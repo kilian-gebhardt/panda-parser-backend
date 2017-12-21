@@ -29,10 +29,10 @@ namespace Trainer {
                          , const WeightVector & incrementWeight
                          , const int incrementScale) {
         if (std::abs(incrementScale) > std::abs(targetScale)) {
-            targetWeight = targetWeight * calcScaleFactor(incrementScale - targetScale) + incrementWeight;
+            targetWeight = targetWeight * calcScaleFactor(targetScale - incrementScale) + incrementWeight;
             targetScale = incrementScale;
         } else {
-            targetWeight = targetWeight + incrementWeight * calcScaleFactor(targetScale - incrementScale);
+            targetWeight = targetWeight + incrementWeight * calcScaleFactor(incrementScale - targetScale);
         }
     }
 
@@ -66,7 +66,7 @@ namespace Trainer {
                 std::cerr << std::endl << "Computing inside weight summand" << std::endl;
                 std::cerr << "rule tensor " << edge->get_label_id() << std::endl << ruleWeight << std::endl;
             }
-            targetWeight += ruleWeight * calcScaleFactor(targetLogScale);
+            targetWeight += ruleWeight * calcScaleFactor(-targetLogScale);
         }
 
 
