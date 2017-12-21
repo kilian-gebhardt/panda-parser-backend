@@ -730,6 +730,8 @@ namespace Trainer {
                 , bool debug = false
         ) const {
             for(auto n : *hypergraph){
+                insideWeights[n].setZero();
+                outsideWeights[n].setZero();
                 insideLogScales[n] = 0;
                 outsideLogScales[n] = 0;
             }
