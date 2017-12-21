@@ -28,7 +28,7 @@ namespace Trainer {
                          , int & targetScale
                          , const WeightVector & incrementWeight
                          , const int incrementScale) {
-        if (std::abs(incrementScale) > std::abs(targetScale)) {
+        if (incrementScale > targetScale) {
             targetWeight = targetWeight * calcScaleFactor(targetScale - incrementScale) + incrementWeight;
             targetScale = incrementScale;
         } else {
