@@ -11,6 +11,8 @@
 #include <type_traits>
 #include <boost/operators.hpp>
 #include <cmath>
+#include <limits>
+#include <vector>
 
 
 // taken from https://stackoverflow.com/a/33683299 for printing tuples
