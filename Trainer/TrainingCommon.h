@@ -123,18 +123,22 @@ namespace Trainer {
      */
     template<int rank>
     int scaleTensor(Eigen::Tensor<double, rank> & vector, int previousScale) {
-        Eigen::Tensor<double, 0> max = vector.maximum();
+        double max {0};
+        if (vector.size()) {
+            Eigen::Tensor<double, 0> max_tensor{vector.maximum()};
+            max = max_tensor(0);
+        }
         int logScale = 0;
         double scale = 1.0;
-        if (std::isinf(max(0)) or max(0) == 0)
+        if (std::isinf(max) or max == 0)
             return previousScale;
-        while (max(0) > SCALE) {
-            max(0) = max(0) / SCALE;
+        while (max > SCALE) {
+            max = max / SCALE;
             scale /= SCALE;
             logScale += 1;
         }
-        while (max(0) > 0.0 and max(0) < 1.0 / SCALE) {
-            max(0) = max(0) * SCALE;
+        while (max > 0.0 and max < 1.0 / SCALE) {
+            max = max * SCALE;
             scale *= SCALE;
             logScale -= 1;
         }
@@ -604,7 +608,7 @@ namespace Trainer {
 
 
     inline double safe_division(double numerator, double denominator) {
-        double quotient = numerator / denominator;
+        double quotient {numerator / denominator};
         if (not std::isnan(quotient) or std::isinf(quotient))
             return quotient;
         else {

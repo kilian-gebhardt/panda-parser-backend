@@ -253,7 +253,7 @@ namespace Trainer {
 
             // calculate the sum of the whole rule:
             RuleSummerIO<Nonterminal> ruleSummer(edge, inside, outside);
-            double ruleSum = boost::apply_visitor(ruleSummer, weight2);
+            double ruleSum {boost::apply_visitor(ruleSummer, weight2)};
 
 
             unsigned int countFirsts{1}; // LHS always belongs to first

@@ -80,7 +80,7 @@ namespace Trainer {
 
         virtual MergeInfo merge_prepare(const LatentAnnotation &latentAnnotation) = 0;
 
-        virtual void setMergeThresholdFunction(ThresholdFunction thresholdFunction) {};
+        virtual void setMergeThresholdFunction(ThresholdFunction /*thresholdFunction*/) {};
     };
 
     /**

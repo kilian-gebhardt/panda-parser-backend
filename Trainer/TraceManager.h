@@ -791,7 +791,7 @@ namespace Trainer {
                 if (debug) std::cerr << "maxChange " << maxChange << std::endl;
 
                 // stop the iteration:
-                if(cycle_count > manager.lock()->get_io_cycle_limit() || (not scaling and maxChange < manager.lock()->get_io_precision()))
+                if(cycle_count > manager.lock()->get_io_cycle_limit() or (not scaling and maxChange < manager.lock()->get_io_precision()))
                     break;
 
             }
@@ -911,8 +911,8 @@ namespace Trainer {
 
         const bool debug;
 
-        unsigned int io_cycle_limit = 20;
-        double io_precision = 0.0000001;
+        unsigned int io_cycle_limit {20};
+        double io_precision {0.0000001};
     public:
         TraceManager2(
                 std::shared_ptr<const std::vector<Nonterminal>> nodeLs
