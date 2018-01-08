@@ -169,6 +169,7 @@ namespace Trainer {
         int & targetLogScale;
         const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales;
         const MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales;
+        const bool debug;
 
         OutsideWeightComputation(
                 const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
@@ -178,13 +179,15 @@ namespace Trainer {
                 , int & targetLogScale
                 , const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
                 , const MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales
+                , const bool debug = false
         ) : insideWeights(insideWeights)
                 , outsideWeights(outsideWeights)
                 , outsideWeight(outsideWeight)
                 , outgoing(outgoing)
                 , targetLogScale(targetLogScale)
                 , insideLogScales(insideLogScales)
-                , outsideLogScales(outsideLogScales){}
+                , outsideLogScales(outsideLogScales)
+                , debug(debug) {}
 
         inline void operator()(const Trainer::RuleTensorRaw<double, 1>& /* ruleWeight */) {
             // Cannot happen, since there is at least one source (namely 'node')
@@ -193,6 +196,10 @@ namespace Trainer {
         }
 
         inline void operator()(const Trainer::RuleTensorRaw<double, 2>& ruleWeight) {
+            if (debug) {
+                std::cerr << std::endl << "Computing outside weight summand" << std::endl;
+                std::cerr << "ruleWeight tensor " << outgoing.first->get_label_id() << std::endl << ruleWeight << std::endl;
+            }
 
             const auto &parent = outgoing.first->get_target();
 //            constexpr unsigned ruleRank{2};
@@ -209,6 +216,10 @@ namespace Trainer {
         }
 
         inline void operator()(const Trainer::RuleTensorRaw<double, 3>& ruleWeight) {
+            if (debug) {
+                std::cerr << std::endl << "Computing outside weight summand" << std::endl;
+                std::cerr << "ruleWeight tensor " << outgoing.first->get_label_id() << std::endl << ruleWeight << std::endl;
+            }
             const auto &siblings = outgoing.first->get_sources();
             const auto &parent = outgoing.first->get_target();
             const unsigned position = outgoing.second;
@@ -232,6 +243,11 @@ namespace Trainer {
 
         template<int ruleRank>
         inline void operator()(const Trainer::RuleTensorRaw<double, ruleRank>& ruleWeight) {
+            if (debug) {
+                std::cerr << std::endl << "Computing outside weight summand" << std::endl;
+                std::cerr << "ruleWeight tensor " << outgoing.first->get_label_id() << std::endl << ruleWeight << std::endl;
+            }
+
             const auto &siblings = outgoing.first->get_sources();
             const auto &parent = outgoing.first->get_target();
             const unsigned position = outgoing.second;
@@ -616,6 +632,7 @@ namespace Trainer {
                                                      , targetLogScale
                                                      , insideLogScales
                                                      , outsideLogScales
+                                                     , debug
                             );
                     boost::apply_visitor(outsideWeightComputation, rules[outgoing.first->get_label_id()]);
                 }
@@ -767,7 +784,8 @@ namespace Trainer {
                                 , outgoing
                                 , targetLogScale
                                 , insideLogScales
-                                , outsideLogScales);
+                                , outsideLogScales
+                                , debug);
                         boost::apply_visitor(outsideWeightComputation, rules[outgoing.first->get_label_id()]);
                         if (scaling)
                             targetLogScale = scaleTensor(outsideWeight, targetLogScale);
