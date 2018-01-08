@@ -410,7 +410,7 @@ namespace Trainer {
             return valid;
         }
 
-        bool check_rule_split_aligment(const GrammarInfo2& grammarInfo) const {
+        bool check_rule_split_alignment(const GrammarInfo2& grammarInfo) const {
             for (size_t ruleIdx {0}; ruleIdx < grammarInfo.rule_to_nonterminals.size(); ++ruleIdx) {
                 const std::vector<size_t> & nonterminals = grammarInfo.rule_to_nonterminals[ruleIdx];
                 SizeChecker sizeChecker(ruleIdx, nonterminals, nonterminalSplits);
