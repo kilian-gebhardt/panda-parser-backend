@@ -37,6 +37,41 @@ namespace Trainer {
         }
     };
 
+    struct SizeChecker : boost::static_visitor<bool> {
+        const size_t ruleIdx;
+        const std::vector<size_t> & nonterminals;
+        const std::vector<size_t> & nonterminalSplits;
+
+        SizeChecker(const size_t ruleIdx
+                    , const std::vector<size_t> & nonterminals
+                    , const std::vector<size_t> & nonterminalSplits)
+                :
+                ruleIdx(ruleIdx),
+                nonterminals(nonterminals),
+                nonterminalSplits(nonterminalSplits)
+        {};
+
+        template<int rank>
+        bool operator()(const RuleTensorRaw<double, rank> &tensor) {
+            size_t dim_idx {0};
+            if (tensor.dimensions().size() != nonterminals.size()) {
+                std::cerr << "Weight vector dimensions for rule " << ruleIdx << " are inconsistent: " << std::endl
+                          << "Weight vector dimension " << tensor.dimensions().size() << " vs. rule length "
+                          << nonterminals.size() << std::endl;
+                return false;
+            }
+            for (size_t nont : nonterminals) {
+                if (nonterminalSplits[nont] != tensor.dimension(dim_idx)) {
+                    std::cerr << "Weight vector dimensions for rule " << ruleIdx << " are inconsistent: " << std::endl
+                              << "Weight vector at " << nont << " has dim. " << tensor.dimension(dim_idx)
+                              << " vs. split dim " << nonterminalSplits[nont] << std::endl;
+                    return false;
+                }
+            }
+            return true;
+        }
+    };
+
     struct WeightAccessVisitor : boost::static_visitor<double> {
         const std::vector<size_t> & index;
         WeightAccessVisitor(const std::vector<size_t> & index) : index(index) {};
@@ -375,6 +410,14 @@ namespace Trainer {
             return valid;
         }
 
+        bool check_rule_split_aligment(const GrammarInfo2& grammarInfo) const {
+            for (size_t ruleIdx {0}; ruleIdx < grammarInfo.rule_to_nonterminals.size(); ++ruleIdx) {
+                const std::vector<size_t> & nonterminals = grammarInfo.rule_to_nonterminals[ruleIdx];
+                SizeChecker sizeChecker(ruleIdx, nonterminals, nonterminalSplits);
+                boost::apply_visitor(sizeChecker, (*ruleWeights)[ruleIdx]);
+            }
+            return true;
+        }
     };
 
 }
