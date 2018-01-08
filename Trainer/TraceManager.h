@@ -206,6 +206,8 @@ namespace Trainer {
 
             const auto &parentWeight = outsideWeights.at(parent);
 
+            if (debug) std::cerr << "parent Weight" << parentWeight << std::endl;
+
             WeightVector outsideWeightSummand = ruleWeight.contract(
                     parentWeight, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
             );
