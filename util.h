@@ -39,6 +39,19 @@ operator<<(std::ostream& os, const std::tuple<T0, T...>& t){
     return os << ')';
 }
 
+namespace Trainer {
+// based on https://stackoverflow.com/a/10758845
+    template<typename T>
+    std::ostream &operator<<(std::ostream &out, const std::vector<T> &v) {
+        if (true) {
+            out << '[';
+            std::copy(v.begin(), v.end(), std::ostream_iterator<T>(out, ", "));
+            out << "\b\b]";
+        }
+        return out;
+    }
+}
+
 constexpr double minus_infinity = -std::numeric_limits<double>::infinity();
 
 class LogDouble : boost::operators<LogDouble> {

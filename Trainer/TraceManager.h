@@ -14,6 +14,7 @@
 #include <set>
 #include <iostream>
 #include <fstream>
+#include "../util.h"
 
 namespace Trainer {
     template<typename Nonterminal, typename TraceID>
@@ -363,8 +364,12 @@ namespace Trainer {
                 if (nonterminals != grammarInfo.rule_to_nonterminals[edge_idx]) {
                     std::cerr << "Inconsistent trace: edge label " << edge_idx
                               << " and grammar info mismatch " << std::endl
-                              << " edge: " << nonterminals << std::endl
-                              << " rule: " << grammarInfo.rule_to_nonterminals[edge_idx] << std::endl;
+                              << " edge: ";
+                    operator<<(std::cerr, nonterminals);
+                    std::cerr << std::endl << " rule: ";
+                    operator<<(std::cerr, grammarInfo.rule_to_nonterminals[edge_idx]);
+                            std::cerr << std::endl;
+
                     return false;
                 }
             }
