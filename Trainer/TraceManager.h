@@ -347,6 +347,30 @@ namespace Trainer {
             return hypergraph;
         }
 
+        const bool is_consistent_with_grammar(const GrammarInfo2& grammarInfo) {
+            if (goal->get_label_id() != grammarInfo.start) {
+                std::cerr << "Inconsistent trace: root label is different from start nonterminal "
+                          << goal->get_label_id() << " vs. " << grammarInfo.start << std::endl;
+                return false;
+            }
+            for (const Element<HyperEdge<Nonterminal>> & edge : *(get_hypergraph()->get_edges().lock())) {
+                std::vector<size_t> nonterminals;
+                nonterminals.push_back(edge->get_target()->get_label_id());
+                for (const Element<Node<Nonterminal>>& source : edge->get_sources()){
+                    nonterminals.push_back(source->get_label_id());
+                }
+                size_t edge_idx {edge->get_label_id()};
+                if (nonterminals != grammarInfo.rule_to_nonterminals[edge_idx]) {
+                    std::cerr << "Inconsistent trace: edge label " << edge_idx
+                              << " and grammar info mismatch " << std::endl
+                              << " edge: " << nonterminals << std::endl
+                              << " rule: " << grammarInfo.rule_to_nonterminals[edge_idx] << std::endl;
+                    return false;
+                }
+            }
+            return true;
+        }
+
         const Element<Node<Nonterminal>> &get_goal() const noexcept {
             return goal;
         }
