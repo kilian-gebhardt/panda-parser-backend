@@ -53,13 +53,14 @@ namespace Trainer {
 
         template<int rank>
         bool operator()(const RuleTensorRaw<double, rank> &tensor) {
-            size_t dim_idx {0};
             if (tensor.dimensions().size() != nonterminals.size()) {
                 std::cerr << "Weight vector dimensions for rule " << ruleIdx << " are inconsistent: " << std::endl
                           << "Weight vector dimension " << tensor.dimensions().size() << " vs. rule length "
                           << nonterminals.size() << std::endl;
                 return false;
             }
+            size_t dim_idx {0};
+
             for (size_t nont : nonterminals) {
                 if (nonterminalSplits[nont] != tensor.dimension(dim_idx)) {
                     std::cerr << "Weight vector dimensions for rule " << ruleIdx << " are inconsistent: " << std::endl
@@ -67,6 +68,7 @@ namespace Trainer {
                               << " vs. split dim " << nonterminalSplits[nont] << std::endl;
                     return false;
                 }
+                ++dim_idx;
             }
             return true;
         }
@@ -414,7 +416,8 @@ namespace Trainer {
             for (size_t ruleIdx {0}; ruleIdx < grammarInfo.rule_to_nonterminals.size(); ++ruleIdx) {
                 const std::vector<size_t> & nonterminals = grammarInfo.rule_to_nonterminals[ruleIdx];
                 SizeChecker sizeChecker(ruleIdx, nonterminals, nonterminalSplits);
-                boost::apply_visitor(sizeChecker, (*ruleWeights)[ruleIdx]);
+                if (not boost::apply_visitor(sizeChecker, (*ruleWeights)[ruleIdx]))
+                    return false;
             }
             return true;
         }
