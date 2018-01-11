@@ -536,6 +536,8 @@ namespace Trainer {
                     boost::apply_visitor(iwc, rules[edge->get_label_id()]);
                 }
 
+                assert(targetWeight.dimension(0) == latentAnnotation.nonterminalSplits[node->get_label_id()]);
+
                 if (scaling)
                     targetScale = scaleTensor(targetWeight, targetScale);
                 if (debug) {
@@ -651,6 +653,7 @@ namespace Trainer {
                 else
                     outsideWeight.setZero();
 
+                assert(outsideWeight.dimension(0) == latentAnnotation.nonterminalSplits[node->get_label_id()]);
 
                 for (const auto &outgoing : get_hypergraph()->get_outgoing_edges(node)) {
                     OutsideWeightComputation<Nonterminal>
@@ -666,6 +669,7 @@ namespace Trainer {
                     boost::apply_visitor(outsideWeightComputation, rules[outgoing.first->get_label_id()]);
                 }
 
+                assert(outsideWeight.dimension(0) == latentAnnotation.nonterminalSplits[node->get_label_id()]);
                 if (scaling)
                     targetLogScale = scaleTensor(outsideWeight, targetLogScale);
                 if (debug)
