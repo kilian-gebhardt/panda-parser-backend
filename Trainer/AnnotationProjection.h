@@ -217,12 +217,12 @@ namespace Trainer {
         const bool scaling {true};
 
         for (const auto n : *hg) {
-            insideWeights[n] = Trainer::WeightVector(annotation.nonterminalSplits.at(n->get_label_id()));
-            insideWeights[n].setZero();
-            insideLogScales[n] = 0;
-            outsideWeights[n] = Trainer::WeightVector(annotation.nonterminalSplits.at(n->get_label_id()));
-            outsideWeights[n].setZero();
-            outsideLogScales[n] = 0;
+            insideWeights.emplace(n, Trainer::WeightVector(annotation.nonterminalSplits.at(n->get_label_id())));
+            insideWeights.at(n).setZero();
+            insideLogScales.emplace(n, 0);
+            outsideWeights.emplace(n, Trainer::WeightVector(annotation.nonterminalSplits.at(n->get_label_id())));
+            outsideWeights.at(n).setZero();
+            outsideLogScales.emplace(n, 0);
         }
 
         if (debug)

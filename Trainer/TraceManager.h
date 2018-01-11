@@ -86,6 +86,7 @@ namespace Trainer {
             int rhs1LogScale = insideLogScales.at(edge->get_sources()[rhsPos - 1]);
 
             WeightVector summand = tmpValue;
+            rhs1LogScale = scaleTensor(summand, rhs1LogScale);
 
             scaledIncrement(targetWeight, targetLogScale, summand, rhs1LogScale);
         }
@@ -106,13 +107,14 @@ namespace Trainer {
             auto tmpValue1 = ruleWeight.contract(
                     rhsItemWeight2, Eigen::array<Eigen::IndexPair<int>, 1>{Eigen::IndexPair<int>(2, 0)}
             );
-            auto tmpValue2 = tmpValue1.contract(
+            WeightVector summand = tmpValue1.contract(
                     rhsItemWeight1, Eigen::array<Eigen::IndexPair<int>, 1>{Eigen::IndexPair<int>(1, 0)}
             );
-            int rhs_scales =   insideLogScales.at(edge->get_sources()[rhsPos1 - 1])
+            int rhs_scales = insideLogScales.at(edge->get_sources()[rhsPos1 - 1])
                                      + insideLogScales.at(edge->get_sources()[rhsPos2 - 1]);
 
-            WeightVector summand = tmpValue2;
+            rhs_scales = scaleTensor(summand, rhs_scales);
+
             scaledIncrement(targetWeight, targetLogScale, summand, rhs_scales);
         }
 
@@ -154,9 +156,8 @@ namespace Trainer {
             for (unsigned idx = 0; idx < ruleRank - 1; ++idx) {
                 sum_array[idx] = idx + 1;
             }
-
             WeightVector summand = tmpValue.sum(sum_array);
-            
+
             scaledIncrement(targetWeight, targetLogScale, summand, tmpScale);
         }
     };
@@ -201,7 +202,6 @@ namespace Trainer {
                 std::cerr << std::endl << "Computing outside weight summand" << std::endl;
                 std::cerr << "ruleWeight tensor " << outgoing.first->get_label_id() << std::endl << ruleWeight << std::endl;
             }
-
             const auto &parent = outgoing.first->get_target();
 //            constexpr unsigned ruleRank{2};
 
@@ -518,10 +518,11 @@ namespace Trainer {
             }
 
             for (const auto &node : get_topological_order()) {
-                Trainer::WeightVector &targetWeight = insideWeights.at(node);
+                Trainer::WeightVector &targetWeight = insideWeights[node];
 
                 targetWeight.setZero();
-                int & targetScale = insideLogScales[node] = 0;
+                insideLogScales[node] = 0;
+                int & targetScale = insideLogScales[node];
 
                 for (const auto &edge : get_hypergraph()->get_incoming_edges(node)) {
                     InsideWeightComputation<Nonterminal> iwc(insideWeights
@@ -645,8 +646,9 @@ namespace Trainer {
                  nodeIterator != get_topological_order().rend(); ++nodeIterator) {
                 const Element<Node<Nonterminal>> &node = *nodeIterator;
 
-                Trainer::WeightVector &outsideWeight = outsideWeights.at(node);
-                int & targetLogScale = outsideLogScales[node] = 0;
+                Trainer::WeightVector & outsideWeight {outsideWeights[node]};
+                outsideLogScales[node] = 0;
+                int & targetLogScale {outsideLogScales[node]};
 
                 if (node == get_goal())
                     outsideWeight = root;
