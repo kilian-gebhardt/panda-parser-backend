@@ -9,7 +9,6 @@
 #include <cassert>
 #include "GrammarInfo.h"
 #include "../Names.h"
-#include "TraceManager.h"
 #include "TrainingCommon.h"
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 

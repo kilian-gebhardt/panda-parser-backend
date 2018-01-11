@@ -84,8 +84,7 @@ namespace Trainer {
         tMPtr->set_io_precision(ioPrecision);
         tMPtr->set_io_cycle_limit(ioCycleLimit);
         (*tMPtr)[0].io_weights_la(
-                *(annotation.ruleWeights)
-                , annotation.rootWeights
+                annotation
                 , insideWeights
                 , outsideWeights
                 , false
@@ -227,8 +226,7 @@ namespace Trainer {
 
         if (debug)
             std::cerr << std::scientific;
-        trace.io_weights_la(*annotation.ruleWeights
-                            , annotation.rootWeights
+        trace.io_weights_la( annotation
                             , insideWeights
                             , outsideWeights
                             , insideLogScales

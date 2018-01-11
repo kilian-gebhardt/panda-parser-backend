@@ -15,6 +15,7 @@
 #include <iostream>
 #include <fstream>
 #include "../util.h"
+#include "LatentAnnotation.h"
 
 namespace Trainer {
     template<typename Nonterminal, typename TraceID>
@@ -489,7 +490,7 @@ namespace Trainer {
 
 
         inline void inside_weights_la(
-                const std::vector<Trainer::RuleTensor<double>> &rules
+                const LatentAnnotation & latentAnnotation
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
                 , bool scaling = false
@@ -497,16 +498,16 @@ namespace Trainer {
         ) const {
             if(has_topological_order()) {
                 if (debug) std::cerr << "Calculate Inside-weights using topological order" << std::endl;
-                inside_weights_topological_la(rules, insideWeights, insideLogScales, scaling, debug);
+                inside_weights_topological_la(latentAnnotation, insideWeights, insideLogScales, scaling, debug);
             }
             else {
                 if (debug) std::cerr << "Calculate Inside-weights using fixpoint approximation" << std::endl;
-                inside_weights_fixpoint_la(rules, insideWeights, insideLogScales, scaling, debug);
+                inside_weights_fixpoint_la(latentAnnotation, insideWeights, insideLogScales, scaling, debug);
             }
         }
 
         inline void inside_weights_topological_la(
-                const std::vector<Trainer::RuleTensor<double>> &rules
+                const LatentAnnotation & latentAnnotation
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
                 , bool scaling = false
@@ -517,6 +518,7 @@ namespace Trainer {
                 abort();
             }
 
+            const std::vector<Trainer::RuleTensor<double>> & rules {*latentAnnotation.ruleWeights};
             for (const auto &node : get_topological_order()) {
                 Trainer::WeightVector &targetWeight = insideWeights[node];
 
@@ -546,24 +548,23 @@ namespace Trainer {
 
 
         inline void inside_weights_la(
-                const std::vector<Trainer::RuleTensor<double>> &rules
+                const LatentAnnotation & latentAnnotation
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , bool scaling = false
                 , bool debug = false
         ) const {
             MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
             if(has_topological_order())
-                inside_weights_la(rules, insideWeights, insideLogScales, scaling, debug);
+                inside_weights_la(latentAnnotation, insideWeights, insideLogScales, scaling, debug);
             else {
                 for(auto n : *hypergraph)
                     insideLogScales[n] = 0;
-                inside_weights_la(rules, insideWeights, insideLogScales, scaling, debug);
+                inside_weights_la(latentAnnotation, insideWeights, insideLogScales, scaling, debug);
             }
         }
 
         inline void io_weights_la(
-                const std::vector<Trainer::RuleTensor<double>> &rules
-                , const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root
+                  const LatentAnnotation & latentAnnotation
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
@@ -573,8 +574,7 @@ namespace Trainer {
         ) const {
             if(has_topological_order()) {
 //                std::cerr << "Calculate IO-weights using topological order" << std::endl;
-                return io_weights_topological_la(rules
-                                                 , root
+                return io_weights_topological_la(  latentAnnotation
                                                  , insideWeights
                                                  , outsideWeights
                                                  , insideLogScales
@@ -584,8 +584,7 @@ namespace Trainer {
             }
             else {
 //                std::cerr << "Calculate IO-weights using fixpoint approximation" << std::endl;
-                return io_weights_fixpoint_la(rules
-                                              , root
+                return io_weights_fixpoint_la( latentAnnotation
                                               , insideWeights
                                               , outsideWeights
                                               , insideLogScales
@@ -596,8 +595,7 @@ namespace Trainer {
         }
 
         inline void io_weights_la(
-                const std::vector<Trainer::RuleTensor<double>> &rules
-                , const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root
+                  const LatentAnnotation & latentAnnotation
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
                 , bool scaling = false
@@ -607,8 +605,7 @@ namespace Trainer {
             MAPTYPE<Element<Node<Nonterminal>>, int> outsideLogScales;
             if(has_topological_order()) {
 //                std::cerr << "Calculate IO-weights using topological order" << std::endl;
-                return io_weights_topological_la(rules
-                                                 , root
+                return io_weights_topological_la(latentAnnotation
                                                  , insideWeights
                                                  , outsideWeights
                                                  , insideLogScales
@@ -617,8 +614,7 @@ namespace Trainer {
             }
             else {
 //                std::cerr << "Calculate IO-weights using fixpoint approximation" << std::endl;
-                return io_weights_fixpoint_la(rules
-                                              , root
+                return io_weights_fixpoint_la(latentAnnotation
                                               , insideWeights
                                               , outsideWeights
                                               , insideLogScales
@@ -629,8 +625,7 @@ namespace Trainer {
         }
 
         inline void io_weights_topological_la(
-                const std::vector<Trainer::RuleTensor<double>> &rules
-                , const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root
+                const LatentAnnotation & latentAnnotation
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, int> &insideLogScales
@@ -639,8 +634,9 @@ namespace Trainer {
                 , bool debug = false
         ) const {
 
-
-            inside_weights_topological_la(rules, insideWeights, insideLogScales, scaling, debug);
+            inside_weights_topological_la(latentAnnotation, insideWeights, insideLogScales, scaling, debug);
+            const std::vector<Trainer::RuleTensor<double>> &rules {*latentAnnotation.ruleWeights};
+            const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root {latentAnnotation.rootWeights};
 
             for (auto nodeIterator = get_topological_order().rbegin();
                  nodeIterator != get_topological_order().rend(); ++nodeIterator) {
@@ -770,8 +766,7 @@ namespace Trainer {
 
 
         inline void io_weights_fixpoint_la(
-                const std::vector<Trainer::RuleTensor<double>> &rules
-                , const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root
+                  const LatentAnnotation & latentAnnotation
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &outsideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
@@ -786,7 +781,10 @@ namespace Trainer {
                 outsideLogScales[n] = 0;
             }
 
-            inside_weights_fixpoint_la(rules, insideWeights, insideLogScales, scaling);
+            const std::vector<Trainer::RuleTensor<double>> &rules {*latentAnnotation.ruleWeights};
+            const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root {latentAnnotation.rootWeights};
+
+            inside_weights_fixpoint_la(latentAnnotation, insideWeights, insideLogScales, scaling);
 
             unsigned int cycle_count {0};
             while(true) {
@@ -850,9 +848,8 @@ namespace Trainer {
 
 
 
-
         inline void inside_weights_fixpoint_la(
-                const std::vector<Trainer::RuleTensor<double>> &rules
+                const LatentAnnotation & latentAnnotation
                 , MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> &insideWeights
                 , MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
                 , bool scaling = false
@@ -860,6 +857,7 @@ namespace Trainer {
         ) const {
             // computation of inside weights
 
+            const std::vector<Trainer::RuleTensor<double>> &rules {*latentAnnotation.ruleWeights};
             unsigned int cycle_count {0};
             while(true) {
                 double maxChange {0.0};

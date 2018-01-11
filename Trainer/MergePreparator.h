@@ -239,8 +239,7 @@ namespace Trainer {
                 }
 
                 traceIterator->io_weights_la(
-                        *latentAnnotation.ruleWeights
-                        , latentAnnotation.rootWeights
+                          latentAnnotation
                         , tracesInsideWeights[traceIterator - traceManager->cbegin()]
                         , tracesOutsideWeights[traceIterator - traceManager->cbegin()]
                         , true

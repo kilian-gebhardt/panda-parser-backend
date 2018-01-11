@@ -124,7 +124,7 @@ namespace Trainer {
                 MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
 
                 trace->inside_weights_la(
-                        *latentAnnotation.ruleWeights
+                          latentAnnotation
                         , tracesInsideWeights[traceIterator - traceManager->cbegin()]
                         , insideLogScales
                 );
