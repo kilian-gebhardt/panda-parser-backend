@@ -175,12 +175,13 @@ namespace Trainer {
         LatentAnnotation result(
                 std::vector<size_t>(annotation.nonterminalSplits.size(), 1)
                 , std::move(root)
-                , std::make_unique<std::vector<RuleTensor<double>>>(std::move(projRuleWeights)));
+                , std::make_unique<std::vector<RuleTensor<double>>>(std::move(projRuleWeights))
+                , grammarInfo);
 
 
         // make the LA proper
         // (this is needed, since inside or outside values of some nonterminals might be 0)
-        result.make_proper(grammarInfo);
+        result.make_proper();
 
         return result;
     }
@@ -202,6 +203,7 @@ namespace Trainer {
     std::vector<double> edge_weight_projection(
         const LatentAnnotation &annotation
         , const Trace<Nonterminal, TraceID>& trace
+        , const GrammarInfo2 & grammarInfo
         , const bool variational = false
         , bool debug = false
         , bool log_mode = true

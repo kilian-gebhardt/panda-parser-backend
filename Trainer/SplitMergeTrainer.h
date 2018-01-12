@@ -80,7 +80,7 @@ namespace Trainer {
                 }
             }
 
-            return LatentAnnotation(nonterminalSplits, std::move(rootWeights), std::move(ruleWeights));
+            return LatentAnnotation(nonterminalSplits, std::move(rootWeights), std::move(ruleWeights), la.grammarInfo);
         };
 
     void reset_random_seed(unsigned seed) {
@@ -202,7 +202,10 @@ namespace Trainer {
                 ruleWeights->push_back(std::move(merged_tensor));
             }
 
-            return LatentAnnotation(mergeInfo.nontSplitsAfterMerge, std::move(rootWeights), std::move(ruleWeights));
+            return LatentAnnotation(mergeInfo.nontSplitsAfterMerge
+                                    , std::move(rootWeights)
+                                    , std::move(ruleWeights)
+                                    , la.grammarInfo);
         }
     };
 
@@ -238,7 +241,7 @@ namespace Trainer {
         }
 
         LatentAnnotation split_merge_cycle(const LatentAnnotation &la) {
-            if (not la.is_proper(splitter->grammarInfo))
+            if (not la.is_proper())
                 if (debug)
                     abort();
 
@@ -276,14 +279,14 @@ namespace Trainer {
                 }
             }
 
-            if (not laMerged.is_proper(splitter->grammarInfo))
+            if (not laMerged.is_proper())
                 if (debug)
                     abort();
 
             emTrainer->setTrainingMode(Merging);
             emTrainer->train(laMerged);
 
-            if (not laMerged.is_proper(splitter->grammarInfo))
+            if (not laMerged.is_proper())
                 if (debug)
                     abort();
 
@@ -292,7 +295,7 @@ namespace Trainer {
                 smoother->smooth(laMerged);
                 emTrainer->setTrainingMode(Smoothing);
                 emTrainer->train(laMerged);
-                if (not laMerged.is_proper(splitter->grammarInfo))
+                if (not laMerged.is_proper())
                     if (debug)
                         abort();
             }

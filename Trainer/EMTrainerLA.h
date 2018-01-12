@@ -719,7 +719,7 @@ namespace Trainer {
                         }
                 );
 
-            latentAnnotation.is_proper(grammarInfo);
+            latentAnnotation.is_proper();
         }
 
     private:

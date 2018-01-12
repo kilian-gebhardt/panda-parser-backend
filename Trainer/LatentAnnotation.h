@@ -6,6 +6,7 @@
 #define STERMPARSER_LATENTANNOTATION_H
 
 #include "StorageManager.h"
+#include "GrammarInfo.h"
 #include "TrainingCommon.h"
 #include <memory>
 
@@ -130,6 +131,7 @@ namespace Trainer {
         const std::vector <std::size_t> nonterminalSplits;
         WeightVector rootWeights;
         std::unique_ptr<std::vector <RuleTensor<double>>> ruleWeights;
+        const GrammarInfo2 & grammarInfo;
 
 //        LatentAnnotation(LatentAnnotation && other) :
 //                nonterminalSplits(std::move(other.nonterminalSplits))
@@ -140,7 +142,8 @@ namespace Trainer {
         LatentAnnotation(const LatentAnnotation & latentAnnotation) :
                 nonterminalSplits(latentAnnotation.nonterminalSplits)
         , rootWeights(latentAnnotation.rootWeights.size())
-        , ruleWeights(std::make_unique<std::vector<RuleTensor <double>>>()) {
+        , ruleWeights(std::make_unique<std::vector<RuleTensor <double>>>())
+        , grammarInfo(latentAnnotation.grammarInfo) {
             rootWeights = latentAnnotation.rootWeights;
             StorageManager sm;
             for (auto tensor : *latentAnnotation.ruleWeights)
@@ -151,7 +154,11 @@ namespace Trainer {
                 const std::vector <size_t> nonterminalSplits
                 , const WeightVector && rootWeights
                 , std::unique_ptr<std::vector <RuleTensor<double>>> && ruleWeights
-        ) : nonterminalSplits(nonterminalSplits), rootWeights(std::move(rootWeights)), ruleWeights(std::move(ruleWeights)) {
+                , const GrammarInfo2 & grammarInfo)
+                : nonterminalSplits(nonterminalSplits)
+                , rootWeights(std::move(rootWeights))
+                , ruleWeights(std::move(ruleWeights))
+                , grammarInfo(grammarInfo) {
         };
 
         LatentAnnotation(
@@ -162,7 +169,8 @@ namespace Trainer {
                 , StorageManager &storageManager
         ) : nonterminalSplits(nonterminalSplits)
             , rootWeights(storageManager.create_weight_vector<WeightVector>(rootWeights.size()))
-            , ruleWeights(std::make_unique<std::vector<RuleTensor <double>>>()) {
+            , ruleWeights(std::make_unique<std::vector<RuleTensor <double>>>())
+            , grammarInfo(grammarInfo) {
             convert_to_eigen(
                     ruleWeights
                     , *(this->ruleWeights)
@@ -209,10 +217,10 @@ namespace Trainer {
             return root;
         }
 
-        bool is_proper(std::shared_ptr<const GrammarInfo2> grammarInfo) const {
+        bool is_proper() const {
             bool proper = true;
-            for (size_t nont = 0; nont < grammarInfo->normalizationGroups.size(); ++nont) {
-                auto & group = grammarInfo->normalizationGroups[nont];
+            for (size_t nont = 0; nont < grammarInfo.normalizationGroups.size(); ++nont) {
+                auto & group = grammarInfo.normalizationGroups[nont];
                 Eigen::Tensor<double, 1> normalizationDivisor(nonterminalSplits[nont]);
                 normalizationDivisor.setZero();
                 for (size_t ruleId : group) {
@@ -229,7 +237,7 @@ namespace Trainer {
             return proper;
         }
 
-        void make_proper(const GrammarInfo2& grammarInfo) {
+        void make_proper() {
             size_t nont_id {0};
             #pragma GCC diagnostic push
             for (const auto ruleSet : grammarInfo.normalizationGroups) {
@@ -267,13 +275,7 @@ namespace Trainer {
         }
 
 
-        void make_proper(std::shared_ptr<GrammarInfo2>& grammarInfo) {
-            make_proper(*grammarInfo);
-        }
-
-
-        void add_random_noise(std::shared_ptr<const GrammarInfo2> grammarInfo
-                              , double randPercent=1.0
+        void add_random_noise( double randPercent=1.0
                               , size_t seed=0
                               , double bias=0.01
         ) {
@@ -291,8 +293,8 @@ namespace Trainer {
 
             TensorRandomizer tensorRandomizer(generator, distribution, bias);
 
-            for (size_t nont = 0; nont < grammarInfo->normalizationGroups.size(); ++nont) {
-                auto & group = grammarInfo->normalizationGroups[nont];
+            for (size_t nont = 0; nont < grammarInfo.normalizationGroups.size(); ++nont) {
+                auto & group = grammarInfo.normalizationGroups[nont];
 
                 // add noise to rule weights
 
@@ -412,7 +414,7 @@ namespace Trainer {
             return valid;
         }
 
-        bool check_rule_split_alignment(const GrammarInfo2& grammarInfo) const {
+        bool check_rule_split_alignment() const {
             for (size_t ruleIdx {0}; ruleIdx < grammarInfo.rule_to_nonterminals.size(); ++ruleIdx) {
                 const std::vector<size_t> & nonterminals = grammarInfo.rule_to_nonterminals[ruleIdx];
                 SizeChecker sizeChecker(ruleIdx, nonterminals, nonterminalSplits);

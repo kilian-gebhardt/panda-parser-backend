@@ -353,7 +353,8 @@ namespace Trainer {
 
         return LatentAnnotation(nonterminalSplits
                                 , std::move(rootWeights)
-                                , std::make_unique<std::vector <RuleTensor<double>>>(std::move(ruleWeights))
+                                , std::make_unique<std::vector <RuleTensor<double>>>(std::move(ruleWeights)
+                                , info)
         );
 
     }
