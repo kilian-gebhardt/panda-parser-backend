@@ -341,7 +341,7 @@ namespace DCP {
                         return false;
 
                     if (t.is_ordered()) {
-                        if (lcfrs_terminals.size() < t.order + 1)
+                        if ((long long int) lcfrs_terminals.size() < t.order + 1)
                             lcfrs_terminals.resize(t.order + 1, false);
                         if (lcfrs_terminals[t.order])
                             // only one sDCP symbol may link to the same string position
@@ -508,7 +508,7 @@ namespace DCP {
         if (nont_idx == 0)
             return countVariable<Nonterminal, Terminal>(0, *this);
         else {
-            if (nont_idx >= inside_attributes.size())
+            if (nont_idx >= (long long int) inside_attributes.size())
                 return 0;
             return inside_attributes[nont_idx].size();
         }
@@ -608,7 +608,7 @@ namespace DCP {
             else
                 epsilon_axioms.push_back(rule_ptr);
         }
-        if (rules.size() <= rule.id) {
+        if ((long long int) rules.size() <= rule.id) {
             rules.resize(rule.id + 1);
             rules[rule.id] = rule_ptr;
         }

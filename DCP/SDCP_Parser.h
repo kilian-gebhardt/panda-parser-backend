@@ -157,7 +157,7 @@ namespace DCP {
                             return false;
                     }
                     if (term.is_ordered()) {
-                        if (lcfrs_terminals.size() < term.order + 1)
+                        if ((long long int) lcfrs_terminals.size() < term.order + 1)
                             lcfrs_terminals.resize(term.order + 1);
                         lcfrs_terminals[term.order] = position;
                     }
@@ -196,8 +196,8 @@ namespace DCP {
                     if (obj.type() == typeid(Variable)) {
                         const Variable &var = boost::get<Variable>(obj);
 
-                        assert (0 < var.member and var.member <= items.size());
-                        assert (var.argument <= items[var.member - 1]->spans_lcfrs.size());
+                        assert (0 < var.member and var.member <= (long long int) items.size());
+                        assert (var.argument <= (long long int) items[var.member - 1]->spans_lcfrs.size());
 
                         const std::pair<int, int> &var_pos = items[var.member - 1]->spans_lcfrs[var.argument - 1];
 
@@ -226,7 +226,7 @@ namespace DCP {
                                     span_start = pos2;
                                     pos = pos2 + 1;
                                     begin = false;
-                                } else if (pos == pos2) {
+                                } else if (pos == (long int) pos2) {
                                     pos = pos2 + 1;
                                 } else
                                     return false;
@@ -365,7 +365,7 @@ namespace DCP {
                             return false;
                     }
                     if (term.is_ordered()) {
-                        if (lcfrs_terminals.size() < term.order + 1)
+                        if ((long int) lcfrs_terminals.size() < term.order + 1)
                             lcfrs_terminals.resize(term.order + 1);
                         lcfrs_terminals[term.order] = pos;
                     }
@@ -664,7 +664,7 @@ namespace DCP {
                     selection.resize(rule.rhs.size(), 0);
 
                     while (0 <= j) {
-                        if (j == rule.rhs.size()) {
+                        if (j == (long long int) rule.rhs.size()) {
                             match_rule(
                                     p.first
                                     , transport
@@ -688,7 +688,7 @@ namespace DCP {
                                 ++j;
                             }
                             continue;
-                        } else if (selection[j] < chart[rule.rhs[j]].size()) {
+                        } else if (selection[j] < (long long int) chart[rule.rhs[j]].size()) {
                             if (selection[j] == 0)
                                 candidates.push_back(chart[rule.rhs[j]][selection[j]]);
                             else

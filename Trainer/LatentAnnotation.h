@@ -63,7 +63,7 @@ namespace Trainer {
             size_t dim_idx {0};
 
             for (size_t nont : nonterminals) {
-                if (nonterminalSplits[nont] != tensor.dimension(dim_idx)) {
+                if ((long long int) nonterminalSplits[nont] != tensor.dimension(dim_idx)) {
                     std::cerr << "Weight vector dimensions for rule " << ruleIdx << " are inconsistent: " << std::endl
                               << "Weight vector at " << nont << " has dim. " << tensor.dimension(dim_idx)
                               << " vs. split dim " << nonterminalSplits[nont] << std::endl;

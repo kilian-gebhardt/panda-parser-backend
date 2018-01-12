@@ -363,7 +363,7 @@ namespace Trainer {
             return hypergraph;
         }
 
-        const bool is_consistent_with_grammar(const GrammarInfo2& grammarInfo) {
+        bool is_consistent_with_grammar(const GrammarInfo2& grammarInfo) {
             if (goal->get_label_id() != grammarInfo.start) {
                 std::cerr << "Inconsistent trace: root label is different from start nonterminal "
                           << goal->get_label_id() << " vs. " << grammarInfo.start << std::endl;
@@ -550,7 +550,8 @@ namespace Trainer {
                     boost::apply_visitor(iwc, rules[edge->get_label_id()]);
                 }
 
-                assert(targetWeight.dimension(0) == latentAnnotation.nonterminalSplits[node->get_label_id()]);
+                assert(targetWeight.dimension(0)
+                       == (long long int) latentAnnotation.nonterminalSplits[node->get_label_id()]);
 
                 if (scaling)
                     targetScale = scaleTensor(targetWeight, targetScale);
@@ -667,7 +668,8 @@ namespace Trainer {
                 else
                     outsideWeight.setZero();
 
-                assert(outsideWeight.dimension(0) == latentAnnotation.nonterminalSplits[node->get_label_id()]);
+                assert(outsideWeight.dimension(0) ==
+                       (long long int) latentAnnotation.nonterminalSplits[node->get_label_id()]);
 
                 for (const auto &outgoing : get_hypergraph()->get_outgoing_edges(node)) {
                     OutsideWeightComputation<Nonterminal>
@@ -684,7 +686,8 @@ namespace Trainer {
                     boost::apply_visitor(outsideWeightComputation, rules[outgoing.first->get_label_id()]);
                 }
 
-                assert(outsideWeight.dimension(0) == latentAnnotation.nonterminalSplits[node->get_label_id()]);
+                assert(outsideWeight.dimension(0)
+                       == (long long int) latentAnnotation.nonterminalSplits[node->get_label_id()]);
 
                 if (scaling)
                     targetLogScale = scaleTensor(outsideWeight, targetLogScale);
