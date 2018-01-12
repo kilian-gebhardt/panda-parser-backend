@@ -184,7 +184,6 @@ namespace Trainer {
                 , const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
                 , const MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales
                 , const LatentAnnotation & latentAnnotation
-                , const size_t ruleIdx
                 , const bool debug = false
         ) : insideWeights(insideWeights)
                 , outsideWeights(outsideWeights)
@@ -221,7 +220,10 @@ namespace Trainer {
                           << " weight: " << std::endl << parentWeight << std::endl
                           << "rule idx" << outgoing.first->get_label_id()
                           << " dims " << ruleWeight.dimension(0) << " " << ruleWeight.dimension(1)
-                          << " weight: " << ruleWeight << std::endl;
+                          << " weight: " << ruleWeight << std::endl
+                          << " rule nonterminals ";
+                operator<<(std::cerr, latentAnnotation.grammarInfo.rule_to_nonterminals[outgoing.first->get_label_id()]);
+                std::cerr << std::endl;
             }
 
             WeightVector outsideWeightSummand = ruleWeight.contract(
