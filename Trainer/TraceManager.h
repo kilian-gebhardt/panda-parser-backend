@@ -172,6 +172,7 @@ namespace Trainer {
         int & targetLogScale;
         const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales;
         const MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales;
+        const LatentAnnotation & latentAnnotation;
         const bool debug;
 
         OutsideWeightComputation(
@@ -182,6 +183,8 @@ namespace Trainer {
                 , int & targetLogScale
                 , const MAPTYPE<Element<Node<Nonterminal>>, int> & insideLogScales
                 , const MAPTYPE<Element<Node<Nonterminal>>, int> & outsideLogScales
+                , const LatentAnnotation & latentAnnotation
+                , const size_t ruleIdx
                 , const bool debug = false
         ) : insideWeights(insideWeights)
                 , outsideWeights(outsideWeights)
@@ -190,6 +193,7 @@ namespace Trainer {
                 , targetLogScale(targetLogScale)
                 , insideLogScales(insideLogScales)
                 , outsideLogScales(outsideLogScales)
+                , latentAnnotation(latentAnnotation)
                 , debug(debug) {}
 
         inline void operator()(const Trainer::RuleTensorRaw<double, 1>& /* ruleWeight */) {
@@ -209,6 +213,16 @@ namespace Trainer {
             const auto &parentWeight = outsideWeights.at(parent);
 
             if (debug) std::cerr << "parent Weight" << parentWeight << std::endl;
+
+            if (parentWeight.dimension(0) != ruleWeight.dimension(0)) {
+                std::cerr << "parent " << parent << " label " << parent->get_label_id()
+                          << " weight dim " << parentWeight.dimension(0)
+                          << " la label dim: " << latentAnnotation.nonterminalSplits[parent->get_label_id()]
+                          << " weight: " << std::endl << parentWeight << std::endl
+                          << "rule idx" << outgoing.first->get_label_id()
+                          << " dims " << ruleWeight.dimension(0) << " " << ruleWeight.dimension(1)
+                          << " weight: " << ruleWeight << std::endl;
+            }
 
             WeightVector outsideWeightSummand = ruleWeight.contract(
                     parentWeight, Eigen::array<Eigen::IndexPair<long>, 1>{Eigen::IndexPair<long>(0, 0)}
@@ -664,6 +678,7 @@ namespace Trainer {
                                                      , targetLogScale
                                                      , insideLogScales
                                                      , outsideLogScales
+                                                     , latentAnnotation
                                                      , debug
                             );
                     boost::apply_visitor(outsideWeightComputation, rules[outgoing.first->get_label_id()]);
@@ -820,6 +835,7 @@ namespace Trainer {
                                 , targetLogScale
                                 , insideLogScales
                                 , outsideLogScales
+                                , latentAnnotation
                                 , debug);
                         boost::apply_visitor(outsideWeightComputation, rules[outgoing.first->get_label_id()]);
                         if (scaling)
@@ -849,7 +865,6 @@ namespace Trainer {
 
             }
         }
-
 
 
         inline void inside_weights_fixpoint_la(
