@@ -37,7 +37,7 @@ namespace Trainer {
                 : storageManager(storageManager), logLikelihood(0),
                   ruleCounts(std::make_unique<std::vector<RuleTensor<double>>>()),
                   rootCounts(latentAnnotation.rootWeights.dimension(0)) {
-            for (size_t ruleId = 0; ruleId < latentAnnotation.ruleWeights->size(); ++ruleId) {
+            for (size_t ruleId = 0; ruleId < latentAnnotation.ruleWeights.size(); ++ruleId) {
                 ruleCounts->push_back(
                         storageManager->create_uninitialized_tensor(
                                 ruleId
@@ -572,7 +572,7 @@ namespace Trainer {
                                                             , insideWeights
                                                             , (*counts.ruleCounts)[ruleId]
                                                             , scale);
-                        boost::apply_visitor(ruleCountComputer, (*latentAnnotation.ruleWeights)[ruleId]);
+                        boost::apply_visitor(ruleCountComputer, latentAnnotation.ruleWeights[ruleId]);
                     }
                 }
 
@@ -736,7 +736,7 @@ namespace Trainer {
             }
 
             for (const size_t ruleId : group) {
-                normalize((*latentAnnotation.ruleWeights)[ruleId], (*counts.ruleCounts)[ruleId], lhsCounts);
+                normalize(latentAnnotation.ruleWeights[ruleId], (*counts.ruleCounts)[ruleId], lhsCounts);
             }
 
         }

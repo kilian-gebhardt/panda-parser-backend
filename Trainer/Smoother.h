@@ -55,7 +55,7 @@ namespace Trainer {
             std::cerr << "Smoothing rules with factors " << smoothingFactor
                       << " and " << smoothingFactorUnary << "." << std::endl;
             TensorSmoother tensorSmoother(smoothingFactor, smoothingFactorUnary);
-            for (RuleTensor<double> & rule : *(latentAnnotation.ruleWeights)) {
+            for (RuleTensor<double> & rule : latentAnnotation.ruleWeights) {
                 boost::apply_visitor(tensorSmoother, rule);
             }
             for (size_t nont = 0; nont < grammarInfo->normalizationGroups.size(); ++nont) {
@@ -63,10 +63,10 @@ namespace Trainer {
                 Eigen::Tensor<double, 1> normalizationDivisor(latentAnnotation.nonterminalSplits[nont]);
                 normalizationDivisor.setZero();
                 for (size_t ruleId : group) {
-                    compute_normalization_divisor(normalizationDivisor, (*latentAnnotation.ruleWeights)[ruleId]);
+                    compute_normalization_divisor(normalizationDivisor, latentAnnotation.ruleWeights[ruleId]);
                 }
                 for (size_t ruleId : group) {
-                    RuleTensor<double> & rule = (*latentAnnotation.ruleWeights)[ruleId];
+                    RuleTensor<double> & rule = latentAnnotation.ruleWeights[ruleId];
                     normalize(rule, rule, normalizationDivisor);
                 }
             }

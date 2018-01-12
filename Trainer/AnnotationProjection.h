@@ -121,11 +121,11 @@ namespace Trainer {
 
 
 
-        auto projRuleWeights = std::vector<RuleTensor<double>>();
+        std::vector<RuleTensor<double>> projRuleWeights;
         projRuleWeights.reserve(hg->get_edges().lock()->size());
         SizeOneTensorCreator odc(0.0);
-        for(size_t ruleId = 0; ruleId < (*annotation.ruleWeights).size(); ++ruleId)
-            projRuleWeights.push_back(boost::apply_visitor(odc, (*annotation.ruleWeights)[ruleId]));
+        for(size_t ruleId = 0; ruleId < annotation.ruleWeights.size(); ++ruleId)
+            projRuleWeights.push_back(boost::apply_visitor(odc, annotation.ruleWeights[ruleId]));
 
 
 
@@ -133,7 +133,7 @@ namespace Trainer {
         for (const auto &edge : *hg->get_edges().lock()) {
             size_t ruleId = edge->get_label();
             const std::vector<size_t> &rule = grammarInfo.rule_to_nonterminals[ruleId];
-            const auto &ruleVariant = (*(annotation.ruleWeights))[ruleId];
+            const auto &ruleVariant = annotation.ruleWeights[ruleId];
 
             const auto normalisationCalc = insideWeights[edge->get_target()].contract(
                     outsideWeights[edge->get_target()]
@@ -171,11 +171,12 @@ namespace Trainer {
         Eigen::Tensor<double, 0> rootval = annotation.rootWeights.sum();
         root.setValues({rootval(0)});
 
+        std::vector<size_t> trivialDimensions(annotation.nonterminalSplits.size(), 1);
 
         LatentAnnotation result(
-                std::vector<size_t>(annotation.nonterminalSplits.size(), 1)
-                , std::move(root)
-                , std::make_unique<std::vector<RuleTensor<double>>>(std::move(projRuleWeights))
+                  trivialDimensions
+                , root
+                , projRuleWeights
                 , grammarInfo);
 
 
@@ -203,7 +204,6 @@ namespace Trainer {
     std::vector<double> edge_weight_projection(
         const LatentAnnotation &annotation
         , const Trace<Nonterminal, TraceID>& trace
-        , const GrammarInfo2 & grammarInfo
         , const bool variational = false
         , bool debug = false
         , bool log_mode = true
@@ -256,7 +256,7 @@ namespace Trainer {
         // do projection
         for (const auto &edge : *hg->get_edges().lock()) {
             size_t ruleId = edge->get_label();
-            const auto &ruleVariant = (*(annotation.ruleWeights))[ruleId];
+            const auto &ruleVariant = annotation.ruleWeights[ruleId];
 
             if (variational) {
                 const auto normalisationCalc = insideWeights[edge->get_target()].contract(

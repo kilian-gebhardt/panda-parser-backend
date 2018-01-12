@@ -80,7 +80,7 @@ namespace Trainer {
         WeightAccessVisitor(const std::vector<size_t> & index) : index(index) {};
 
         template <int rank>
-        double operator()(RuleTensorRaw<double, rank>& tensor_raw) const  {
+        double operator()(const RuleTensorRaw<double, rank>& tensor_raw) const  {
             Eigen::array<size_t, rank> index_array;
             std::copy(index.cbegin(), index.cend(), index_array.begin());
             return tensor_raw(index_array);
@@ -130,7 +130,7 @@ namespace Trainer {
     public:
         const std::vector <std::size_t> nonterminalSplits;
         WeightVector rootWeights;
-        std::unique_ptr<std::vector <RuleTensor<double>>> ruleWeights;
+        std::vector <RuleTensor<double>> ruleWeights;
         const GrammarInfo2 & grammarInfo;
 
 //        LatentAnnotation(LatentAnnotation && other) :
@@ -142,22 +142,22 @@ namespace Trainer {
         LatentAnnotation(const LatentAnnotation & latentAnnotation) :
                 nonterminalSplits(latentAnnotation.nonterminalSplits)
         , rootWeights(latentAnnotation.rootWeights.size())
-        , ruleWeights(std::make_unique<std::vector<RuleTensor <double>>>())
+        , ruleWeights(std::vector<RuleTensor<double>>())
         , grammarInfo(latentAnnotation.grammarInfo) {
             rootWeights = latentAnnotation.rootWeights;
             StorageManager sm;
-            for (auto tensor : *latentAnnotation.ruleWeights)
-                (*ruleWeights).push_back(sm.copy_tensor(tensor));
+            for (auto tensor : latentAnnotation.ruleWeights)
+                ruleWeights.push_back(sm.copy_tensor(tensor));
         }
 
         LatentAnnotation(
                 const std::vector <size_t> nonterminalSplits
-                , const WeightVector && rootWeights
-                , std::unique_ptr<std::vector <RuleTensor<double>>> && ruleWeights
+                , WeightVector rootWeights
+                , std::vector<RuleTensor<double>> ruleWeights
                 , const GrammarInfo2 & grammarInfo)
                 : nonterminalSplits(nonterminalSplits)
-                , rootWeights(std::move(rootWeights))
-                , ruleWeights(std::move(ruleWeights))
+                , rootWeights(rootWeights)
+                , ruleWeights(ruleWeights)
                 , grammarInfo(grammarInfo) {
         };
 
@@ -169,11 +169,11 @@ namespace Trainer {
                 , StorageManager &storageManager
         ) : nonterminalSplits(nonterminalSplits)
             , rootWeights(storageManager.create_weight_vector<WeightVector>(rootWeights.size()))
-            , ruleWeights(std::make_unique<std::vector<RuleTensor <double>>>())
+            , ruleWeights(std::vector<RuleTensor <double>>())
             , grammarInfo(grammarInfo) {
             convert_to_eigen(
                     ruleWeights
-                    , *(this->ruleWeights)
+                    , this->ruleWeights
                     , nonterminalSplits
                     , storageManager
                     , grammarInfo
@@ -198,13 +198,13 @@ namespace Trainer {
 
         double get_weight(const size_t ruleID, const std::vector<size_t> & index) const {
             WeightAccessVisitor weightAccessVisitor(index);
-            return boost::apply_visitor(weightAccessVisitor, (*ruleWeights)[ruleID]);
+            return boost::apply_visitor(weightAccessVisitor, ruleWeights[ruleID]);
         }
 
         std::vector<std::vector<double>> get_rule_weights() const {
             FormatDeconversionVisitor formatConversionVisitor;
             std::vector<std::vector<double>> weights;
-            for (const auto & tensor : *ruleWeights) {
+            for (const auto & tensor : ruleWeights) {
                 weights.push_back(boost::apply_visitor(formatConversionVisitor, tensor));
             }
             return weights;
@@ -224,7 +224,7 @@ namespace Trainer {
                 Eigen::Tensor<double, 1> normalizationDivisor(nonterminalSplits[nont]);
                 normalizationDivisor.setZero();
                 for (size_t ruleId : group) {
-                    compute_normalization_divisor(normalizationDivisor, (*ruleWeights)[ruleId]);
+                    compute_normalization_divisor(normalizationDivisor, ruleWeights[ruleId]);
                 }
                 for (auto idx = 0; idx < normalizationDivisor.dimension(0); ++idx) {
                     if (std::abs(normalizationDivisor(idx) - 1.0) > std::exp(-5)) {
@@ -246,26 +246,26 @@ namespace Trainer {
                     VectorSummer vectorSummer(index);
                     double sum {0.0};
                     for (auto ruleID : ruleSet) {
-                        sum += boost::apply_visitor(vectorSummer, (*ruleWeights)[ruleID]);
+                        sum += boost::apply_visitor(vectorSummer, ruleWeights[ruleID]);
                     }
 
                     if (std::abs(sum) < std::exp(-30) or std::isnan(sum)) { // The sum is 0 or nan
                         for (auto ruleID : ruleSet) {
                             TensorChipValueSetter tvs(1.0, index);
-                            boost::apply_visitor(tvs, (*ruleWeights)[ruleID]);
+                            boost::apply_visitor(tvs, ruleWeights[ruleID]);
                         }
                         double sum2 {0.0};
                         for (auto ruleID : ruleSet) {
-                            sum2 += boost::apply_visitor(vectorSummer, (*ruleWeights)[ruleID]);
+                            sum2 += boost::apply_visitor(vectorSummer, ruleWeights[ruleID]);
                         }
                         TensorChipMultiplier rtd(1.0 / sum2, index);
                         for (auto ruleID : ruleSet) {
-                            boost::apply_visitor(rtd, (*ruleWeights)[ruleID]);
+                            boost::apply_visitor(rtd, ruleWeights[ruleID]);
                         }
                     } else if (std::abs(sum - 1.0) > std::exp(-30)) { // does not sum to 1
                         TensorChipMultiplier rtd(1.0 / sum, index);
                         for (auto ruleID : ruleSet) {
-                            boost::apply_visitor(rtd, (*ruleWeights)[ruleID]);
+                            boost::apply_visitor(rtd, ruleWeights[ruleID]);
                         }
                     }
                 }
@@ -299,16 +299,16 @@ namespace Trainer {
                 // add noise to rule weights
 
                 for (size_t ruleID : group)
-                    boost::apply_visitor(tensorRandomizer, (*ruleWeights)[ruleID]);
+                    boost::apply_visitor(tensorRandomizer, ruleWeights[ruleID]);
 
                 // normalization
                 Eigen::Tensor<double, 1> normalizationDivisor(nonterminalSplits[nont]);
                 normalizationDivisor.setZero();
                 for (size_t ruleId : group) {
-                    compute_normalization_divisor(normalizationDivisor, (*ruleWeights)[ruleId]);
+                    compute_normalization_divisor(normalizationDivisor, ruleWeights[ruleId]);
                 }
                 for (size_t ruleId : group) {
-                    normalize((*ruleWeights)[ruleId], (*ruleWeights)[ruleId], normalizationDivisor);
+                    normalize(ruleWeights[ruleId], ruleWeights[ruleId], normalizationDivisor);
                 }
             }
         }
@@ -316,8 +316,8 @@ namespace Trainer {
         LatentAnnotation& operator= (const LatentAnnotation& other) {
             if (this->nonterminalSplits == other.nonterminalSplits) {
                 this->rootWeights = other.rootWeights;
-                for (size_t rule = 0; rule < (*ruleWeights).size(); ++rule){
-                    (*ruleWeights)[rule] = (*other.ruleWeights)[rule];
+                for (size_t rule = 0; rule < ruleWeights.size(); ++rule){
+                    ruleWeights[rule] = other.ruleWeights[rule];
                 }
             } else {
                 std::cerr << "Latent annotation assignment is only supported, if the nonterminal splits match.";
@@ -331,7 +331,7 @@ namespace Trainer {
         template <long rank>
         double get_weight_ranked(const size_t ruleID, const std::vector<size_t> & index) const  {
             RuleTensorRaw<double, rank>& tensor_raw
-                    = boost::get < Trainer::RuleTensorRaw < double, rank>>((*ruleWeights)[ruleID]);
+                    = boost::get < Trainer::RuleTensorRaw < double, rank>>(ruleWeights[ruleID]);
             Eigen::array<size_t, rank> index_array;
             std::copy(index.cbegin(), index.cend(), index_array.begin());
             return tensor_raw(index_array);
@@ -403,7 +403,7 @@ namespace Trainer {
             }
 
             // check the weights for nan and inf
-            for(RuleTensor<double> rule : *ruleWeights){
+            for(RuleTensor<double> rule : ruleWeights){
                 ValidityChecker validityChecker;
                 bool check = boost::apply_visitor(validityChecker, rule);
                 if(!check)
@@ -418,7 +418,7 @@ namespace Trainer {
             for (size_t ruleIdx {0}; ruleIdx < grammarInfo.rule_to_nonterminals.size(); ++ruleIdx) {
                 const std::vector<size_t> & nonterminals = grammarInfo.rule_to_nonterminals[ruleIdx];
                 SizeChecker sizeChecker(ruleIdx, nonterminals, nonterminalSplits);
-                if (not boost::apply_visitor(sizeChecker, (*ruleWeights)[ruleIdx]))
+                if (not boost::apply_visitor(sizeChecker, ruleWeights[ruleIdx]))
                     return false;
             }
             return true;

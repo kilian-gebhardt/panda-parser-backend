@@ -305,14 +305,14 @@ void test_fp_io() {
     Trainer::GrammarInfo2 gramInf(rules_to_nont, 0);
 
     std::cerr << "before:\n";
-    for(const auto tensor : *lat.ruleWeights){
+    for(const auto tensor : lat.ruleWeights){
         std::cerr << tensor << "\n";
     }
 
     Trainer::LatentAnnotation projection = Trainer::project_annotation<size_t>(lat, gramInf);
 
     std::cerr << "after:\n";
-    for(const auto tensor : *projection.ruleWeights){
+    for(const auto tensor : projection.ruleWeights){
         std::cerr << tensor << "\n";
     }
 

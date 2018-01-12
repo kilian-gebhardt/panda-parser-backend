@@ -61,10 +61,10 @@ namespace Trainer {
 //            std::cerr << "split root weights: " << std::endl << rootWeights << std::endl;
 
             // new unnormalized rule weights
-            auto ruleWeights = std::make_unique<std::vector<RuleTensor<double>>>();
-            ruleWeights->reserve(la.ruleWeights->size());
-            for (const RuleTensor<double> &rule_weight : *la.ruleWeights)
-                ruleWeights->push_back(create_split_tensor(rule_weight));
+            std::vector<RuleTensor<double>> ruleWeights;
+            ruleWeights.reserve(la.ruleWeights.size());
+            for (const RuleTensor<double> &rule_weight : la.ruleWeights)
+                ruleWeights.push_back(create_split_tensor(rule_weight));
 
             // normalization
             for (size_t nont = 0; nont < grammarInfo->normalizationGroups.size(); ++nont) {
@@ -72,15 +72,18 @@ namespace Trainer {
                 Eigen::Tensor<double, 1> normalizationDivisor(nonterminalSplits[nont]);
                 normalizationDivisor.setZero();
                 for (size_t ruleId : group) {
-                    compute_normalization_divisor(normalizationDivisor, (*ruleWeights)[ruleId]);
+                    compute_normalization_divisor(normalizationDivisor, ruleWeights[ruleId]);
 
                 }
                 for (size_t ruleId : group) {
-                    normalize((*ruleWeights)[ruleId], (*ruleWeights)[ruleId], normalizationDivisor);
+                    normalize(ruleWeights[ruleId], ruleWeights[ruleId], normalizationDivisor);
                 }
             }
 
-            return LatentAnnotation(nonterminalSplits, std::move(rootWeights), std::move(ruleWeights), la.grammarInfo);
+            return LatentAnnotation(std::move(nonterminalSplits)
+                                    , std::move(rootWeights)
+                                    , std::move(ruleWeights)
+                                    , la.grammarInfo);
         };
 
     void reset_random_seed(unsigned seed) {
@@ -187,24 +190,25 @@ namespace Trainer {
             if (debug) std::cerr << "root weights " << rootWeights << std::endl;
 
             // rule weights
-            auto ruleWeights = std::make_unique<std::vector<RuleTensor<double>>>();
-            for (size_t rule_id = 0; rule_id < grammarInfo.rule_to_nonterminals.size(); ++rule_id) {
-                RuleTensor<double> merged_tensor = storageManager->create_uninitialized_tensor(
+            std::vector<RuleTensor<double>> ruleWeights;
+            ruleWeights.reserve(la.ruleWeights.size());
+            for (size_t rule_id {0}; rule_id < grammarInfo.rule_to_nonterminals.size(); ++rule_id) {
+                RuleTensor<double> merged_tensor {storageManager->create_uninitialized_tensor(
                         rule_id
                         , grammarInfo
                         , mergeInfo.nontSplitsAfterMerge
-                );
+                )};
 
-                TensorMerger tensorMerger((*la.ruleWeights)[rule_id], rule_id, mergeInfo, grammarInfo);
+                TensorMerger tensorMerger(la.ruleWeights[rule_id], rule_id, mergeInfo, grammarInfo);
                 boost::apply_visitor(tensorMerger, merged_tensor);
 
                 if (debug) std::cerr << rule_id << " " << merged_tensor << std::endl;
-                ruleWeights->push_back(std::move(merged_tensor));
+                ruleWeights.push_back(std::move(merged_tensor));
             }
 
             return LatentAnnotation(mergeInfo.nontSplitsAfterMerge
-                                    , std::move(rootWeights)
-                                    , std::move(ruleWeights)
+                                    , rootWeights
+                                    , ruleWeights
                                     , la.grammarInfo);
         }
     };
@@ -254,7 +258,7 @@ namespace Trainer {
                 std::cerr << std::endl;
                 std::cerr << "rules weights at begin of SM cycle" << std::endl;
                 size_t rule_id{0};
-                for (const auto &ruleTensor : *la.ruleWeights) {
+                for (const auto &ruleTensor : la.ruleWeights) {
                     std::cerr << "rule " << rule_id << ":  ";
                     for (auto nont : splitter->grammarInfo->rule_to_nonterminals[rule_id])
                         std::cerr << nont << " ";
@@ -273,7 +277,7 @@ namespace Trainer {
 
             if (debug) {
                 size_t rule_id{0};
-                for (const RuleTensor<double> &ruleTensor : *laMerged.ruleWeights) {
+                for (const RuleTensor<double> &ruleTensor : laMerged.ruleWeights) {
                     std::cerr << "rule " << rule_id << std::endl << ruleTensor << std::endl;
                     ++rule_id;
                 }
@@ -314,7 +318,7 @@ namespace Trainer {
                 std::cerr << mergeInfo;
                 std::cerr << "rules weights before merge" << std::endl;
                 size_t rule_id{0};
-                for (const auto &ruleTensor : *la.ruleWeights) {
+                for (const auto &ruleTensor : la.ruleWeights) {
                     std::cerr << "rule " << rule_id << std::endl << ruleTensor << std::endl;
                     ++rule_id;
                 }

@@ -193,7 +193,7 @@ namespace Trainer {
 
         // check that la1 and la2 are compatible
         assert(la1.nonterminalSplits.size() == la2.nonterminalSplits.size());
-        assert(la1.ruleWeights->size() == la2.ruleWeights->size());
+        assert(la1.ruleWeights.size() == la2.ruleWeights.size());
 
 
         HypergraphPtr<Nonterminal> hg = hypergraph_from_grammar<Nonterminal>(info);
@@ -232,10 +232,10 @@ namespace Trainer {
 
         // prepare the new ruleWeight vector by initializing with the correct ranks
         std::vector<RuleTensor<double>> ruleWeights;
-        ruleWeights.reserve(la1.ruleWeights->size());
+        ruleWeights.reserve(la1.ruleWeights.size());
         SizeOneTensorCreator odvc(0);
-        for(size_t ruleId = 0; ruleId < la1.ruleWeights->size(); ++ ruleId){
-            ruleWeights.push_back(boost::apply_visitor(odvc, (*la1.ruleWeights)[ruleId]));
+        for(size_t ruleId = 0; ruleId < la1.ruleWeights.size(); ++ ruleId){
+            ruleWeights.push_back(boost::apply_visitor(odvc, la1.ruleWeights[ruleId]));
         }
 
 
@@ -247,8 +247,8 @@ namespace Trainer {
 
             const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& inside {lhsIsFirst ? inside2 : inside1};
             const MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector>& outside {lhsIsFirst ? outside2 : outside1};
-            const RuleTensor<double>& weight1 {lhsIsFirst ? (*la1.ruleWeights)[edge->get_label()] : (*la2.ruleWeights)[edge->get_label()]};
-            const RuleTensor<double>& weight2 {lhsIsFirst ? (*la2.ruleWeights)[edge->get_label()] : (*la1.ruleWeights)[edge->get_label()]};
+            const RuleTensor<double>& weight1 {lhsIsFirst ? la1.ruleWeights[edge->get_label()] : la2.ruleWeights[edge->get_label()]};
+            const RuleTensor<double>& weight2 {lhsIsFirst ? la2.ruleWeights[edge->get_label()] : la1.ruleWeights[edge->get_label()]};
 
 
             // calculate the sum of the whole rule:
@@ -351,11 +351,11 @@ namespace Trainer {
                 rootWeights[i] = la2.rootWeights[i];
 
 
-        return LatentAnnotation(nonterminalSplits
-                                , std::move(rootWeights)
-                                , std::make_unique<std::vector <RuleTensor<double>>>(std::move(ruleWeights)
-                                , info)
-        );
+        return LatentAnnotation(  nonterminalSplits
+                                , rootWeights
+                                , ruleWeights
+                                , info
+                                );
 
     }
 

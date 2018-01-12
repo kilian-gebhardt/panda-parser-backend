@@ -532,7 +532,7 @@ namespace Trainer {
                 abort();
             }
 
-            const std::vector<Trainer::RuleTensor<double>> & rules {*latentAnnotation.ruleWeights};
+            const std::vector<Trainer::RuleTensor<double>> & rules {latentAnnotation.ruleWeights};
             for (const auto &node : get_topological_order()) {
                 Trainer::WeightVector &targetWeight = insideWeights[node];
 
@@ -651,7 +651,7 @@ namespace Trainer {
         ) const {
 
             inside_weights_topological_la(latentAnnotation, insideWeights, insideLogScales, scaling, debug);
-            const std::vector<Trainer::RuleTensor<double>> &rules {*latentAnnotation.ruleWeights};
+            const std::vector<Trainer::RuleTensor<double>> &rules {latentAnnotation.ruleWeights};
             const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root {latentAnnotation.rootWeights};
 
             for (auto nodeIterator = get_topological_order().rbegin();
@@ -685,6 +685,7 @@ namespace Trainer {
                 }
 
                 assert(outsideWeight.dimension(0) == latentAnnotation.nonterminalSplits[node->get_label_id()]);
+
                 if (scaling)
                     targetLogScale = scaleTensor(outsideWeight, targetLogScale);
                 if (debug)
@@ -800,7 +801,7 @@ namespace Trainer {
                 outsideLogScales[n] = 0;
             }
 
-            const std::vector<Trainer::RuleTensor<double>> &rules {*latentAnnotation.ruleWeights};
+            const std::vector<Trainer::RuleTensor<double>> &rules {latentAnnotation.ruleWeights};
             const Eigen::TensorRef<Eigen::Tensor<double, 1>> &root {latentAnnotation.rootWeights};
 
             inside_weights_fixpoint_la(latentAnnotation, insideWeights, insideLogScales, scaling);
@@ -876,7 +877,7 @@ namespace Trainer {
         ) const {
             // computation of inside weights
 
-            const std::vector<Trainer::RuleTensor<double>> &rules {*latentAnnotation.ruleWeights};
+            const std::vector<Trainer::RuleTensor<double>> &rules {latentAnnotation.ruleWeights};
             unsigned int cycle_count {0};
             while(true) {
                 double maxChange {0.0};
