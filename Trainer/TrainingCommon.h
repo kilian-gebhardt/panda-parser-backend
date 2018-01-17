@@ -33,6 +33,7 @@ namespace Trainer {
             , RuleTensorRaw<Scalar, 5>
             , RuleTensorRaw<Scalar, 6>
             , RuleTensorRaw<Scalar, 7>
+            , RuleTensorRaw<Scalar, 8>
     >;
 
     struct MergeInfo {

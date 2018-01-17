@@ -167,7 +167,16 @@ namespace Trainer {
                     return create_uninitialized_tensor_ranked<3>(ruleId, grammarInfo, nontSplits);
                 case 4:
                     return create_uninitialized_tensor_ranked<4>(ruleId, grammarInfo, nontSplits);
+                case 5:
+                    return create_uninitialized_tensor_ranked<5>(ruleId, grammarInfo, nontSplits);
+                case 6:
+                    return create_uninitialized_tensor_ranked<6>(ruleId, grammarInfo, nontSplits);
+                case 7:
+                    return create_uninitialized_tensor_ranked<7>(ruleId, grammarInfo, nontSplits);
+                case 8:
+                    return create_uninitialized_tensor_ranked<8>(ruleId, grammarInfo, nontSplits);
                 default:
+                    std::cerr << "Only rules with at most 7 right-hand side nonterminals are supported!" << std::endl;
                     abort();
             }
         }
