@@ -218,11 +218,13 @@ namespace Trainer {
                           << " weight dim " << parentWeight.dimension(0)
                           << " la label dim: " << latentAnnotation.nonterminalSplits[parent->get_label_id()]
                           << " weight: " << std::endl << parentWeight << std::endl
-                          << "rule idx" << outgoing.first->get_label_id()
+                          << "rule idx " << outgoing.first->get_label_id()
                           << " dims " << ruleWeight.dimension(0) << " " << ruleWeight.dimension(1)
                           << " weight: " << ruleWeight << std::endl
                           << " rule nonterminals ";
                 operator<<(std::cerr, latentAnnotation.grammarInfo.rule_to_nonterminals[outgoing.first->get_label_id()]);
+                std::cerr << std::endl;
+                std::cerr << latentAnnotation.ruleWeights[outgoing.first->get_label_id()];
                 std::cerr << std::endl;
             }
 
