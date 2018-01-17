@@ -687,7 +687,16 @@ namespace Trainer {
                                                      , latentAnnotation
                                                      , debug
                             );
-                    boost::apply_visitor(outsideWeightComputation, rules[outgoing.first->get_label_id()]);
+                    const Element<HyperEdge<Nonterminal>> & edge = outgoing.first;
+                    if (rules[edge->get_label_id()].which() + 1 !=
+                            latentAnnotation.grammarInfo.rule_to_nonterminals[edge->get_label_id()].size()) {
+                        std::cerr << "LA / grammarInfo mismatch " << std::endl;
+                        std::cerr << "node " << node->get_label() << " / " << node->get_label_id() << std::endl;
+                        std::cerr << "rule " << edge->get_label() << " / " << edge->get_label_id() << std::endl;
+                        std::cerr << "edge weight " << rules[edge->get_label_id()] << std::endl << std::endl;
+                    }
+
+                    boost::apply_visitor(outsideWeightComputation, rules[edge->get_label_id()]);
                 }
 
                 assert(outsideWeight.dimension(0)
