@@ -15,6 +15,15 @@
 
 namespace Trainer {
 
+    struct TensorCopier : boost::static_visitor<RuleTensor<double>> {
+        template<int rank>
+        RuleTensor<double> operator()(const RuleTensorRaw<double, rank> &weight) const {
+            Eigen::Tensor<double, rank> copyTensor(weight.dimensions());
+            copyTensor = weight;
+            return copyTensor;
+        }
+    };
+
     class StorageManager {
     private:
         bool selfMalloc;
@@ -188,18 +197,8 @@ namespace Trainer {
         inline Trainer::RuleTensor<double> copy_tensor(
                const RuleTensor<double> & ruleTensor
         ) {
-            switch (ruleTensor.which() + 1) {
-                case 1:
-                    return copy_tensor_ranked<RuleTensorRaw<double, 1>, 1>(ruleTensor);
-                case 2:
-                    return copy_tensor_ranked<RuleTensorRaw<double, 2>, 2>(ruleTensor);
-                case 3:
-                    return copy_tensor_ranked<RuleTensorRaw<double, 3>, 3>(ruleTensor);
-                case 4:
-                    return copy_tensor_ranked<RuleTensorRaw<double, 4>, 4>(ruleTensor);
-                default:
-                    abort();
-            }
+            TensorCopier tensorCopier;
+            return boost::apply_visitor(tensorCopier, ruleTensor);
         }
 
         /*
