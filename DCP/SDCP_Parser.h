@@ -186,9 +186,9 @@ namespace DCP {
                 , const std::vector<std::shared_ptr<ParseItem<Nonterminal, Position>>> &items
                 , std::vector<std::pair<int, int>> &lcfrs_spans
         ) {
-            unsigned i = 0;
+            unsigned i {0};
             int span_start;
-            int pos;
+            int pos {-10};
             for (auto argument : rule.word_function) {
                 span_start = -1;
                 bool begin = true;
