@@ -174,9 +174,11 @@ namespace Trainer {
     class EMTrainerLAValidation : public EMTrainerLA {
         std::map<TrainingMode, unsigned> modeMinEpochs;
         std::map<TrainingMode, unsigned> modeMaxDrops;
+        std::map<TrainingMode, bool> modeIgnoreFailures;
         std::shared_ptr<ValidationLA> validator;
         unsigned maxDrops {6};
         unsigned minEpochs {6};
+        bool ignoreFailures {true};
 
         virtual void updateSettings() {
             EMTrainerLA::updateSettings();
@@ -188,6 +190,10 @@ namespace Trainer {
                 minEpochs = modeMinEpochs[trainingMode];
             else
                 minEpochs = modeMinEpochs[Default];
+            if (modeIgnoreFailures.count(trainingMode))
+                ignoreFailures = modeIgnoreFailures[trainingMode];
+            else
+                ignoreFailures = modeIgnoreFailures[Default];
         }
 
     public:
@@ -197,10 +203,17 @@ namespace Trainer {
                               , std::shared_ptr<ValidationLA> validator
                               , std::shared_ptr<CountsModifier> countsModifier
                               , unsigned minEpochs = 6
-                              , unsigned maxDrops = 6)
-                : EMTrainerLA(epochs, expector, maximizer, countsModifier) , validator(validator), maxDrops(maxDrops) {
+                              , unsigned maxDrops = 6
+                              , bool ignoreFailures = true)
+                : EMTrainerLA(epochs, expector, maximizer, countsModifier)
+                , validator(validator)
+                , maxDrops(maxDrops)
+                , minEpochs(minEpochs)
+                , ignoreFailures(ignoreFailures)
+        {
             modeMaxDrops[Default] = maxDrops;
             modeMinEpochs[Default] = minEpochs;
+            modeIgnoreFailures[Default] = ignoreFailures;
         };
 
         void setMaxDrops(unsigned maxDrops, TrainingMode mode=Default) {
@@ -211,6 +224,10 @@ namespace Trainer {
             modeMinEpochs[mode] = minEpochs;
         }
 
+        void setIgnoreFailures(bool ignoreFailures, TrainingMode mode = Default) {
+            modeIgnoreFailures[mode] = ignoreFailures;
+        }
+
         virtual void train(LatentAnnotation &latentAnnotation) {
             double previousValidationScore {validator->minimum_score()};
             double bestValidationScore {previousValidationScore};
@@ -219,6 +236,7 @@ namespace Trainer {
             unsigned drops {0};
             unsigned epoch {0};
             unsigned bestEpoch {epoch};
+            unsigned failures {std::numeric_limits<unsigned>::max()};
             for (; epoch < epochs; ++epoch) {
                 std::cerr << "Epoch " << epoch << "/" << epochs << ": ";
 
@@ -230,10 +248,14 @@ namespace Trainer {
                 }
                 previousValidationScore = validationScore;
 
-                if (epoch < minEpochs or validationScore >= bestValidationScore) {
+                if (epoch < minEpochs
+                    or (validationScore >= bestValidationScore
+                        and (ignoreFailures or validator->getParseFailures() <= failures))
+                    ) {
                     bestValidationScore = validationScore;
                     bestAnnotation = latentAnnotation;
                     bestEpoch = epoch;
+                    failures = validator->getParseFailures();
                 }
 
                 std::cerr << " validation corpus " << validator->quantity() << " " << validationScore
