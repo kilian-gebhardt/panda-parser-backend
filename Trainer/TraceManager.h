@@ -16,6 +16,24 @@
 #include <fstream>
 #include "../util.h"
 #include "LatentAnnotation.h"
+#include <queue>
+// custom specialization of std::hash can be injected in namespace std
+namespace std
+{
+    template<typename Nonterminal>
+    struct hash<pair<Element<Node<Nonterminal>>, size_t>>
+    {
+        typedef std::pair<Element<Node<Nonterminal>>, size_t> argument_type;
+        typedef std::size_t result_type;
+        result_type operator()(argument_type const& p) const noexcept
+        {
+            result_type const h1 ( std::hash<Element<Node<Nonterminal>>>{}(p.first) );
+            result_type const h2 ( std::hash<size_t>{}(p.second) );
+            return h1 ^ (h2 << 1); // or use boost::hash_combine (see Discussion)
+        }
+    };
+}
+
 
 namespace Trainer {
     template<typename Nonterminal, typename TraceID>
@@ -935,7 +953,167 @@ namespace Trainer {
 
 
 
+        /**
+         * Computes latent Viterbi derivation (using Knuth's generalization of Dijkstra's algorithm.
+         *
+         * Returns a pair consisting of
+         *  - the latent index of the goal node for which the viterbi derivation was found
+         *  - a map with witnesses / backtraces.
+         * If the latent index equals std::numeric_limits<size_t>::max(), then no best derivation was found
+         * and the map with backtraces might be inconsistent.
+         */
+        std::pair< size_t
+                 , MAPTYPE< std::pair<Element<Node<Nonterminal>>, size_t>
+                          , std::pair<Element<HyperEdge<Nonterminal>>, std::vector<size_t>>
+                          >
+                 > computeViterbiPath(const LatentAnnotation & latentAnnotation ) const {
+            MAPTYPE<Element<Node<Nonterminal>>, std::vector<double>> maxIncomingWeight;
+            MAPTYPE<std::pair<Element<Node<Nonterminal>>, size_t>, std::pair<Element<HyperEdge<Nonterminal>>, std::vector<size_t>>> witness;
 
+            // the Semiring operations
+            const double zero_weight {0.0};
+            const double one_weight {1.0};
+            auto convert = [](const double x) -> double { return x; };
+            auto multiply = [](const double x, const double y) -> double {return x * y; };
+
+            // initialize maxIncomingWeight
+            for (const Element<Node<Nonterminal>> & node : *hypergraph) {
+                size_t splits {latentAnnotation.nonterminalSplits[node->get_label_id()]};
+                maxIncomingWeight[node] =
+                        std::vector<double>(splits, zero_weight);
+            }
+
+
+            typedef std::pair<Element<Node<Nonterminal>>, size_t> SubNode;
+
+            auto cmp = [&maxIncomingWeight](const SubNode & left, const SubNode & right) {
+                return maxIncomingWeight[left.first][left.second] < maxIncomingWeight[right.first][right.second];
+            };
+            std::priority_queue<SubNode, std::vector<SubNode>, decltype(cmp)> queue(cmp);
+
+            std::set<SubNode> processed;
+
+            // process edges empty sources
+            for (Element<HyperEdge<Nonterminal>> edge : *(get_hypergraph()->get_edges().lock())) {
+                if (edge->get_sources().size() == 0) {
+                    const auto target = edge->get_target();
+                    size_t target_nont = target->get_label_id();
+                    size_t rule_id = edge->get_label_id();
+                    for (size_t dim {0}; dim < latentAnnotation.nonterminalSplits[target_nont]; ++dim) {
+                        if (maxIncomingWeight[target][dim] < convert(latentAnnotation.get_weight(rule_id, {dim}))) {
+                            maxIncomingWeight[target][dim] = convert(latentAnnotation.get_weight(rule_id, {dim}));
+                            std::vector<size_t> index(1, dim);
+                            std::pair<Element<HyperEdge <Nonterminal>>, std::vector<size_t>> new_witness(edge, index);
+                            witness.emplace(std::pair<Element<Node<Nonterminal>>, size_t >(target, dim), new_witness);
+                            queue.push(std::make_pair(target, dim));
+                        }
+                    }
+                }
+            }
+
+            size_t goal_index {std::numeric_limits<size_t>::max()};
+
+            // process until viterbi parse was found or queue is empty
+            while (queue.size() > 0) {
+                SubNode sn {queue.top()};
+                queue.pop();
+                auto p {processed.insert(sn)};
+
+                // continue with next element, if sn already in processed
+                if (not p.second)
+                    continue;
+
+                if (sn.first == goal) {
+                    goal_index = sn.second;
+                    break;
+                }
+
+                for (const std::pair<Element<HyperEdge<Nonterminal>>, size_t>& pair : hypergraph->get_outgoing_edges(sn.first)) {
+                    auto edge_element = pair.first;
+                    const size_t source_position = pair.second;
+                    const auto target = edge_element->get_target();
+
+                    std::vector<size_t> index {0};
+                    std::vector<double> partial_products {one_weight};
+                    size_t j {0};
+                    size_t jp1 {1};
+
+                    while (jp1 > 0 and j <= edge_element->get_sources().size()) {
+                        assert (jp1 == j + 1);
+//                        assert (j + 1 == index.size() or j == index.size());
+
+                        if (j == edge_element->get_sources().size()) {
+                            for(index[0] = 0;
+                                index[0] < latentAnnotation.nonterminalSplits[target->get_label_id()];
+                                ++index[0]) {
+                                double weight = multiply(
+                                        partial_products.back(),
+                                        convert(latentAnnotation.get_weight(edge_element->get_label_id(), index)));
+
+                                // we assume that the goal is
+                                if (target == goal)
+                                    weight = multiply(weight, convert(latentAnnotation.rootWeights(index[0])));
+
+                                if (weight > maxIncomingWeight[target][index[0]]) {
+                                    maxIncomingWeight[target][index[0]] = weight;
+                                    witness.emplace(std::make_pair(target, index[0]), std::make_pair(edge_element, index));
+
+                                    // push item again to fix the queue
+                                    queue.push(std::make_pair(target, index[0]));
+                                }
+                            }
+                            jp1--;
+                            j--;
+                            continue;
+                        }
+
+//                        const size_t jp1 {j + 1};
+
+                        if (index.size() < jp1 + 1) {
+                            if (source_position == j) {
+                                index.push_back(sn.second);
+                            } else {
+                                index.push_back(0);
+                            }
+                            assert(index.size() == jp1 + 1);
+                        } else {
+                            if (source_position == j) {
+                                index.pop_back();
+                                partial_products.pop_back();
+                                j--;
+                                jp1--;
+                                continue;
+                            } else {
+                                index[jp1] = index[jp1] + 1;
+                            }
+                        }
+
+                        const Element<Node<Nonterminal>> source {edge_element->get_sources()[j]};
+
+                        if (index[jp1] >= latentAnnotation.nonterminalSplits[source->get_label_id()]) {
+                            index.pop_back();
+                            partial_products.pop_back();
+                            j--;
+                            jp1--;
+                            continue;
+                        }
+
+                        if (processed.count(std::make_pair(source, index[jp1]))) {
+                            partial_products.push_back(
+                                    multiply(
+                                            partial_products.back()
+                                            , maxIncomingWeight[source][index[jp1]]) );
+                            j++;
+                            jp1++;
+                        } else {
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            return std::make_pair(goal_index, witness);
+        }
 
 
 

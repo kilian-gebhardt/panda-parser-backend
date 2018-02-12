@@ -56,7 +56,7 @@ namespace Manage {
             return target;
         }
 
-        const std::vector<Element<NodeT>> get_sources() {
+        const std::vector<Element<NodeT>> get_sources() const {
             return sources;
         };
 
