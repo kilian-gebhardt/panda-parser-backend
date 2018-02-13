@@ -971,10 +971,18 @@ namespace Trainer {
             MAPTYPE<std::pair<Element<Node<Nonterminal>>, size_t>, std::pair<Element<HyperEdge<Nonterminal>>, std::vector<size_t>>> witness;
 
             // the Semiring operations
+            /*
+            // normal probabilities
             const double zero_weight {0.0};
             const double one_weight {1.0};
             auto convert = [](const double x) -> double { return x; };
             auto multiply = [](const double x, const double y) -> double {return x * y; };
+            */
+            // log probabilities
+            const double zero_weight {-std::numeric_limits<double>::infinity()};
+            const double one_weight {0.0};
+            auto convert = [](const double x) -> double { return std::log(x); };
+            auto multiply = [](const double x, const double y) -> double {return x + y; };
 
             // initialize maxIncomingWeight
             for (const Element<Node<Nonterminal>> & node : *hypergraph) {
