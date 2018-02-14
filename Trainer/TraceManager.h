@@ -1062,9 +1062,16 @@ namespace Trainer {
                                         partial_products.back(),
                                         convert(latentAnnotation.get_weight(edge_element->get_label_id(), index)));
 
-                                // we assume that the goal is
+                                // we assume that the goal does not occur as an internal node
                                 if (target == goal)
                                     weight = multiply(weight, convert(latentAnnotation.rootWeights(index[0])));
+
+                                if (debug) {
+                                    std::cerr << " target " << target << " weight " << weight
+                                              << " edge " << edge_element << " index ";
+                                    operator<<(std::cerr, index);
+                                    std::cerr << std::endl;
+                                }
 
                                 if (weight > maxIncomingWeight[target][index[0]]) {
                                     maxIncomingWeight[target][index[0]] = weight;
@@ -1088,6 +1095,7 @@ namespace Trainer {
                                 index.push_back(0);
                             }
                             assert(index.size() == jp1 + 1);
+                            partial_products.push_back(zero_weight);
                         } else {
                             if (source_position == j) {
                                 index.pop_back();
@@ -1111,10 +1119,9 @@ namespace Trainer {
                         }
 
                         if (processed.count(std::make_pair(source, index[jp1]))) {
-                            partial_products.push_back(
-                                    multiply(
-                                            partial_products.back()
-                                            , maxIncomingWeight[source][index[jp1]]) );
+                            partial_products.back() = multiply(
+                                            partial_products[partial_products.size() - 2]
+                                            , maxIncomingWeight[source][index[jp1]]);
                             j++;
                             jp1++;
                         } else {
