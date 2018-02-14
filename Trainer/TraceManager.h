@@ -966,7 +966,7 @@ namespace Trainer {
                  , MAPTYPE< std::pair<Element<Node<Nonterminal>>, size_t>
                           , std::pair<Element<HyperEdge<Nonterminal>>, std::vector<size_t>>
                           >
-                 > computeViterbiPath(const LatentAnnotation & latentAnnotation ) const {
+                 > computeViterbiPath(const LatentAnnotation & latentAnnotation, bool debug=false) const {
             MAPTYPE<Element<Node<Nonterminal>>, std::vector<double>> maxIncomingWeight;
             MAPTYPE<std::pair<Element<Node<Nonterminal>>, size_t>, std::pair<Element<HyperEdge<Nonterminal>>, std::vector<size_t>>> witness;
 
@@ -1030,6 +1030,10 @@ namespace Trainer {
                 // continue with next element, if sn already in processed
                 if (not p.second)
                     continue;
+
+                if (debug)
+                    std::cerr << "processing " << sn.first << " " << sn.first->get_label_id() << " " << sn.second
+                          << " weight " << maxIncomingWeight[sn.first][sn.second] << std::endl;
 
                 if (sn.first == goal) {
                     goal_index = sn.second;
