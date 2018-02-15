@@ -486,7 +486,7 @@ int main() {
         std::cerr << p.first << " " << p.second << std::endl;
 
     std::cerr << "Computing Viterbi path: " << std::endl;
-    auto p = (*traceManager)[0].computeViterbiPath(la_2);
+    auto p = (*traceManager)[0].computeViterbiPath(la_2, true);
     std::cerr << p.first << std::endl;
 
     return 0;

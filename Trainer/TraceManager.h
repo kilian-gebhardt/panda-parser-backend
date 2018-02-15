@@ -1008,11 +1008,12 @@ namespace Trainer {
                     size_t target_nont = target->get_label_id();
                     size_t rule_id = edge->get_label_id();
                     for (size_t dim {0}; dim < latentAnnotation.nonterminalSplits[target_nont]; ++dim) {
+                        //todo root weights !?
                         if (maxIncomingWeight[target][dim] < convert(latentAnnotation.get_weight(rule_id, {dim}))) {
                             maxIncomingWeight[target][dim] = convert(latentAnnotation.get_weight(rule_id, {dim}));
                             std::vector<size_t> index(1, dim);
                             std::pair<Element<HyperEdge <Nonterminal>>, std::vector<size_t>> new_witness(edge, index);
-                            witness.emplace(std::pair<Element<Node<Nonterminal>>, size_t >(target, dim), new_witness);
+                            witness.insert_or_assign(std::pair<Element<Node<Nonterminal>>, size_t >(target, dim), new_witness);
                             queue.push(std::make_pair(target, dim));
                         }
                     }
@@ -1075,7 +1076,7 @@ namespace Trainer {
 
                                 if (weight > maxIncomingWeight[target][index[0]]) {
                                     maxIncomingWeight[target][index[0]] = weight;
-                                    witness.emplace(std::make_pair(target, index[0]), std::make_pair(edge_element, index));
+                                    witness.insert_or_assign(std::make_pair(target, index[0]), std::make_pair(edge_element, index));
 
                                     // push item again to fix the queue
                                     queue.push(std::make_pair(target, index[0]));
