@@ -122,6 +122,9 @@ namespace Trainer {
                 }
 
                 MAPTYPE<Element<Node<Nonterminal>>, int> insideLogScales;
+                for (const auto &node : *(trace->get_hypergraph())) {
+                    insideLogScales[node] = 0;
+                }
 
                 trace->inside_weights_la(
                           latentAnnotation
