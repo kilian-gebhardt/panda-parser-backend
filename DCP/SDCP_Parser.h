@@ -219,7 +219,7 @@ namespace DCP {
                         if (term != input.get_string_label(tree_pos))
                             return false;
 
-                        unsigned pos2 = 0;
+                        unsigned pos2 {0};
                         for (; pos2 < input.get_linearization().size(); ++pos2) {
                             if (input.get_linearization()[pos2] == tree_pos) {
                                 if (begin) {
@@ -283,7 +283,7 @@ namespace DCP {
                                 std::cerr << "did not match lcfrs" << std::endl;
                             continue;
                         }
-                        if (debug)
+                        if (parse_lcfrs && debug)
                             std::cerr << "matched lcfrs" << std::endl;
 
                         std::shared_ptr<ParseItem<Nonterminal, Position>> item = std::make_shared<ParseItem<Nonterminal
