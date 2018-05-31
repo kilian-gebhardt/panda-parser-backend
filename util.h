@@ -11,6 +11,8 @@
 #include <type_traits>
 #include <boost/operators.hpp>
 #include <cmath>
+#include <limits>
+#include <vector>
 
 
 // taken from https://stackoverflow.com/a/33683299 for printing tuples
@@ -37,6 +39,18 @@ operator<<(std::ostream& os, const std::tuple<T0, T...>& t){
     return os << ')';
 }
 
+namespace Trainer {
+// based on https://stackoverflow.com/a/10758845
+    template<typename T>
+    std::ostream &operator<<(std::ostream &out, const std::vector<T> &v) {
+        if (true) {
+            out << '[';
+            std::copy(v.begin(), v.end(), std::ostream_iterator<T>(out, ", "));
+            out << "\b\b]";
+        }
+        return out;
+    }
+}
 
 constexpr double minus_infinity = -std::numeric_limits<double>::infinity();
 
@@ -118,7 +132,10 @@ public:
     }
 
     double from() const {
-        return exp(x);
+        if (x == minus_infinity)
+            return 0.0;
+        else
+            return exp(x);
     }
 
     static const LogDouble add_subtract2_divide(const LogDouble base, const LogDouble add, const LogDouble sub1, const LogDouble sub2, const LogDouble div) {
@@ -127,6 +144,13 @@ public:
                              - exp(sub1.get_Value())
                              - exp(sub2.get_Value()))
                          - div.get_Value());
+    }
+
+    bool isNaN() const {
+        if (std::isnan(x))
+            return true;
+        else
+            return false;
     }
 
 };
@@ -200,6 +224,12 @@ public:
         return Double(((base + add - sub1) - sub2) / div);
     }
 
+    bool isNaN() const {
+        if (std::isnan(x))
+            return true;
+        else
+            return false;
+    }
 };
 
 
@@ -252,6 +282,10 @@ Val reduce(const Accum accum, const std::vector<Val> & vec, Val init, const unsi
         init = accum(init, *i);
     return init;
 };
+
+void output_helper(std::string s) {
+    std::cerr << s << std::endl;
+}
 
 
 #endif //STERMPARSER_UTIL_H

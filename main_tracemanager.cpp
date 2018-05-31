@@ -1,11 +1,23 @@
+//
+// Created by Markus on 22.02.17.
+//
+
+
 #include <iostream>
-
-#include "HybridTree.h"
-#include "SDCP.h"
-#include "SDCP_Parser.h"
 #include <vector>
-#include "Trace.h"
 
+#include "DCP/HybridTree.h"
+#include "DCP/SDCP.h"
+#include "DCP/SDCP_Parser.h"
+#include "DCP/util.h"
+#include "Legacy/Trace.h"
+#include "Trainer/TraceManager.h"
+#include "Trainer/TrainingCommon.h"
+#include "Trainer/LatentAnnotation.h"
+#include "Trainer/TrainerBuilder.h"
+#include "Trainer/HypergraphRanker.h"
+
+using namespace Trainer;
 
 std::shared_ptr<HybridTree<std::string, int>> build_hybrid_tree(bool lcfrs) {
     auto tree = std::make_shared<HybridTree<std::string, int>>(HybridTree<std::string, int>());
@@ -57,8 +69,6 @@ std::shared_ptr<HybridTree<std::string, int>> build_hybrid_tree(bool lcfrs) {
 };
 
 
-
-
 int main() {
     bool lcfrs = true;
     // std::cout << "Hello, World!" << std::endl;
@@ -94,7 +104,7 @@ int main() {
     rule1.inside_attributes.push_back(arg1v);
 
     // build rhs
-    STerm <std::string> arg2;
+    STerm<std::string> arg2;
     arg2.emplace_back(Variable(2, 2));
     std::vector<STerm<std::string>> arg2v;
     arg2v.push_back(arg2);
@@ -107,9 +117,9 @@ int main() {
     // constructing LCFRS part
     if (lcfrs) {
         rule1.next_word_function_argument();
-        rule1.add_var_to_word_function(1,1);
+        rule1.add_var_to_word_function(1, 1);
         rule1.add_terminal_to_word_function("is");
-        rule1.add_var_to_word_function(2,1);
+        rule1.add_var_to_word_function(2, 1);
         rule1.add_terminal_to_word_function(".");
     }
     assert (sDCP.add_rule(rule1));
@@ -148,9 +158,9 @@ int main() {
     // build lhs
     std::vector<STerm<std::string>> r3_arg1v;
     STerm<std::string> r3_arg_0_1;
-    r3_arg_0_1.push_back(Variable(1,1));
+    r3_arg_0_1.push_back(Variable(1, 1));
     STerm<std::string> r3_arg_0_2;
-    r3_arg_0_2.push_back(Variable(2,1));
+    r3_arg_0_2.push_back(Variable(2, 1));
     r3_arg1v.push_back(r3_arg_0_1);
     r3_arg1v.push_back(r3_arg_0_2);
     rule3.inside_attributes.push_back(r3_arg1v);
@@ -159,9 +169,9 @@ int main() {
     // constructing LCFRS part
     if (lcfrs) {
         rule3.next_word_function_argument();
-        rule3.add_var_to_word_function(1,1);
-        rule3.add_var_to_word_function(2,1);
-        rule3.add_var_to_word_function(1,2);
+        rule3.add_var_to_word_function(1, 1);
+        rule3.add_var_to_word_function(2, 1);
+        rule3.add_var_to_word_function(1, 2);
     }
     assert (sDCP.add_rule(rule3));
     // Rule 3 end
@@ -215,7 +225,7 @@ int main() {
     rule6.lhn = "D";
     rule6.set_id(5);
     // build lhs
-    rule6.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, Variable(1, 1))));
+    rule6.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, Variable(1, 1))));
     // build rhs
     rule6.rhs.push_back("F");
     rule6.inside_attributes.push_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, Variable(2, 1))));
@@ -232,7 +242,13 @@ int main() {
     Rule<std::string, std::string> rule7;
     rule7.set_id(6);
     rule7.lhn = "E";
-    rule7.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, Term<std::string>("the", 0))));
+    rule7.inside_attributes.emplace_back(
+            std::vector<STerm<std::string>>(
+                    1, STerm<std::string>(
+                            1, Term<std::string>(
+                                    "the"
+                                    , 0
+                            ))));
     if (lcfrs) {
         rule7.next_word_function_argument();
         rule7.add_terminal_to_word_function("the");
@@ -244,7 +260,7 @@ int main() {
     rule8.lhn = "F";
     auto term8 = Term<std::string>("on", 0);
     term8.children.push_back(Variable(1, 1));
-    rule8.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, term8)));
+    rule8.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, term8)));
     rule8.rhs.push_back("G");
     rule8.inside_attributes.push_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, Variable(0, 1))));
     if (lcfrs) {
@@ -252,7 +268,7 @@ int main() {
         rule8.add_terminal_to_word_function("on");
         //rule8.add_var_to_word_function(1,1);
         rule8.next_word_function_argument();
-        rule8.add_var_to_word_function(1,1);
+        rule8.add_var_to_word_function(1, 1);
     }
     assert (sDCP.add_rule(rule8));
 
@@ -261,7 +277,7 @@ int main() {
     rule9.lhn = "G";
     auto term9 = Term<std::string>("issue", 0);
     term9.children.push_back(Variable(0, 1));
-    rule9.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1,STerm<std::string>(1, term9)));
+    rule9.inside_attributes.emplace_back(std::vector<STerm<std::string>>(1, STerm<std::string>(1, term9)));
     if (lcfrs) {
         // rule9.next_word_function_argument();
         rule9.next_word_function_argument();
@@ -272,10 +288,7 @@ int main() {
     std::cerr << sDCP;
 
 
-
-
-
-    for (auto & rule : {rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9}){
+    for (auto &rule : {rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9}) {
         std::cerr << rule.lhn << " " << rule.irank(0) << " " << rule.srank(0) << std::endl;
     }
 
@@ -306,37 +319,104 @@ int main() {
 
     std::cerr << "Trace manager: " << std::endl;
 
-    TraceManager<std::string, std::string, int> manager(true);
+// #############################
+// Markus: modifications begin:
+// #############################
+
+
+    std::vector<std::string> nodeLabels{"S", "A", "B", "C", "D", "E", "F", "G"};
+    std::vector<EdgeLabelT> edgeLabels{rule1.id, rule2.id, rule3.id, rule4.id, rule5.id, rule6.id, rule7.id, rule8.id,
+                                       rule9.id};
+    auto const nodeLabelsPtr = std::make_shared<std::vector<std::string>>(nodeLabels);
+    auto const edgeLabelsPtr = std::make_shared<std::vector<EdgeLabelT>>(edgeLabels);
+
+    TraceManager<std::string, std::string, int> manager(false);
+    TraceManagerPtr<std::string, unsigned long> traceManager{
+            std::make_shared<TraceManager2<std::string, unsigned long>>(nodeLabelsPtr, edgeLabelsPtr)};
+
     manager.add_trace_entry(parser.get_trace(), *parser.goal, 0);
 
-    auto my_rule_weights = std::vector<Double>({1, 1, 1, 1, 1, 1, 1, 1, 1});
+    DCP::add_trace_to_manager(parser, traceManager);
+//    std::pair<HypergraphPtr<std::string>, Element<Node<std::string>>> transformedTrace{
+//            DCP::transform_trace_to_hypergraph<std::string>(parser, nodeLabels, edgeLabels)};
+//    traceManager->create(0L, transformedTrace.first, transformedTrace.second);
+
+    std::cerr << "There are " << (*traceManager)[0].get_hypergraph()->size() << " nodes in the first trace\n";
+
+    std::cerr << "Creating IO-weights...";
+    std::vector<Double> my_rule_weights{1, 1, 1, 1, 1, 1, 1, 1, 1};
+//    std::vector<Double> my_rule_weights{.2, .4, .6, .8, .5, .3, .1, .9, .7};
     auto pair = manager.io_weights(my_rule_weights, 0);
-    for (const auto & item : manager.get_order(0)) {
-        std::cerr << "T: " << item << " " << pair.first[item] << " " << pair.second[item] << std::endl;
+    auto pair2 = (*traceManager)[0].io_weights(my_rule_weights);
+    std::cerr << "Done\n Checking Inside/Outside weights";
+    {
+        auto i1 = pair.first.cbegin();
+        auto i2 = pair.first.cbegin();
+        while (i1 != pair.first.cend()) {
+            assert((*i1).second == (*i2).second);
+            ++i1;
+            ++i2;
+            std::cerr << ".";
+        }
+        auto o1 = pair.second.cbegin();
+        auto o2 = pair.second.cbegin();
+        while (o1 != pair.second.cend()) {
+            assert((*o1).second == (*o2).second);
+            ++o1;
+            ++o2;
+            std::cerr << ".";
+        }
+        std::cerr << " Correct!\n\n";
     }
 
-    auto my_rule_groups = std::vector<std::vector<unsigned>>({{0}, {1}, {2}, {3}, {4, 5}, {6}, {7}, {8}});
 
-    auto my_rule_weights2 = std::vector<double>({1, 1, 1, 1, 0.5, 0.5, 1, 1, 1});
+//    for (const auto & item : manager.get_order(0)) {
+//        std::cerr << "T: " << item << " " << pair.first[item] << " " << pair.second[item] << std::endl;
+//    }
+
+    const std::vector<std::vector<unsigned>> my_rule_groups{{0},
+                                                          {1},
+                                                          {2},
+                                                          {3},
+                                                          {4, 5},
+                                                          {6},
+                                                          {7},
+                                                          {8}};
+
+    std::vector<double> my_rule_weights2{1, 1, 1, 1, 0.5, 0.5, 1, 1, 1};
 
     auto vec_new = manager.do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
 
-    for (unsigned i = 0; i < vec_new.size(); ++i) {
-        std::cerr << vec_new[i] << " ";
-    }
+    auto emTrainerBuilder = Trainer::EMTrainerBuilder();
+    Trainer::EMTrainer<std::string, unsigned long> emTrainer = emTrainerBuilder.build_em_trainer(traceManager);
+    auto vec_new2 = emTrainer.do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
+//    auto vec_new2 = traceManager->do_em_training<Double>(my_rule_weights2, my_rule_groups, 10);
 
-    const std::map<std::string, unsigned> mymap = {
-                {"S", 0}
-              , {"A", 1}
-              , {"B", 2}
-              , {"C", 3}
-              , {"D", 4}
-              , {"E", 5}
-              , {"F", 6}
-              , {"G", 7}
+
+    for (unsigned i = 0; i < vec_new.size(); ++i) {
+        assert(vec_new[i] == vec_new2[i]);
+//        std::cerr << vec_new[i] << "/" << vec_new2[i] << "  ";
+    }
+    std::cerr << "EM training: checked!\n";
+
+
+    // ############################################
+    // ############################################
+    // ############################################
+
+
+    const std::map<std::string, unsigned> mymap{
+            {"S", 0},
+            {"A", 1},
+            {"B", 2},
+            {"C", 3},
+            {"D", 4},
+            {"E", 5},
+            {"F", 6},
+            {"G", 7}
     };
 
-    auto nont_idx2 = [&] (const std::string & nont) {
+    auto nont_idx2 = [&](const std::string &nont) -> unsigned {
         return mymap.at(nont);
     };
 
@@ -351,8 +431,8 @@ int main() {
     }
     std::cerr << std::endl;
 
-    for (unsigned nont = 0; nont < my_rule_groups.size(); ++ nont) {
-        const auto & group = my_rule_groups[nont];
+    for (unsigned nont = 0; nont < my_rule_groups.size(); ++nont) {
+        const auto &group = my_rule_groups[nont];
         for (auto rule_id : group) {
             std::cerr << rule_to_nont_idx[rule_id][0] << " " << nont << std::endl;
             assert(rule_to_nont_idx[rule_id][0] == nont);
@@ -360,6 +440,54 @@ int main() {
     }
 
     manager.split_merge<Double>(2, 1, vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5, 50.0);
+
+
+    // traceManager->split_merge<Double>(2, 1, vec_new, rule_to_nont_idx, 10, mymap, 4, 0.5, 50.0);
+
+    std::vector<std::vector<size_t>> rule_to_nont_idx_size_t(9);
+    for (auto p : sDCP.lhn_to_rule) {
+        for (auto rule : p.second) {
+            rule_to_nont_idx_size_t[rule->id].push_back(nont_idx2(rule->lhn));
+            for (auto nont : rule->rhs) {
+                rule_to_nont_idx_size_t[rule->id].push_back(nont_idx2(nont));
+            }
+        }
+    }
+
+    auto grammarInfo = std::make_shared<const GrammarInfo2>(rule_to_nont_idx_size_t, 0);
+    auto splitMergeTrainerBuilder = Trainer::SplitMergeTrainerBuilder<std::string, unsigned long>(traceManager, grammarInfo);
+    auto splitMergeTrainer = splitMergeTrainerBuilder
+            .set_discriminative_expector(traceManager)
+//            .set_percent_merger()
+            .set_scc_merger(0.0)
+            .set_simple_validator(traceManager).build();
+    auto emTrainerLA = (const std::shared_ptr<EMTrainerLAValidation> &) splitMergeTrainerBuilder.getEmTrainer();
+    emTrainerLA->setEMepochs(20, Splitting);
+    emTrainerLA->setEMepochs(10, Merging);
+    emTrainerLA->setEMepochs(5, Smoothing);
+    emTrainerLA->setMaxDrops(2, Smoothing);
+
+    std::vector<size_t> nonterminal_splits(8, 1);
+//    convert_format()
+    std::vector<std::vector<double>> latentified(vec_new2.size());
+    for (size_t idx = 0; idx < vec_new2.size(); ++idx) {
+        latentified[idx].push_back(vec_new2[idx]);
+    }
+    std::vector<double> root_weights(1, 1.0);
+    StorageManager storageManager;
+    Trainer::LatentAnnotation la(nonterminal_splits, root_weights, latentified, *grammarInfo, storageManager);
+    auto la_1 = splitMergeTrainer.split_merge_cycle(la);
+    auto la_2 = splitMergeTrainer.split_merge_cycle(la_1);
+
+    HypergraphRanker<std::string, unsigned long> hr(traceManager, grammarInfo, std::make_shared<StorageManager>(storageManager));
+    auto ranking = hr.rank(la_2);
+    std::cerr << "Ranking " << std::endl;
+    for (auto p : ranking)
+        std::cerr << p.first << " " << p.second << std::endl;
+
+    std::cerr << "Computing Viterbi path: " << std::endl;
+    auto p = (*traceManager)[0].computeViterbiPath(la_2, true);
+    std::cerr << p.first << std::endl;
 
     return 0;
 }
