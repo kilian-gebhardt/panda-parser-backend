@@ -10,7 +10,7 @@ This project contains the `C++` backend of [panda-parser](https://github.com/kil
 - Bottom-up parsers for parsing an s-term with a sDCP and for parsing a hybrid tree with a LCFRS/sDCP hybrid grammar.
 
 ## Contributors
-The software was developed by [Kilian Gebhardt](wwwtcs.inf.tu-dresden.de/~kilian/) and [Markus Teichmann](https://wwwtcs.inf.tu-dresden.de/~teichm/). It is maintained by Kilian Gebhardt.
+The software was developed by [Kilian Gebhardt](https://wwwtcs.inf.tu-dresden.de/~kilian/) and [Markus Teichmann](https://wwwtcs.inf.tu-dresden.de/~teichm/). It is maintained by Kilian Gebhardt.
 
 ## Installation/Usage
 The software requires [Eigen](http://eigen.tuxfamily.org) and [Boost](https://www.boost.org/) to be installed. 
