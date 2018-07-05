@@ -787,7 +787,7 @@ namespace Trainer {
         CountsSmoother(const std::vector<size_t> ruleIDs, double smoothValue)
                 : ruleIDs(ruleIDs), csv(CountSmoothVisitor(smoothValue)) {};
 
-        virtual void modifyCount(Counts & counts) {
+        virtual void modifyCounts(Counts & counts) {
             for (auto ruleID : ruleIDs) {
                 boost::apply_visitor(csv, (*counts.ruleCounts)[ruleID]);
             }
