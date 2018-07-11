@@ -14,16 +14,13 @@ namespace Trainer {
     static const double IO_PRECISION_DEFAULT = 0.000001;
     static const unsigned int IO_CYCLE_LIMIT_DEFAULT = 200;
 
-
-    template<typename Nonterminal>
-    HypergraphPtr<Nonterminal> hypergraph_from_grammar(const GrammarInfo2& grammarInfo) {
-        // build HG
+    std::pair<const std::vector<size_t>, const std::vector<size_t>>
+            build_label_vectors(const GrammarInfo2& grammarInfo) {
         MAPTYPE<size_t, bool> nodes;
         std::vector<size_t> nLabels{};
 
         size_t labelCounter = 0;
         std::vector<size_t> eLabels{};
-
 
         for (const auto rule : grammarInfo.rule_to_nonterminals) {
             eLabels.push_back(labelCounter++);
@@ -35,9 +32,16 @@ namespace Trainer {
             }
         }
 
-        const auto nLabelsPtr = std::make_shared<const std::vector<size_t>>(nLabels);
-        const auto eLabelsPtr = std::make_shared<const std::vector<size_t>>(eLabels);
+        return std::make_pair(nLabels, eLabels);
+    };
 
+
+    template<typename Nonterminal>
+    HypergraphPtr<Nonterminal> hypergraph_from_grammar(
+            const GrammarInfo2& grammarInfo,
+            std::shared_ptr<const std::vector<size_t>> nLabelsPtr,
+            std::shared_ptr<const std::vector<size_t>> eLabelsPtr
+    ) {
         HypergraphPtr<Nonterminal> hg = std::make_shared<Hypergraph<Nonterminal>>(nLabelsPtr, eLabelsPtr);
 
         MAPTYPE<size_t, Element<Node<size_t>>> nodeElements;
@@ -57,6 +61,33 @@ namespace Trainer {
 
         return hg;
     }
+
+
+    template<typename Nonterminal>
+    HypergraphPtr<Nonterminal> hypergraph_from_grammar(const GrammarInfo2& grammarInfo) {
+        // build HG
+//        MAPTYPE<size_t, bool> nodes;
+//        std::vector<size_t> nLabels{};
+//
+//        size_t labelCounter = 0;
+//        std::vector<size_t> eLabels{};
+//
+//
+//        for (const auto rule : grammarInfo.rule_to_nonterminals) {
+//            eLabels.push_back(labelCounter++);
+//            for (size_t nont : rule) {
+//                if (nodes.count(nont) == 0) {
+//                    nodes[nont] = true;
+//                    nLabels.push_back(nont);
+//                }
+//            }
+//        }
+
+        const auto &labels = build_label_vectors(grammarInfo);
+        auto nLabelsPtr = std::make_shared<const std::vector<size_t>>(labels.first);
+        auto eLabelsPtr = std::make_shared<const std::vector<size_t>>(labels.second);
+        return hypergraph_from_grammar<Nonterminal>(grammarInfo, nLabelsPtr, eLabelsPtr);
+    };
 
 
     template<typename Nonterminal>
@@ -103,7 +134,15 @@ namespace Trainer {
             , const bool debug = false
     ) {
 
+        const auto &labels = build_label_vectors(grammarInfo);
+        auto nLabelsPtr = std::make_shared<const std::vector<size_t>>(labels.first);
+        auto eLabelsPtr = std::make_shared<const std::vector<size_t>>(labels.second);
+        TraceManagerPtr<Nonterminal, size_t> traceManager2
+                = std::make_shared<TraceManager2<Nonterminal, size_t>>(nLabelsPtr, eLabelsPtr);
         HypergraphPtr<Nonterminal> hg = hypergraph_from_grammar<Nonterminal>(grammarInfo);
+        traceManager2->create(0, hg, hg->get_node_by_label(grammarInfo.start));
+        if (not (*traceManager2)[0].is_consistent_with_grammar(grammarInfo))
+            abort();
 
         MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> insideWeights;
         MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> outsideWeights;
