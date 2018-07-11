@@ -9,6 +9,7 @@
 #include <numeric>
 #include "Manager.h"
 #include "Manager_util.h"
+#include <type_traits>
 
 namespace Manage {
 
@@ -199,9 +200,39 @@ namespace Manage {
         )
                 : nodeLabels(std::move(nlabels)), edgeLabels(std::move(elabels)) {}
 
+        template<typename NLT>
+        std::enable_if_t<std::is_same<NLT, size_t>::value && std::is_same<NodeLabelT, NLT>::value,
+                Element<Node<NodeLabelT>>>
+        create(
+                NLT nLabel
+        ) {
+            size_t nLabelId;
+            if (nLabel < nodeLabels->size() and (*nodeLabels)[nLabel] == nLabel) {
+                nLabelId = nLabel;
+            } else {
+                typename std::vector<NodeLabelT>::const_iterator pos = std::find(
+                        nodeLabels->cbegin()
+                        , nodeLabels->cend()
+                        , nLabel
+                );
+                if (pos == nodeLabels->cend()) {
+                    std::cerr << "Could not find node label '" << nLabel << "'" << std::endl;
+                    exit(-1);
+                }
 
-        Element<Node<NodeLabelT>> create(
-                NodeLabelT nLabel
+                nLabelId = size_t(
+                        std::distance(
+                                nodeLabels->cbegin(), pos
+                        ));
+            }
+            return Manager<Node<NodeLabelT>>::create(nLabel, nLabelId);
+        }
+
+        template<typename NLT>
+        std::enable_if_t<!std::is_same<NLT, size_t>::value && std::is_same<NodeLabelT, NLT>::value,
+                Element<Node<NodeLabelT>>>
+        create(
+                NLT nLabel
         ) {
 
             typename std::vector<NodeLabelT>::const_iterator pos = std::find(
@@ -220,26 +251,14 @@ namespace Manage {
             return Manager<Node<NodeLabelT>>::create(nLabel, nLabelId);
         }
 
-
+    private:
         Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>
         add_hyperedge(
                 const EdgeLabelT edgeLabel
+                , const size_t edgeLabelId
                 , const Element<Node<NodeLabelT>> &target
                 , const std::vector<Element<Node<NodeLabelT>>> &sources
         ) {
-
-            typename std::vector<EdgeLabelT>::const_iterator pos = std::find(
-                    edgeLabels->cbegin()
-                    , edgeLabels->cend()
-                    , edgeLabel
-            );
-            if(pos == edgeLabels->cend()) {
-                std::cerr << "Could not find edge label '" << edgeLabel << "'" << std::endl;
-                exit(-1);
-            }
-
-            size_t edgeLabelId = size_t(std::distance(
-                    edgeLabels->cbegin(), pos));
             Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>> edge = edges->create(
                     edgeLabel
                     , edgeLabelId
@@ -255,6 +274,62 @@ namespace Manage {
             return edge;
         }
 
+    public:
+
+        template<typename ELT>
+        std::enable_if_t<(std::is_same<ELT, size_t>::value && std::is_same<EdgeLabelT, ELT>::value),
+                Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>>
+        add_hyperedge(
+                const ELT edgeLabel
+                , const Element<Node<NodeLabelT>> &target
+                , const std::vector<Element<Node<NodeLabelT>>> &sources
+        ) {
+            size_t edgeLabelId;
+            if (edgeLabel < edgeLabels->size() and (*edgeLabels)[edgeLabel] == edgeLabel) {
+                edgeLabelId = edgeLabel;
+            } else {
+                typename std::vector<EdgeLabelT>::const_iterator pos = std::find(
+                        edgeLabels->cbegin()
+                        , edgeLabels->cend()
+                        , edgeLabel
+                );
+                if (pos == edgeLabels->cend()) {
+                    std::cerr << "Could not find edge label '" << edgeLabel << "'" << std::endl;
+                    exit(-1);
+                }
+
+                edgeLabelId = size_t(
+                        std::distance(
+                                edgeLabels->cbegin(), pos
+                        ));
+            }
+
+            return add_hyperedge(edgeLabel, edgeLabelId, target, sources);
+        }
+
+        template<typename ELT>
+        std::enable_if_t< (not std::is_same<ELT, size_t>::value) && std::is_same<EdgeLabelT, ELT>::value,
+                Element<HyperEdge<Node<NodeLabelT>, EdgeLabelT>>>
+        add_hyperedge(
+                const ELT edgeLabel
+                , const Element<Node<NodeLabelT>> &target
+                , const std::vector<Element<Node<NodeLabelT>>> &sources
+        ) {
+            typename std::vector<EdgeLabelT>::const_iterator pos = std::find(
+                    edgeLabels->cbegin()
+                    , edgeLabels->cend()
+                    , edgeLabel
+            );
+            if(pos == edgeLabels->cend()) {
+                std::cerr << "Could not find edge label '" << edgeLabel << "'" << std::endl;
+                exit(-1);
+            }
+
+            size_t edgeLabelId = size_t(std::distance(
+                    edgeLabels->cbegin(), pos));
+
+            return add_hyperedge(edgeLabel, edgeLabelId, target, sources);
+        }
 
         const ManagerWeakPtr<Manage::HyperEdge<Manage::Node<NodeLabelT>, EdgeLabelT>> get_edges() const {
             return edges;
@@ -284,7 +359,10 @@ namespace Manage {
 
         const Element<Node<NodeLabelT>> get_node_by_label(NodeLabelT label){
             size_t id = size_t(std::distance(nodeLabels->cbegin(), std::find(nodeLabels->cbegin(),nodeLabels->cend(), label)));
-            assert(id < nodeLabels->size());
+            if(id == nodeLabels->cend()){
+                std::cerr << "Could not find a node with label '" << label << "'" << std::endl;
+                exit(-1);
+            }
             return Manager<Node<NodeLabelT>>::infos[id].get_element();
         }
 

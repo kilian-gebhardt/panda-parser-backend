@@ -41,7 +41,8 @@ namespace DCP {
                 for (auto const &pItem : parse.second)
                     incoming.push_back(nodelist.at(*pItem));
 
-                /*Element<HyperEdge<Nonterminal>>& edge = */ hg->add_hyperedge(parse.first->id, outgoing, incoming);
+                /*Element<HyperEdge<Nonterminal>>& edge = */
+                hg->add_hyperedge((size_t) parse.first->id, outgoing, incoming);
                 // set optional infos on edge here
             }
 
