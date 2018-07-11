@@ -19,52 +19,66 @@ namespace Trainer {
         MAPTYPE<size_t, bool> nodes;
         std::vector<size_t> nLabels{};
 
-        size_t labelCounter = 0;
-        std::vector<size_t> eLabels{};
+        size_t labelCounter {0};
+        std::vector<size_t> eLabels(0);
+
+        for (size_t nont {0}; nont < grammarInfo.normalizationGroups.size(); ++nont){
+            nLabels.push_back(nont);
+        }
 
         for (const auto rule : grammarInfo.rule_to_nonterminals) {
             eLabels.push_back(labelCounter++);
-            for (size_t nont : rule) {
-                if (nodes.count(nont) == 0) {
-                    nodes[nont] = true;
-                    nLabels.push_back(nont);
+            for (size_t nont : rule){
+                if (nont >= nLabels.size()) {
+                    std::cerr << "Corrupt grammar info: to high nonterminal ID " << nont
+                              << " in rule " << labelCounter - 1 << std::endl;
+                    exit(-1);
                 }
             }
+//            for (size_t nont : rule) {
+//                if (nodes.count(nont) == 0) {
+//                    nodes[nont] = true;
+//                    nLabels.push_back(nont);
+//                }
+//            }
         }
 
         return std::make_pair(nLabels, eLabels);
     };
 
 
-    template<typename Nonterminal>
-    HypergraphPtr<Nonterminal> hypergraph_from_grammar(
+    std::pair<HypergraphPtr<size_t>, Element<Node<size_t>>> hypergraph_from_grammar(
             const GrammarInfo2& grammarInfo,
             std::shared_ptr<const std::vector<size_t>> nLabelsPtr,
             std::shared_ptr<const std::vector<size_t>> eLabelsPtr
     ) {
-        HypergraphPtr<Nonterminal> hg = std::make_shared<Hypergraph<Nonterminal>>(nLabelsPtr, eLabelsPtr);
+        HypergraphPtr<size_t> hg = std::make_shared<Hypergraph<size_t>>(nLabelsPtr, eLabelsPtr);
 
         MAPTYPE<size_t, Element<Node<size_t>>> nodeElements;
-        for (size_t ruleNr = 0; ruleNr < grammarInfo.rule_to_nonterminals.size(); ++ruleNr) {
-            std::vector<size_t> rule = grammarInfo.rule_to_nonterminals[ruleNr];
-            std::vector<Element<Node<Nonterminal>>> rhs{};
-            for (size_t i = 0; i < rule.size(); ++i) {
-                size_t nont = rule[i];
+        for (size_t ruleID {0}; ruleID < grammarInfo.rule_to_nonterminals.size(); ++ruleID) {
+            const std::vector<size_t> & rule = grammarInfo.rule_to_nonterminals[ruleID];
+            std::vector<Element<Node<size_t>>> rhs{};
+            for (size_t i {0}; i < rule.size(); ++i) {
+                const size_t nont {rule[i]};
                 if (nodeElements.count(nont) == 0) {
                     nodeElements.insert(MAPTYPE<size_t, Element<Node<size_t>>>::value_type(nont, hg->create(nont)));
                 }
                 if (i != 0)
                     rhs.push_back(nodeElements.at(nont));
             }
-            hg->add_hyperedge(ruleNr, nodeElements.at(rule[0]), rhs);
+            hg->add_hyperedge(ruleID, nodeElements.at(rule[0]), rhs);
         }
 
-        return hg;
+        if (nodeElements.count(grammarInfo.start) == 0) {
+            nodeElements.insert(MAPTYPE<size_t, Element<Node<size_t>>>::value_type(grammarInfo.start,
+                    hg->create(grammarInfo.start)));
+        }
+
+        return std::make_pair(hg, nodeElements.at(grammarInfo.start));
     }
 
 
-    template<typename Nonterminal>
-    HypergraphPtr<Nonterminal> hypergraph_from_grammar(const GrammarInfo2& grammarInfo) {
+    std::pair<HypergraphPtr<size_t>, Element<Node<size_t>>> hypergraph_from_grammar(const GrammarInfo2& grammarInfo) {
         // build HG
 //        MAPTYPE<size_t, bool> nodes;
 //        std::vector<size_t> nLabels{};
@@ -86,7 +100,7 @@ namespace Trainer {
         const auto &labels = build_label_vectors(grammarInfo);
         auto nLabelsPtr = std::make_shared<const std::vector<size_t>>(labels.first);
         auto eLabelsPtr = std::make_shared<const std::vector<size_t>>(labels.second);
-        return hypergraph_from_grammar<Nonterminal>(grammarInfo, nLabelsPtr, eLabelsPtr);
+        return hypergraph_from_grammar(grammarInfo, nLabelsPtr, eLabelsPtr);
     };
 
 
@@ -125,7 +139,6 @@ namespace Trainer {
     }
 
 
-    template<typename Nonterminal>
     LatentAnnotation project_annotation(
             const LatentAnnotation &annotation
             , const GrammarInfo2 &grammarInfo
@@ -137,20 +150,21 @@ namespace Trainer {
         const auto &labels = build_label_vectors(grammarInfo);
         auto nLabelsPtr = std::make_shared<const std::vector<size_t>>(labels.first);
         auto eLabelsPtr = std::make_shared<const std::vector<size_t>>(labels.second);
-        TraceManagerPtr<Nonterminal, size_t> traceManager2
-                = std::make_shared<TraceManager2<Nonterminal, size_t>>(nLabelsPtr, eLabelsPtr);
-        HypergraphPtr<Nonterminal> hg = hypergraph_from_grammar<Nonterminal>(grammarInfo);
-        traceManager2->create(0, hg, hg->get_node_by_label(grammarInfo.start));
+        TraceManagerPtr<size_t, size_t> traceManager2
+                = std::make_shared<TraceManager2<size_t, size_t>>(nLabelsPtr, eLabelsPtr);
+        auto graph_root_pair = hypergraph_from_grammar(grammarInfo);
+        HypergraphPtr<size_t> hg = graph_root_pair.first;
+        traceManager2->create(0, hg, graph_root_pair.second);
         if (not (*traceManager2)[0].is_consistent_with_grammar(grammarInfo))
             abort();
 
-        MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> insideWeights;
-        MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> outsideWeights;
+        MAPTYPE<Element<Node<size_t>>, Trainer::WeightVector> insideWeights;
+        MAPTYPE<Element<Node<size_t>>, Trainer::WeightVector> outsideWeights;
 
-        io_weights_for_grammar<Nonterminal>(
+        io_weights_for_grammar<size_t>(
                 hg
                 , annotation
-                , hg->get_node_by_label(grammarInfo.start)
+                , graph_root_pair.second
                 , insideWeights
                 , outsideWeights
                 , ioPrecision
@@ -194,7 +208,7 @@ namespace Trainer {
                 projRuleWeights[ruleId]  = boost::apply_visitor(nvc, ruleVariant);
 
             } else {
-                InsideOutsideMultiplierAndNormalizer<Nonterminal> ioMultiplier(
+                InsideOutsideMultiplierAndNormalizer<size_t> ioMultiplier(
                         edge
                         , insideWeights
                         , outsideWeights
@@ -350,7 +364,6 @@ namespace Trainer {
      * Merges according to externally provided Merge lists.
      * Merge weights are computed w.r.t. exected frequency of latently annotated nonterminals in the grammar.
      */
-    template<typename Nonterminal>
     class MergeListMergePreparator {
     private:
         const GrammarInfo2& grammarInfo;
@@ -371,12 +384,13 @@ namespace Trainer {
             std::vector<size_t> new_splits;
             new_splits.reserve(mergeSources.size());
 
-            MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> insideWeights;
-            MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> outsideWeights;
-            HypergraphPtr<Nonterminal> hg = hypergraph_from_grammar<Nonterminal>(grammarInfo);
+            MAPTYPE<Element<Node<size_t>>, Trainer::WeightVector> insideWeights;
+            MAPTYPE<Element<Node<size_t>>, Trainer::WeightVector> outsideWeights;
+            auto hg_root_pair = hypergraph_from_grammar(grammarInfo);
+            HypergraphPtr<size_t> hg = hg_root_pair.first;
             io_weights_for_grammar(hg
                                    , latentAnnotation
-                                   , hg->get_node_by_label(grammarInfo.start)
+                                   , hg_root_pair.second
                                    , insideWeights
                                    , outsideWeights
                                    , ioPrecision
@@ -445,7 +459,6 @@ namespace Trainer {
         }
     };
 
-    template<typename Nonterminal>
     LatentAnnotation project_annotation_by_merging(
             const LatentAnnotation &annotation
             , const GrammarInfo2 &grammarInfo
@@ -454,7 +467,7 @@ namespace Trainer {
             , const unsigned int ioCycleLimit = IO_CYCLE_LIMIT_DEFAULT
             , const bool debug = false
     ) {
-        MergeListMergePreparator<Nonterminal> mergePreparator(grammarInfo, debug, ioPrecision, ioCycleLimit);
+        MergeListMergePreparator mergePreparator(grammarInfo, debug, ioPrecision, ioCycleLimit);
         MergeInfo mi = mergePreparator.merge_prepare(annotation, merge_sources);
         if (debug) std::cerr << mi << std::endl;
         Merger merger(grammarInfo, std::make_shared<StorageManager>());

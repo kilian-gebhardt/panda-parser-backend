@@ -358,11 +358,13 @@ namespace Manage {
         }
 
         const Element<Node<NodeLabelT>> get_node_by_label(NodeLabelT label){
-            size_t id = size_t(std::distance(nodeLabels->cbegin(), std::find(nodeLabels->cbegin(),nodeLabels->cend(), label)));
-            if(id == nodeLabels->cend()){
+            auto pos = std::find(nodeLabels->cbegin(),nodeLabels->cend(), label);
+            if(pos == nodeLabels->cend()){
                 std::cerr << "Could not find a node with label '" << label << "'" << std::endl;
                 exit(-1);
             }
+
+            size_t id = size_t(std::distance(nodeLabels->cbegin(), pos));
             return Manager<Node<NodeLabelT>>::infos[id].get_element();
         }
 

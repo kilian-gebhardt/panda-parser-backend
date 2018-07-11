@@ -196,14 +196,15 @@ namespace Trainer {
         assert(la1.ruleWeights.size() == la2.ruleWeights.size());
 
 
-        HypergraphPtr<Nonterminal> hg = hypergraph_from_grammar<Nonterminal>(info);
+        auto hg_root_pair = hypergraph_from_grammar(info);
+        HypergraphPtr<size_t> hg = hg_root_pair.first;
 
         MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> inside1;
         MAPTYPE<Element<Node<Nonterminal>>, Trainer::WeightVector> outside1;
         io_weights_for_grammar<Nonterminal>(
                 hg
                 , la1
-                , hg->get_node_by_label(info.start)
+                , hg_root_pair.second
                 , inside1
                 , outside1
                 , ioPrecision

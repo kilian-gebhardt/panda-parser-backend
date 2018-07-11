@@ -110,7 +110,7 @@ namespace LCFR {
 
 
     LCFR::Rule<std::string, std::string> construct_rule(
-            const std::string nont, const std::vector<std::string> args, const std::string rhs, auto ruleId
+            const std::string nont, const std::vector<std::string> args, const std::string rhs, unsigned long ruleId
     ) {
         LCFR::LHS <std::__cxx11::string, std::__cxx11::string> lhs(nont);
         for (auto const &arg : args) {
